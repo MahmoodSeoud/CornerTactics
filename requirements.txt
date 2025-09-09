@@ -1,3 +1,4 @@
-SoccerNet>=1.1.5
+SoccerNet
 pandas>=1.5.0
 numpy>=1.21.0
+pytest>=7.0.0

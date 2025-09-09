@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SoccerNet Data Loader
-Simple downloader for broadcast videos and tracking data.
+SoccerNet Data Access
+Load and access SoccerNet annotations and game data.
 """
 
 import os
@@ -9,57 +9,18 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict
-from SoccerNet.Downloader import SoccerNetDownloader
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class SoccerNetDataLoader:
-    """Download SoccerNet broadcast videos and tracking data."""
+    """Access SoccerNet game data and annotations."""
     
-    def __init__(self, data_dir: str = "data", password: str = None):
+    def __init__(self, data_dir: str = "data"):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
         
-        self.downloader = SoccerNetDownloader(LocalDirectory=str(self.data_dir))
-        if password:
-            self.downloader.password = password
-        
-    def download_broadcast_videos(self, quality: str = "720p", splits: list = ["train", "valid", "test", "challenge"]):
-        """
-        Download broadcast videos in specified quality.
-        Quality options: 720p, 224p
-        """
-        files = [f"1_{quality}.mkv", f"2_{quality}.mkv"]
-        logger.info(f"Downloading {quality} broadcast videos for splits: {splits}")
-        
-        try:
-            self.downloader.downloadGames(files=files, split=splits)
-            logger.info(f"Successfully downloaded {quality} videos")
-        except Exception as e:
-            if "google-analytics.com" in str(e):
-                logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-            else:
-                logger.error(f"Failed to download {quality} videos: {e}")
-                raise
-    
-    def download_tracklets(self, task: str = "tracking", splits: list = ["train", "test", "challenge"]):
-        """
-        Download tracking data.
-        Available tasks: tracking, tracking-2023
-        """
-        logger.info(f"Downloading tracklets '{task}' for splits: {splits}")
-        try:
-            self.downloader.downloadDataTask(task=task, split=splits)
-            logger.info(f"Successfully downloaded tracklets '{task}'")
-        except Exception as e:
-            if "google-analytics.com" in str(e):
-                logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-            else:
-                logger.error(f"Failed to download tracklets '{task}': {e}")
-                raise
-    
     def load_annotations(self, game_path: str) -> Dict:
         """Load annotations for a game."""
         labels_file = self.data_dir / game_path / "Labels-v2.json"
