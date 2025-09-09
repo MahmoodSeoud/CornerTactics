@@ -56,13 +56,35 @@ def download_tracklets(data_dir: str, task: str, splits: list):
             raise
 
 
+def download_labels(data_dir: str, version: str, splits: list):
+    """Download match labels/annotations."""
+    data_path = Path(data_dir)
+    data_path.mkdir(exist_ok=True)
+    
+    downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
+    
+    files = [f"Labels-{version}.json"] if version else ["Labels-v2.json"]
+    logger.info(f"Downloading labels {files} for splits: {splits}")
+    
+    try:
+        downloader.downloadGames(files=files, split=splits)
+        logger.info(f"Successfully downloaded labels")
+    except Exception as e:
+        if "google-analytics.com" in str(e):
+            logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
+        else:
+            logger.error(f"Failed to download labels: {e}")
+            raise
+
+
 def main():
     """Main function for command-line interface."""
     parser = argparse.ArgumentParser(description='Download SoccerNet broadcast videos and tracking data')
     
-    # Video downloads
+    # Download options
     parser.add_argument('--videos', choices=['720p', '224p'], help='Download broadcast videos (720p or 224p)')
     parser.add_argument('--tracklets', choices=['tracking', 'tracking-2023'], help='Download tracking data')
+    parser.add_argument('--labels', choices=['v2', 'v1'], help='Download match labels/annotations')
     
     # Options
     parser.add_argument('--splits', nargs='+', default=['train', 'valid', 'test', 'challenge'], 
@@ -73,7 +95,7 @@ def main():
     
     args = parser.parse_args()
     
-    if not args.videos and not args.tracklets:
+    if not args.videos and not args.tracklets and not args.labels:
         parser.print_help()
         sys.exit(1)
     
@@ -81,6 +103,11 @@ def main():
     if args.videos and not args.password:
         print("ERROR: --password required for video downloads")
         sys.exit(1)
+    
+    # Download labels
+    if args.labels:
+        print(f"Downloading labels {args.labels}...")
+        download_labels(args.data_dir, args.labels, args.splits)
     
     # Download videos
     if args.videos:
