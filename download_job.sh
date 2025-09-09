@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=soccernet_download
+#SBATCH --partition=dgpu
 #SBATCH --output=logs/download_%j.log
 #SBATCH --error=logs/download_%j.err
-#SBATCH --time=24:00:00
+#SBATCH --time=10-00:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=4
 
@@ -26,9 +27,9 @@ echo "Testing network speed..."
 curl -s https://www.google.com -o /dev/null -w "Speed: %{speed_download} bytes/s\n"
 
 # Download 224p videos (smaller, faster)
-python src/download_soccernet.py --videos 224p --password "$PASSWORD"
+python src/download_soccernet.py --videos 224p --password "$PASSWORD" --data-dir data_224p
 
 # Download tracklets
-python src/download_soccernet.py --tracklets tracking
+python src/download_soccernet.py --tracklets tracking --data-dir data_224p
 
 echo "Download completed at $(date)"
