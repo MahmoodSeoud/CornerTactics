@@ -67,6 +67,8 @@ Thumbs.db
 
 # Project-specific data files (large datasets)
 data/
+data_224p/
+data_720p/
 downloads/
 raw_data/
 soccernet_data/
