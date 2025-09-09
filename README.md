@@ -1,90 +1,68 @@
 # CornerTactics
 
-Soccer corner kick analysis toolkit using SoccerNet dataset.
+Simple pipeline for analyzing corner kicks from soccer matches using SoccerNet dataset.
 
-## Quick Start
+## Setup
 
-### Prerequisites
-
-1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 brew install ffmpeg  # macOS
 ```
 
-2. Download data (one-time setup):
+## Usage
+
+### Step 1: Download Data (One-time)
+
 ```python
 from src.data_loader import SoccerNetDataLoader
 
 loader = SoccerNetDataLoader('data/')
 loader.download_annotations('train')  # Downloads ALL games in split
-
-# Download videos for specific games you want to analyze
-game = 'england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom'
-loader.download_videos(game)
+loader.download_videos('england_epl/2015-2016/...')  # Download videos for specific game
 ```
 
-### Run Analysis Pipeline
+### Step 2: Run Pipeline
 
 ```bash
-# List available games
-python main.py --list
+# Extract clips and analyze ALL games
+python main.py
 
-# Analyze a specific game
-python main.py "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
+# Just analyze (skip video extraction for speed)
+python main.py --no-clips
 
-# Skip video extraction (faster, analysis only)
-python main.py "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom" --no-clips
-
-# Save results to CSV
-python main.py "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom" --output results.csv
+# Custom clip settings
+python main.py --duration 20 --before 5
 ```
 
-## Pipeline
+## Pipeline Flow
 
-The analysis follows a simple 3-step pipeline:
+1. **Finds** all games in data folder
+2. **Extracts** video clips of every corner kick
+3. **Analyzes** all corners across all games
+4. **Saves** combined results to CSV
 
-1. **Download** (prerequisite): Get SoccerNet data
-2. **Extract**: Create video clips of corner kicks
-3. **Analyze**: Generate statistics and label outcomes
+## Output
+
+- **Video clips**: `corner_clips/corner_1H_28m46s_home.mp4`
+- **Analysis**: `results.csv` with all corner data
 
 ## Project Structure
 
 ```
 CornerTactics/
-├── main.py                 # Main pipeline script
+├── main.py                 # Run complete pipeline
 ├── src/
-│   ├── data_loader.py     # Download and load data
-│   ├── corner_extractor.py # Extract corner kick clips
-│   └── analyzer.py         # Analyze corner kicks
-├── data/                   # SoccerNet dataset (gitignored)
-├── corner_clips/           # Extracted clips (gitignored)
-└── results/                # Analysis results (gitignored)
-```
-
-## API Usage
-
-```python
-from src.data_loader import SoccerNetDataLoader
-from src.corner_extractor import CornerKickExtractor
-from src.analyzer import CornerKickAnalyzer
-
-# Load data
-loader = SoccerNetDataLoader('data/')
-annotations = loader.load_annotations(game)
-
-# Extract clips
-extractor = CornerKickExtractor(game)
-clips = extractor.extract_all()
-
-# Analyze
-analyzer = CornerKickAnalyzer('data/')
-df = analyzer.analyze_game(game)
-outcomes = analyzer.label_outcomes(game)
+│   ├── data_loader.py     # Download SoccerNet data
+│   ├── corner_extractor.py # Extract corner clips
+│   └── analyzer.py         # Analyze corners
+├── data/                   # SoccerNet dataset
+├── corner_clips/           # Extracted video clips
+└── results.csv            # Analysis output
 ```
 
 ## Notes
 
-- SoccerNet downloads entire splits (cannot limit number of games)
+- Processes ALL games automatically
+- SoccerNet downloads entire splits (100+ games)
 - Each game with videos is ~400MB
-- Video resolution is 398x224 (research quality)
+- Video resolution: 398x224 (research quality)

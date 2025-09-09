@@ -88,3 +88,4 @@ class CornerKickAnalyzer:
         half, time_str = game_time.split(' - ')
         minutes, seconds = map(int, time_str.split(':'))
         return int(half), minutes * 60 + seconds
+    
