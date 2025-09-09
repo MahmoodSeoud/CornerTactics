@@ -19,3 +19,8 @@ class SoccerNetDownloadScript:
         """Download labels for all specified splits."""
         for split in splits:
             self.data_loader.download_annotations(split)
+    
+    def download_videos_for_games(self, game_paths):
+        """Download videos for specified games."""
+        for game_path in game_paths:
+            self.data_loader.download_videos(game_path)
