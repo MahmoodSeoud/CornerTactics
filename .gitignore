@@ -16,63 +16,101 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual environments
-venv/
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
 env/
+venv/
 ENV/
-.venv/
-.env/
-cornerTactics/
+env.bak/
+venv.bak/
 
-# SoccerNet data (large datasets)
-data/
-*.zip
-*.tar.gz
-*.h5
-*.hdf5
-
-# Results and outputs
-results/
-output/
-outputs/
-*.png
-*.jpg
-*.gif
-*.mp4
-*.avi
-
-# Analysis files
-*.json
-*.csv
-*.pkl
-*.pickle
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
-
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# macOS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Logs
+# Project-specific data files (large datasets)
+data/
+downloads/
+raw_data/
+soccernet_data/
+
+# Generated output files
+corner_clips/
+output/
+results/
+exports/
+clips/
+
+# Video files (potentially large)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Data files (potentially large)
+*.json
+*.csv
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# Model files
+*.model
+*.pt
+*.pth
+*.onnx
+
+# Logs and temporary files
 *.log
 logs/
-
-# Temporary files
 tmp/
 temp/
 *.tmp
+
+# Config files with sensitive data
+config.ini
+secrets.yaml
+.env.local
+
+# Cache directories
+cache/
+.cache/

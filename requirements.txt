@@ -1,26 +1,3 @@
-# Core dependencies
-numpy>=1.26.0
-opencv-python>=4.8.0
-torch>=2.0.0
-torchvision>=0.15.0
-
-# SoccerNet SDK
-SoccerNet
-
-# Computer vision and tracking  
-ultralytics>=8.0.0
-supervision>=0.16.0
-
-# Data processing
-pandas>=2.0.0
-scipy>=1.11.0
-scikit-learn>=1.3.0
-
-# Visualization
-matplotlib>=3.7.0
-seaborn>=0.12.0
-plotly>=5.17.0
-
-# Video processing
-moviepy>=1.0.0
-ffmpeg-python>=0.2.0
+SoccerNet>=1.1.5
+pandas>=1.5.0
+numpy>=1.21.0

@@ -1,103 +1,147 @@
 #!/usr/bin/env python3
+"""
+Main pipeline for corner kick analysis.
+Prerequisites: Data must be downloaded first using data_loader.py
+"""
 
 import argparse
-import os
-from corner_tactics.data_loader import SoccerNetCornerLoader
-from corner_tactics.tracking_processor import TrackingProcessor
-from corner_tactics.formation_analyzer import FormationAnalyzer
-from corner_tactics.visualizer import TacticalVisualizer
+import logging
+from pathlib import Path
+import pandas as pd
+
+from src.data_loader import SoccerNetDataLoader
+from src.corner_extractor import CornerKickExtractor
+from src.analyzer import CornerKickAnalyzer
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
+
+def run_pipeline(game_path: str, data_dir: str = "data", 
+                 extract_clips: bool = True, clip_duration: int = 30,
+                 clip_before: int = 10):
+    """
+    Run complete corner kick analysis pipeline.
+    
+    Args:
+        game_path: Path to game (e.g., 'england_epl/2015-2016/...')
+        data_dir: Directory containing SoccerNet data
+        extract_clips: Whether to extract video clips
+        clip_duration: Total clip duration in seconds
+        clip_before: Seconds before corner kick to include
+    
+    Returns:
+        Dictionary with analysis results
+    """
+    results = {}
+    
+    # Step 1: Verify data exists
+    logger.info(f"Processing game: {game_path}")
+    
+    loader = SoccerNetDataLoader(data_dir)
+    try:
+        annotations = loader.load_annotations(game_path)
+        logger.info(f"Loaded annotations: {len(annotations['annotations'])} events")
+    except FileNotFoundError:
+        logger.error(f"Game not found. Please download it first.")
+        logger.info("Usage: loader.download_videos(game_path)")
+        return None
+    
+    # Step 2: Extract corner kick clips (optional)
+    if extract_clips:
+        logger.info("Extracting corner kick clips...")
+        extractor = CornerKickExtractor(game_path, data_dir)
+        clips = extractor.extract_all(duration=clip_duration, before=clip_before)
+        results['clips'] = clips
+        logger.info(f"Extracted {len(clips)} corner kick clips")
+    
+    # Step 3: Analyze corner kicks
+    logger.info("Analyzing corner kicks...")
+    analyzer = CornerKickAnalyzer(data_dir)
+    
+    # Get corner kick statistics
+    df = analyzer.analyze_game(game_path)
+    results['statistics'] = df
+    
+    # Label outcomes
+    outcomes = analyzer.label_outcomes(game_path)
+    results['outcomes'] = outcomes
+    
+    # Summary statistics
+    if not df.empty:
+        summary = {
+            'total_corners': len(df),
+            'corners_by_half': df['half'].value_counts().to_dict(),
+            'corners_by_team': df['team'].value_counts().to_dict(),
+            'visible_corners': (df['visibility'] == 'visible').sum()
+        }
+        results['summary'] = summary
+        
+        logger.info(f"Total corners: {summary['total_corners']}")
+        logger.info(f"By team: {summary['corners_by_team']}")
+    
+    return results
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze corner kick defensive positioning')
-    parser.add_argument('--data-path', default='./data/soccernet', help='Path to SoccerNet data')
-    parser.add_argument('--download', action='store_true', help='Download SoccerNet datasets')
-    parser.add_argument('--password', help='SoccerNet password for download')
-    parser.add_argument('--split', default='train', choices=['train', 'valid', 'test'])
-    parser.add_argument('--output', default='./results', help='Output directory for results')
-    parser.add_argument('--visualize', action='store_true', help='Generate visualizations')
+    parser = argparse.ArgumentParser(description='Corner kick analysis pipeline')
+    parser.add_argument('game', nargs='?', help='Game path (optional, will list games if not provided)')
+    parser.add_argument('--data-dir', default='data', help='Data directory')
+    parser.add_argument('--no-clips', action='store_true', help='Skip video clip extraction')
+    parser.add_argument('--duration', type=int, default=30, help='Clip duration (seconds)')
+    parser.add_argument('--before', type=int, default=10, help='Seconds before corner')
+    parser.add_argument('--list', action='store_true', help='List available games')
+    parser.add_argument('--output', help='Save results to CSV file')
     
     args = parser.parse_args()
     
-    os.makedirs(args.output, exist_ok=True)
+    loader = SoccerNetDataLoader(args.data_dir)
     
-    loader = SoccerNetCornerLoader(args.data_path)
-    
-    if args.download:
-        if not args.password:
-            print("Password required for downloading SoccerNet data")
-            return
-        loader.download_datasets(args.password)
-    
-    print(f"Loading corner timestamps from {args.split} split...")
-    corners = loader.load_corner_timestamps(args.split)
-    print(f"Found {len(corners)} corner kicks")
-    
-    processor = TrackingProcessor()
-    analyzer = FormationAnalyzer()
-    
-    print("Analyzing corner sequences...")
-    sequences = loader.get_corner_sequences(min_tracking_frames=150)
-    
-    all_metrics = []
-    all_formations = []
-    
-    for i, sequence in enumerate(sequences[:10]):
-        corner = sequence['corner']
-        tracking = sequence['tracking']
+    # List available games
+    if args.list or not args.game:
+        games = loader.list_games()
+        print(f"\nAvailable games ({len(games)} total):")
+        for game in games[:10]:  # Show first 10
+            print(f"  {game}")
+        if len(games) > 10:
+            print(f"  ... and {len(games) - 10} more")
         
-        print(f"Processing corner {i+1}/{min(10, len(sequences))} - {corner.game_id}")
-        
-        formations = processor.analyze_corner_defense(tracking, defending_team='home')
-        
-        if formations:
-            metrics = processor.calculate_defensive_metrics(formations)
-            all_metrics.append(metrics)
-            all_formations.extend([f.positions for f in formations])
-            
-            if args.visualize and i < 3:
-                visualizer = TacticalVisualizer()
-                
-                fig = visualizer.plot_defensive_formation(
-                    formations[0].positions,
-                    vulnerable_zones=formations[0].vulnerable_zones
-                )
-                fig.savefig(f"{args.output}/formation_{i}.png", dpi=150, bbox_inches='tight')
-                
-                positions_over_time = [f.positions for f in formations]
-                heatmap_fig = visualizer.create_heatmap(
-                    positions_over_time,
-                    title=f"Corner Defense Heatmap - {corner.game_id}"
-                )
-                heatmap_fig.savefig(f"{args.output}/heatmap_{i}.png", dpi=150, bbox_inches='tight')
+        if not args.game:
+            print("\nUsage: python main.py <game_path>")
+            print("Example: python main.py 'england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom'")
+        return
     
-    if all_metrics:
-        avg_metrics = {
-            'avg_compactness': sum(m.get('avg_compactness', 0) for m in all_metrics) / len(all_metrics),
-            'avg_marking_distance': sum(m.get('avg_marking_distance', 0) for m in all_metrics) / len(all_metrics),
-            'formation_consistency': sum(m.get('formation_consistency', 0) for m in all_metrics) / len(all_metrics),
-            'vulnerable_zone_coverage': sum(m.get('vulnerable_zone_coverage', 0) for m in all_metrics) / len(all_metrics)
-        }
-        
-        print("\n=== Overall Defensive Metrics ===")
-        for metric, value in avg_metrics.items():
-            print(f"{metric}: {value:.3f}")
-        
-        recommendations = analyzer.generate_defensive_recommendations(avg_metrics)
-        
-        print("\n=== Recommendations ===")
-        for rec in recommendations:
-            print(f"• {rec}")
-        
-        results = {
-            'metrics': avg_metrics,
-            'recommendations': recommendations,
-            'num_corners_analyzed': len(all_metrics)
-        }
-        
-        analyzer.export_analysis(results, f"{args.output}/analysis_results.json")
-        print(f"\nResults saved to {args.output}/analysis_results.json")
+    # Run pipeline
+    results = run_pipeline(
+        args.game,
+        args.data_dir,
+        extract_clips=not args.no_clips,
+        clip_duration=args.duration,
+        clip_before=args.before
+    )
     
-    print("\nAnalysis complete!")
+    if results:
+        # Print summary
+        print("\n" + "="*50)
+        print("ANALYSIS COMPLETE")
+        print("="*50)
+        
+        if 'summary' in results:
+            summary = results['summary']
+            print(f"Total corners: {summary['total_corners']}")
+            print(f"By half: {summary['corners_by_half']}")
+            print(f"By team: {summary['corners_by_team']}")
+        
+        if 'clips' in results:
+            print(f"\nExtracted clips: {len(results['clips'])}")
+            for clip in results['clips']:
+                print(f"  - {Path(clip).name}")
+        
+        # Save results if requested
+        if args.output and 'statistics' in results:
+            results['statistics'].to_csv(args.output, index=False)
+            print(f"\nResults saved to: {args.output}")
+
 
 if __name__ == "__main__":
     main()

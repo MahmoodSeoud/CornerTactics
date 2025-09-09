@@ -1,55 +1,62 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# CornerTactics - AI Context
 
 ## Project Overview
+CornerTactics is a soccer corner kick analysis toolkit that processes SoccerNet dataset to extract and analyze corner kick events from professional soccer matches.
 
-CornerTactics is a football/soccer analytics tool that analyzes defensive positioning during corner kicks using SoccerNet data. The system processes tracking data to identify defensive formations, calculate metrics, and generate tactical recommendations.
+## Core Pipeline
+1. **Download**: Get SoccerNet data (annotations + videos)
+2. **Extract**: Create video clips of corner kicks
+3. **Analyze**: Generate statistics and label outcomes
 
-## Core Architecture
+## Key Technical Details
 
-The codebase is organized into four main modules in `corner_tactics/`:
+### Data Format
+- **Annotations**: Labels-v2.json files containing match events with timestamps
+- **Videos**: 1.mkv (first half), 2.mkv (second half), 398x224 resolution
+- **Game paths**: Format like "england_epl/2015-2016/2015-11-07 - 18-00 Team1 X - Y Team2"
 
-- `data_loader.py` - Handles SoccerNet dataset downloading and parsing corner kick events from Labels-v2.json files
-- `tracking_processor.py` - Processes player tracking data, normalizes positions, and classifies defensive formations  
-- `formation_analyzer.py` - Performs statistical analysis on formations using clustering (DBSCAN) and generates recommendations
-- `visualizer.py` - Creates matplotlib/plotly visualizations of formations, heatmaps, and pitch diagrams
+### Corner Kick Events
+- Identified by label "Corner" in annotations
+- Include metadata: game time, team, visibility
+- Typical match has 5-10 corner kicks
 
-## Development Commands
+### Video Extraction
+- Default: 30-second clips (10s before, 20s after corner)
+- Output: MP4 files named "corner_[half]H_[time]_[team].mp4"
+- Uses FFmpeg for video processing
 
-### Environment Setup
+## Important Limitations
+
+1. **SoccerNet API**: Downloads entire splits, cannot limit number of games
+2. **Video Quality**: 398x224 pixels (intentionally low for research)
+3. **Storage**: Each game ~400MB with videos
+
+## Code Structure
+- `main.py`: Entry point, runs complete pipeline
+- `src/data_loader.py`: SoccerNet download and data loading
+- `src/corner_extractor.py`: Video clip extraction
+- `src/analyzer.py`: Statistical analysis and outcome labeling
+
+## Common Tasks
+
+### Run complete analysis
 ```bash
-pip install -r requirements.txt
+python main.py "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
 ```
 
-### Running Analysis
-```bash
-# Basic analysis with existing data
-python main.py --data-path ./data/soccernet --split train
-
-# Download SoccerNet data (requires password)
-python main.py --download --password YOUR_PASSWORD --data-path ./data/soccernet
-
-# Generate visualizations
-python main.py --visualize --output ./results
+### Extract specific duration clips
+```python
+extractor.extract_all(duration=20, before=5)  # 20s clips, 5s before corner
 ```
 
-### Data Structure
-- SoccerNet data stored in `data/soccernet/league/season/match/` format
-- Each match contains `Labels-v2.json` with timestamped events
-- Tracking data expected in same directory structure
-- Results output to `./results/` by default
+### Analyze multiple games
+```python
+for game in loader.list_games():
+    df = analyzer.analyze_game(game)
+```
 
-## Key Data Flows
-
-1. **Corner Detection**: Loads Labels-v2.json files to extract corner kick timestamps
-2. **Tracking Processing**: Normalizes player positions from tracking data to pitch coordinates (68x105m)
-3. **Formation Analysis**: Clusters defensive positions using DBSCAN, calculates compactness metrics
-4. **Visualization**: Generates formation plots and heatmaps using matplotlib
-
-## Important Constants
-
-- Pitch dimensions: 68m x 105m (width x height)
-- Defensive third threshold: pitch_width / 3
-- Formation clustering eps parameter: 3.0 meters
-- Minimum tracking frames: 150 frames per sequence
+## Development Notes
+- Keep code simple and focused
+- No unnecessary abstractions
+- Clear error messages for missing data
+- Preserve exact game path formats from SoccerNet
