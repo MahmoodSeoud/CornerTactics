@@ -26,6 +26,11 @@ class SoccerNetDownloadScript:
         """Download videos for specified games."""
         for game_path in game_paths:
             self.data_loader.download_videos(game_path)
+    
+    def download_all_videos(self):
+        """Download videos for all games with labels."""
+        games = self.data_loader.list_games()
+        self.download_videos_for_games(games)
 
 
 def main():
@@ -33,6 +38,7 @@ def main():
     parser = argparse.ArgumentParser(description='Download SoccerNet labels and videos')
     parser.add_argument('--labels', nargs='+', help='Download labels for specified splits (e.g., train test)')
     parser.add_argument('--videos', nargs='+', help='Download videos for specified game paths')
+    parser.add_argument('--all-videos', action='store_true', help='Download videos for all games with labels')
     parser.add_argument('--data-dir', default='data', help='Data directory (default: data)')
     parser.add_argument('--password', default='s0cc3rn3t', help='SoccerNet password (default: s0cc3rn3t)')
     
@@ -46,7 +52,10 @@ def main():
     if args.videos:
         script.download_videos_for_games(args.videos)
     
-    if not args.labels and not args.videos:
+    if args.all_videos:
+        script.download_all_videos()
+    
+    if not args.labels and not args.videos and not args.all_videos:
         parser.print_help()
 
 

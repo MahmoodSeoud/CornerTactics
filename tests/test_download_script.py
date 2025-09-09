@@ -59,6 +59,21 @@ class TestSoccerNetDownloadScript(unittest.TestCase):
         
         mock_data_loader.download_annotations.assert_any_call('train')
         mock_data_loader.download_annotations.assert_any_call('test')
+    
+    @patch('download_soccernet.SoccerNetDataLoader')
+    def test_download_all_videos_calls_list_games_and_download_videos(self, mock_data_loader_class):
+        """Test that download_all_videos gets game list and downloads videos for each game."""
+        mock_data_loader = Mock()
+        mock_data_loader_class.return_value = mock_data_loader
+        mock_data_loader.list_games.return_value = ['game1', 'game2']
+        
+        script = SoccerNetDownloadScript()
+        script.download_all_videos()
+        
+        mock_data_loader.list_games.assert_called_once()
+        mock_data_loader.download_videos.assert_any_call('game1')
+        mock_data_loader.download_videos.assert_any_call('game2')
+        self.assertEqual(mock_data_loader.download_videos.call_count, 2)
 
 
 if __name__ == '__main__':
