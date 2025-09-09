@@ -101,10 +101,17 @@ clips/
 
 # Logs and temporary files
 *.log
+*.err
 logs/
 tmp/
 temp/
 *.tmp
+
+# SLURM job logs
+logs/
+download_*.log
+download_*.err
+slurm-*.out
 
 # Config files with sensitive data
 config.ini
