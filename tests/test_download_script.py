@@ -46,6 +46,19 @@ class TestSoccerNetDownloadScript(unittest.TestCase):
         mock_data_loader.download_videos.assert_any_call(game_paths[0])
         mock_data_loader.download_videos.assert_any_call(game_paths[1])
         self.assertEqual(mock_data_loader.download_videos.call_count, 2)
+    
+    @patch('sys.argv', ['download_soccernet.py', '--labels', 'train', 'test'])
+    @patch('download_soccernet.SoccerNetDataLoader')
+    def test_main_with_labels_argument(self, mock_data_loader_class):
+        """Test main function execution with --labels argument."""
+        from download_soccernet import main
+        mock_data_loader = Mock()
+        mock_data_loader_class.return_value = mock_data_loader
+        
+        main()
+        
+        mock_data_loader.download_annotations.assert_any_call('train')
+        mock_data_loader.download_annotations.assert_any_call('test')
 
 
 if __name__ == '__main__':
