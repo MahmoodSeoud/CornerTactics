@@ -14,3 +14,8 @@ class SoccerNetDownloadScript:
         self.data_dir = data_dir
         self.password = password
         self.data_loader = SoccerNetDataLoader(data_dir, password)
+    
+    def download_all_labels(self, splits):
+        """Download labels for all specified splits."""
+        for split in splits:
+            self.data_loader.download_annotations(split)
