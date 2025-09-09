@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=soccernet_720p
 #SBATCH --partition=dgpu
+#SBATCH --account=researchers
 #SBATCH --output=logs/download_720p_%j.log
 #SBATCH --error=logs/download_720p_%j.err
 #SBATCH --time=10-00:00:00
@@ -25,7 +26,7 @@ curl -s https://www.google.com -o /dev/null -w "Speed: %{speed_download} bytes/s
 
 # Download 720p videos (larger files - will take much longer)
 echo "Downloading 720p broadcast videos..."
-python src/download_soccernet.py --videos 720p --password "$PASSWORD" --data-dir data_720p
+python src/download_soccernet.py --videos 720p --password "$PASSWORD" --data-dir data
 
 # Download tracklets
 echo "Downloading tracklets..."
