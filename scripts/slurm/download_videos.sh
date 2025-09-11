@@ -26,14 +26,14 @@ curl -s https://www.google.com -o /dev/null -w "Speed: %{speed_download} bytes/s
 
 # Download labels/annotations first (needed for corner detection)
 echo "Downloading labels and annotations..."
-python src/download_soccernet.py --labels v2 --data-dir data
+python src/download_soccernet.py --labels v2 --data-dir data/datasets/soccernet/soccernet_videos
 
 # Download 720p videos (larger files - will take much longer)
 echo "Downloading 720p broadcast videos..."
-python src/download_soccernet.py --videos 720p --password "$PASSWORD" --data-dir data
+python src/download_soccernet.py --videos 720p --password "$PASSWORD" --data-dir data/datasets/soccernet/soccernet_videos
 
 # Download tracklets
 echo "Downloading tracklets..."
-python src/download_soccernet.py --tracklets tracking --data-dir data
+python src/download_soccernet.py --tracklets tracking --data-dir data/datasets/soccernet/soccernet_tracking
 
 echo "720p download completed at $(date)"

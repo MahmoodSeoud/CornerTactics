@@ -18,12 +18,12 @@ cd /home/mseo/CornerTactics
 echo "Starting corner extraction at $(date)"
 echo "Node: $(hostname)"
 
-# Use standard data directory
-DATA_DIR="data"
+# Use research lab organized data structure
+DATA_DIR="data/datasets/soccernet/soccernet_videos"
 echo "Using data directory: $DATA_DIR"
 
 # Run corner extraction
 echo "Extracting corners from $DATA_DIR..."
-python main.py --data-dir $DATA_DIR --output results/corners.csv
+python main.py --data-dir $DATA_DIR --output data/insights/corners_with_clips.csv
 
 echo "Corner extraction completed at $(date)"

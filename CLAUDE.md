@@ -1,76 +1,90 @@
-# CornerTactics - AI Assistant Context
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-Simple soccer corner kick analysis pipeline that processes ALL games automatically.
+CornerTactics is a focused soccer corner kick analysis pipeline that processes SoccerNet broadcast videos to extract and analyze corner kick events across hundreds of matches.
 
-## Core Flow
+## Core Pipeline Architecture
 
-```
-Download Data → Run main.py → Get Results
-```
+The system follows a simple 3-step flow:
+1. **Data Loading** (`src/data_loader.py`) - Loads SoccerNet annotations and lists available games
+2. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events  
+3. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
 
-1. **Download**: SoccerNet data (one-time setup)
-2. **Extract**: Video clips from ALL games
-3. **Analyze**: Corner kicks across ALL games
-4. **Output**: Combined CSV with all data
+All processing is batch-oriented - the system always processes ALL games in the dataset (no single-game option).
 
-## Key Files
+## Data Structure
 
-- `main.py` (93 lines) - Runs complete pipeline on ALL games
-- `src/data_loader.py` (65 lines) - Downloads SoccerNet data
-- `src/corner_extractor.py` (93 lines) - Extracts corner clips
-- `src/analyzer.py` (92 lines) - Analyzes corner events
-
-Total: ~250 lines of clean code
-
-## Technical Details
-
-### Data Structure
 ```
 data/
-└── england_epl/
-    └── 2015-2016/
-        └── 2015-11-07 - 18-00 Manchester United 2 - 0 West Brom/
-            ├── Labels-v2.json  # Match annotations
-            ├── 1.mkv          # First half video
-            └── 2.mkv          # Second half video
+├── datasets/soccernet/
+│   ├── soccernet_videos/        # 720p broadcast videos (551 games)
+│   │   ├── england_epl/         # EPL matches
+│   │   ├── europe_uefa-champions-league/
+│   │   └── france_ligue-1/
+│   └── soccernet_tracking/      # Player tracking data
+├── extracts/                    # Processed outputs
+│   ├── corner_clips/            # 30-second corner videos
+│   ├── corner_annotations/
+│   └── tracking_extracted/
+└── insights/                    # Analysis results (CSV files)
 ```
-
-### Corner Detection
-- Found in Labels-v2.json where `label == "Corner"`
-- Includes: gameTime, team, visibility
-
-### Video Extraction
-- Default: 30-second clips (10s before, 20s after)
-- Output: `corner_1H_28m46s_home.mp4`
 
 ## Common Commands
 
+### Full Pipeline
 ```bash
-# Full pipeline
-python main.py
+# Process all 551 games with video extraction
+python main.py --data-dir data/datasets/soccernet/soccernet_videos --output data/insights/corners.csv
 
-# Analysis only (no video)
-python main.py --no-clips
+# Analysis only (no video clips) - faster
+python main.py --no-clips --data-dir data/datasets/soccernet/soccernet_videos
+```
 
-# Check what games exist
+### SLURM Jobs (HPC cluster)
+```bash
+# Download SoccerNet data (one-time)
+sbatch scripts/slurm/download_videos.sh
+
+# Extract corner clips with GPU
+sbatch scripts/slurm/extract_corners.sh  
+
+# Analysis only (lightweight)
+sbatch scripts/slurm/analyze_corners.sh
+```
+
+### Quick Checks
+```bash
+# Count total games
+find data/datasets/soccernet/soccernet_videos -mindepth 3 -maxdepth 3 -type d | wc -l
+
+# List available games  
 from src.data_loader import SoccerNetDataLoader
-loader = SoccerNetDataLoader('data/')
+loader = SoccerNetDataLoader('data/datasets/soccernet/soccernet_videos')
 games = loader.list_games()
 ```
 
-## Important Notes
+## Key Technical Details
 
-- Always processes ALL games (no single game option)
-- SoccerNet API downloads entire splits (cannot limit)
-- Video quality: 398x224 pixels (intentional)
-- Each game ~400MB with videos
+- **Video Format**: MKV files (1.mkv for first half, 2.mkv for second half)
+- **Annotations**: Labels-v2.json contains corner events with gameTime and team
+- **Corner Detection**: Finds events where `label == "Corner"` in annotations
+- **Clip Extraction**: Default 30 seconds (10s before, 20s after corner)
+- **Output Format**: CSV with game, half, time, team, visibility columns
 
-## Simplified Design Principles
+## Important Constraints
 
-- No unnecessary parameters
-- No complex options
-- Always batch process everything
-- Clear progress output
-- Single entry point (main.py)
+- Pipeline ALWAYS processes entire dataset (no partial processing)
+- SoccerNet API downloads complete splits (~100GB per split)
+- Each game directory must contain both video files and Labels-v2.json
+- Video quality is 720p (high quality) for analysis
+
+## File Responsibilities
+
+- `main.py` - Entry point, orchestrates full pipeline
+- `src/data_loader.py` - Game discovery and annotation parsing
+- `src/corner_extractor.py` - Video clip extraction using ffmpeg
+- `src/download_soccernet.py` - SoccerNet dataset downloads
+- `scripts/slurm/*.sh` - HPC cluster job scripts

@@ -17,16 +17,16 @@ cd /home/mseo/CornerTactics
 echo "Starting corner analysis at $(date)"
 echo "Node: $(hostname)"
 
-# Use standard data directory
-DATA_DIR="data"
+# Use research lab organized data structure
+DATA_DIR="data/datasets/soccernet/soccernet_videos"
 echo "Using data directory: $DATA_DIR"
 
 # Create results directory
-mkdir -p results
+mkdir -p data/insights
 
 # Run analysis only (no video extraction)
 echo "Analyzing corners from $DATA_DIR..."
-python main.py --data-dir $DATA_DIR --no-clips --output results/analysis.csv
+python main.py --data-dir $DATA_DIR --no-clips --output data/insights/corners_analysis.csv
 
 echo "Corner analysis completed at $(date)"
-echo "Results saved to results/analysis.csv"
+echo "Results saved to data/insights/corners_analysis.csv"
