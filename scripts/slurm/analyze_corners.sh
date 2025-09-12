@@ -8,8 +8,9 @@
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=4
 
-# Load required modules
-module load python/3.9
+# Activate conda environment
+source ~/.bashrc
+conda activate robo
 
 # Set work directory
 cd /home/mseo/CornerTactics

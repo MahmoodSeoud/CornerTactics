@@ -1,68 +1,94 @@
 # CornerTactics
 
-Simple pipeline for analyzing corner kicks from soccer matches using SoccerNet dataset.
+Soccer corner kick analysis pipeline that processes SoccerNet broadcast videos to extract and analyze corner kick events across hundreds of matches.
 
-## Setup
+## Project Status
 
-```bash
-pip install -r requirements.txt
-brew install ffmpeg  # macOS
-```
+- ✅ **Data Structure**: Organized SoccerNet dataset (373 games with videos, 550 total directories)
+- ✅ **Analysis Pipeline**: Extract corner events from 373 games (3564 corners found)
+- ✅ **SLURM Integration**: All cluster job scripts fixed and working
+- ⚠️ **Video Downloads**: Only 373/550 games have video files (need to complete download)
 
-## Usage
+## Quick Start
 
-### Step 1: Download Data (One-time)
-
-```python
-from src.data_loader import SoccerNetDataLoader
-
-loader = SoccerNetDataLoader('data/')
-loader.download_annotations('train')  # Downloads ALL games in split
-loader.download_videos('england_epl/2015-2016/...')  # Download videos for specific game
-```
-
-### Step 2: Run Pipeline
+### HPC Cluster (Recommended)
 
 ```bash
-# Extract clips and analyze ALL games
-python main.py
+# Download missing video files
+sbatch scripts/slurm/download_videos.sh
 
-# Just analyze (skip video extraction for speed)
-python main.py --no-clips
+# Analyze corners (no video clips) - fast
+sbatch scripts/slurm/analyze_corners.sh
 
-# Custom clip settings
-python main.py --duration 20 --before 5
+# Extract corner clips + analyze - slow  
+sbatch scripts/slurm/extract_corners.sh
 ```
 
-## Pipeline Flow
+### Local Development
 
-1. **Finds** all games in data folder
-2. **Extracts** video clips of every corner kick
-3. **Analyzes** all corners across all games
-4. **Saves** combined results to CSV
+```bash
+# Analyze only (uses existing data)
+python main.py --no-clips --data-dir data/datasets/soccernet/soccernet_videos
+
+# Full pipeline with video extraction
+python main.py --data-dir data/datasets/soccernet/soccernet_videos --output data/insights/corners.csv
+```
+
+## Data Structure
+
+```
+data/
+├── datasets/soccernet/
+│   ├── soccernet_videos/        # 720p broadcast videos
+│   │   ├── england_epl/         # EPL matches  
+│   │   ├── europe_uefa-champions-league/
+│   │   └── france_ligue-1/
+│   └── soccernet_tracking/      # Player tracking data
+│       ├── train.zip            # Training split
+│       ├── test.zip             # Test split
+│       └── challenge.zip        # Challenge split
+└── insights/                    # Analysis results (CSV files)
+```
+
+## Current Dataset Status
+
+- **Total Games**: 550 directories found
+- **Games with Videos**: 373 (67.8% complete)
+- **Games with Labels**: 500 annotation files
+- **Total Corners**: 3,564 corner events analyzed
+- **Video Quality**: 720p broadcast footage
+
+## Pipeline Architecture
+
+1. **Data Loading** (`src/data_loader.py`) - Loads SoccerNet annotations and lists available games
+2. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events  
+3. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
+
+## SLURM Job Scripts
+
+All scripts properly configured with conda environment activation:
+
+- `scripts/slurm/analyze_corners.sh` - Fast analysis (no video clips)
+- `scripts/slurm/extract_corners.sh` - Full pipeline with clips
+- `scripts/slurm/download_videos.sh` - Download missing videos
+- `scripts/slurm/extract_tracklets.sh` - Extract tracking data
 
 ## Output
 
-- **Video clips**: `corner_clips/corner_1H_28m46s_home.mp4`
-- **Analysis**: `results.csv` with all corner data
+- **Analysis CSV**: `data/insights/corners_analysis.csv` - All corner events with metadata
+- **Clips CSV**: `data/insights/corners_with_clips.csv` - With video clip paths
+- **Corner Statistics**: Home vs away, half distribution, team analysis
 
-## Project Structure
+## Requirements
 
-```
-CornerTactics/
-├── main.py                 # Run complete pipeline
-├── src/
-│   ├── data_loader.py     # Download SoccerNet data
-│   ├── corner_extractor.py # Extract corner clips
-│   └── analyzer.py         # Analyze corners
-├── data/                   # SoccerNet dataset
-├── corner_clips/           # Extracted video clips
-└── results.csv            # Analysis output
-```
+- Python 3.11+ (conda environment: `robo`)
+- ffmpeg (for video processing)
+- SoccerNet dataset access
 
-## Notes
+## File Responsibilities
 
-- Processes ALL games automatically
-- SoccerNet downloads entire splits (100+ games)
-- Each game with videos is ~400MB
-- Video resolution: 398x224 (research quality)
+- `main.py` - Entry point, orchestrates full pipeline
+- `src/data_loader.py` - Game discovery and annotation parsing  
+- `src/corner_extractor.py` - Video clip extraction using ffmpeg
+- `src/download_soccernet.py` - SoccerNet dataset downloads
+- `scripts/slurm/*.sh` - HPC cluster job scripts

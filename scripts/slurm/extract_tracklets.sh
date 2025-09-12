@@ -8,8 +8,9 @@
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
 
-# Load required modules
-module load python/3.9
+# Activate conda environment
+source ~/.bashrc
+conda activate robo
 
 # Set work directory
 cd /home/mseo/CornerTactics
@@ -18,9 +19,9 @@ echo "Starting tracklet extraction at $(date)"
 echo "Node: $(hostname)"
 
 # Use research lab organized data structure
-DATA_DIR="data/raw/soccernet_videos_720p"
-TRACKING_DIR="$DATA_DIR/tracking"
-OUTPUT_DIR="data/processed/tracking_extracted"
+BASE_DIR="/home/mseo/CornerTactics"
+TRACKING_DIR="$BASE_DIR/data/datasets/soccernet/soccernet_tracking"
+OUTPUT_DIR="$TRACKING_DIR"
 
 echo "Extracting tracklet ZIP files from $TRACKING_DIR"
 echo "================================================"
@@ -33,8 +34,7 @@ fi
 
 cd "$TRACKING_DIR"
 
-# Create output directory
-mkdir -p "../../processed/tracking_extracted"
+# Output will be in the same directory as the ZIP files
 
 # Extract train.zip if it exists
 if [ -f "train.zip" ]; then

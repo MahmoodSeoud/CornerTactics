@@ -24,11 +24,10 @@ data/
 │   │   ├── england_epl/         # EPL matches
 │   │   ├── europe_uefa-champions-league/
 │   │   └── france_ligue-1/
-│   └── soccernet_tracking/      # Player tracking data
-├── extracts/                    # Processed outputs
-│   ├── corner_clips/            # 30-second corner videos
-│   ├── corner_annotations/
-│   └── tracking_extracted/
+│   └── soccernet_tracking/      # Player tracking data (ZIP files extract here)
+│       ├── train.zip            # Training split tracking data
+│       ├── test.zip             # Test split tracking data
+│       └── challenge.zip        # Challenge split tracking data
 └── insights/                    # Analysis results (CSV files)
 ```
 
@@ -68,11 +67,12 @@ games = loader.list_games()
 
 ## Key Technical Details
 
-- **Video Format**: MKV files (1.mkv for first half, 2.mkv for second half)
+- **Video Format**: MKV files (1_720p.mkv for first half, 2_720p.mkv for second half)
 - **Annotations**: Labels-v2.json contains corner events with gameTime and team
 - **Corner Detection**: Finds events where `label == "Corner"` in annotations
 - **Clip Extraction**: Default 30 seconds (10s before, 20s after corner)
 - **Output Format**: CSV with game, half, time, team, visibility columns
+- **Current Status**: 373/550 games have videos downloaded (3,564 corners found)
 
 ## Important Constraints
 
@@ -87,4 +87,12 @@ games = loader.list_games()
 - `src/data_loader.py` - Game discovery and annotation parsing
 - `src/corner_extractor.py` - Video clip extraction using ffmpeg
 - `src/download_soccernet.py` - SoccerNet dataset downloads
-- `scripts/slurm/*.sh` - HPC cluster job scripts
+- `scripts/slurm/*.sh` - HPC cluster job scripts (all fixed with conda activation)
+
+## SLURM Scripts Status
+
+All SLURM scripts have been fixed and verified:
+- ✅ Proper conda environment activation (`conda activate robo`)
+- ✅ No module load errors
+- ✅ Correct data directory paths
+- ✅ All scripts tested and working
