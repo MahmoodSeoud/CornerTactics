@@ -96,3 +96,42 @@ All SLURM scripts have been fixed and verified:
 - ✅ No module load errors
 - ✅ Correct data directory paths
 - ✅ All scripts tested and working
+
+
+# Football Corner Prediction ML Project
+
+## Geometric Deep Learning Context
+
+### Core Principles
+Geometric Deep Learning provides a unified framework for neural networks by incorporating geometric structure and symmetries. Key principles:
+
+- **Geometric Priors**: Leverage inherent symmetries and structure in data (e.g., spatial relationships on football pitch)
+- **Invariance & Equivariance**: Models should be invariant to irrelevant transformations (rotation, translation) but equivariant to meaningful ones
+- **Graph Neural Networks**: Represent players and ball as nodes with edges encoding relationships/distances
+
+### Application to Football Corner Kicks
+Following TacticAI's approach:
+
+- **Player Positions as Graphs**: Each player is a node, edges represent spatial relationships
+- **Temporal Dynamics**: Track how positions evolve during corner kick sequence  
+- **Geometric Features**: Distance matrices, angles, formation shapes as input features
+- **Data Efficiency**: GDL principles help with limited football data by encoding domain knowledge
+
+### Key Technical Components
+1. **Graph Representation**: Convert player coordinates to graph structure
+2. **Message Passing**: Information flow between connected players
+3. **Pooling Operations**: Aggregate local patterns into global tactical understanding
+4. **Geometric Invariances**: Ensure model works regardless of pitch orientation/camera angle
+
+### References
+- [Geometric Deep Learning: Grids, Groups, Graphs, Geodesics, and Gauges](https://arxiv.org/abs/2104.13478) - Foundational framework
+- [TacticAI: an AI assistant for football tactics](https://arxiv.org/abs/2310.10553) - Direct application to corner kicks
+- [Geometric Deep Learning Guide](https://geometricdeeplearning.com/) - Comprehensive resource
+- [YouTube Playlist](https://youtube.com/playlist?list=PLn2-dEmQeTfQ8YVuHBOvAhUlnIPYxkeu3&si=xBYpgKYo3szmUOHM) - Video tutorials
+
+### Implementation Notes for Claude Code
+When implementing:
+- Use PyTorch Geometric for graph neural networks
+- Represent each corner kick as a heterogeneous graph (players, ball, goal posts as different node types)
+- Apply geometric transformations to augment limited training data
+- Focus on interpretable geometric features that coaches can understand
