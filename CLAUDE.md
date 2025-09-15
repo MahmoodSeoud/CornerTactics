@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a focused soccer corner kick analysis pipeline that processes SoccerNet broadcast videos to extract and analyze corner kick events across hundreds of matches.
+CornerTactics is a comprehensive soccer corner kick analysis pipeline that uses state-of-the-art computer vision (YOLOv8 + ByteTrack) to track players in **4,229 visible corner kicks** from SoccerNet broadcast videos, enabling robust machine learning models for outcome prediction and tactical analysis.
 
 ## Core Pipeline Architecture
 
@@ -13,33 +13,44 @@ The system follows a simple 3-step flow:
 2. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events  
 3. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
 
-All processing is batch-oriented - the system always processes ALL games in the dataset (no single-game option).
+The system focuses exclusively on the 12 corner sequences with tracking data for deep learning model development.
 
 ## Data Structure
 
 ```
 data/
 ├── datasets/soccernet/
-│   ├── soccernet_videos/        # 720p broadcast videos (551 games)
+│   ├── soccernet_videos/        # 720p broadcast videos (550 games total)
 │   │   ├── england_epl/         # EPL matches
 │   │   ├── europe_uefa-champions-league/
 │   │   └── france_ligue-1/
-│   └── soccernet_tracking/      # Player tracking data (ZIP files extract here)
-│       ├── train.zip            # Training split tracking data
-│       ├── test.zip             # Test split tracking data
-│       └── challenge.zip        # Challenge split tracking data
+│   └── soccernet_tracking/      # SNMOT tracking sequences (30-second clips)
+│       ├── train/               # 57 sequences (30s each)
+│       ├── test/                # 49 sequences (30s each)
+│       └── challenge/           # 58 sequences + 1 full half-time (45 min)
 └── insights/                    # Analysis results (CSV files)
 ```
 
+### Tracking Approach
+- **Detection Model**: YOLOv8 (state-of-the-art object detection)
+- **Tracking Algorithm**: ByteTrack (handles occlusions in crowded scenes)
+- **Corner Coverage**: 4,229 visible corners from 500 games
+- **Processing**: 30-second clips at 25 FPS
+- **Objects tracked**: Players (both teams), goalkeepers, referees, ball
+- **Validation**: 12 SNMOT sequences with ground truth for quality checks
+
 ## Common Commands
 
-### Full Pipeline
+### ML Model Development
 ```bash
-# Process all 551 games with video extraction
-python main.py --data-dir data/datasets/soccernet/soccernet_videos --output data/insights/corners.csv
+# Extract features from 12 corner sequences
+python src/feature_extractor.py --tracking-data data/datasets/soccernet/soccernet_tracking
 
-# Analysis only (no video clips) - faster
-python main.py --no-clips --data-dir data/datasets/soccernet/soccernet_videos
+# Train geometric deep learning model
+python src/train_model.py --sequences data/corner_sequences.h5
+
+# Evaluate on test split
+python src/evaluate.py --model models/corner_gnn.pt
 ```
 
 ### SLURM Jobs (HPC cluster)
@@ -56,13 +67,13 @@ sbatch scripts/slurm/analyze_corners.sh
 
 ### Quick Checks
 ```bash
-# Count total games
-find data/datasets/soccernet/soccernet_videos -mindepth 3 -maxdepth 3 -type d | wc -l
+# List corner sequences
+find data/datasets/soccernet/soccernet_tracking -name "gameinfo.ini" -exec grep -l "Corner" {} \;
 
-# List available games  
-from src.data_loader import SoccerNetDataLoader
-loader = SoccerNetDataLoader('data/datasets/soccernet/soccernet_videos')
-games = loader.list_games()
+# Load tracking data for a sequence
+from src.tracking_loader import SNMOTLoader
+loader = SNMOTLoader('data/datasets/soccernet/soccernet_tracking/train/SNMOT-067')
+positions = loader.get_player_positions()
 ```
 
 ## Key Technical Details
@@ -72,7 +83,11 @@ games = loader.list_games()
 - **Corner Detection**: Finds events where `label == "Corner"` in annotations
 - **Clip Extraction**: Default 30 seconds (10s before, 20s after corner)
 - **Output Format**: CSV with game, half, time, team, visibility columns
-- **Current Status**: 373/550 games have videos downloaded (3,564 corners found)
+- **Primary Dataset**: 4,229 visible corner kicks for tracking
+- **Training Split**: ~3,000 corners for model development
+- **Validation Split**: ~600 corners for hyperparameter tuning
+- **Test Split**: ~629 corners for final evaluation
+- **Processing Time**: ~12 hours on single GPU for all corners
 
 ## Important Constraints
 
