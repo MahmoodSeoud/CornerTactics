@@ -60,12 +60,19 @@ def download_labels(data_dir: str, version: str, splits: list):
     """Download match labels/annotations."""
     data_path = Path(data_dir)
     data_path.mkdir(exist_ok=True)
-    
+
     downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
-    
-    files = [f"Labels-{version}.json"] if version else ["Labels-v2.json"]
+
+    # If version is "both", download both v2 and v3
+    if version == "both":
+        files = ["Labels-v2.json", "Labels-v3.json"]
+    elif version:
+        files = [f"Labels-{version}.json"]
+    else:
+        files = ["Labels-v2.json"]  # Default to v2
+
     logger.info(f"Downloading labels {files} for splits: {splits}")
-    
+
     try:
         downloader.downloadGames(files=files, split=splits)
         logger.info(f"Successfully downloaded labels")

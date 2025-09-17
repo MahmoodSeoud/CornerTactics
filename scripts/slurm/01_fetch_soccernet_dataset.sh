@@ -30,10 +30,10 @@ echo "Node: $(hostname)"
 echo "Testing network speed..."
 curl -s https://www.google.com -o /dev/null -w "Speed: %{speed_download} bytes/s\n"
 
-# Download v3 labels (annotations for corner events)
-echo "Downloading v3 labels..."
+# Download both v2 and v3 labels (v2 has more corner annotations)
+echo "Downloading v2 and v3 labels..."
 python src/download_soccernet.py \
-    --labels v3 \
+    --labels both \
     --data-dir data/datasets/soccernet/soccernet_videos \
     --splits train valid test
 

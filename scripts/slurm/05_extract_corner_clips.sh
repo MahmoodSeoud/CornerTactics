@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=corner_extract
+#SBATCH --job-name=corner_frames
 #SBATCH --partition=dgpu
 #SBATCH --account=researchers
-#SBATCH --output=logs/corners_%j.log
-#SBATCH --error=logs/corners_%j.err
-#SBATCH --time=2-00:00:00
-#SBATCH --mem=16G
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
+#SBATCH --output=logs/slurm/corner_frames_%j.out
+#SBATCH --error=logs/slurm/corner_frames_%j.err
+#SBATCH --time=1-00:00:00
+#SBATCH --mem=8G
+#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:0
 
 # Load conda environment
 source /opt/itu/easybuild/software/Anaconda3/2024.02-1/etc/profile.d/conda.sh
@@ -16,15 +16,16 @@ conda activate robo
 # Set work directory
 cd /home/mseo/CornerTactics
 
-echo "Starting corner extraction at $(date)"
+echo "Starting corner frame extraction at $(date)"
 echo "Node: $(hostname)"
 
 # Use research lab organized data structure
-DATA_DIR="data/datasets/soccernet/soccernet_videos"
-echo "Using data directory: $DATA_DIR"
+echo "Using data directory: data"
+echo "Videos are in: data/datasets/soccernet/soccernet_videos/"
+echo "Frames will be saved to: data/datasets/soccernet/soccernet_corner_frames/"
 
-# Run corner extraction
-echo "Extracting corners from $DATA_DIR..."
-python main.py --data-dir $DATA_DIR --output data/insights/corners_with_clips.csv
+# Run corner frame extraction (single frames instead of clips)
+echo "Extracting corner frames from all games (using Labels-v2.json)..."
+python main.py --data-dir data --output data/insights/corners_with_frames_v2.csv --frames-only
 
-echo "Corner extraction completed at $(date)"
+echo "Corner frame extraction completed at $(date)"

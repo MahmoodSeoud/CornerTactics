@@ -2,7 +2,7 @@
 
 ## Current Situation Summary
 - **Available Data**: 500 games with raw video files (1_720p.mkv, 2_720p.mkv)
-- **V3 Frames**: Sparse annotations (~23 key frames per game with bounding boxes)
+- **V3 Frames**: Sparse annotations 100 imgs with labels (bbox, lines, etc)
 - **SNMOT**: Only 12 sequences with continuous 30-second tracking
 - **Target**: Generate tracking data for 4,229 corner kicks
 
@@ -17,7 +17,7 @@
 - Configure for SoccerNet dataset support
 
 ### Step 2: Use Fine-tuned Detection Models
-- **Model**: YOLOv8X fine-tuned for soccer (used by SoccerNet 2024 challenge winners)
+- **Model**: YOLOv11X fine-tuned for soccer 
 - **Classes Detected**:
   - Player
   - Goalkeeper
