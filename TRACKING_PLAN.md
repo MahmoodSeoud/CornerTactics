@@ -1,10 +1,14 @@
-# Player & Ball Tracking Plan for 4,229 Corner Kicks
+# Player & Ball Tracking Plan for 4,836 Corner Kicks
 
-## Current Situation Summary
+## Current Situation Summary ✅ COMPLETED
 - **Available Data**: 500 games with raw video files (1_720p.mkv, 2_720p.mkv)
 - **V3 Frames**: Sparse annotations 100 imgs with labels (bbox, lines, etc)
 - **SNMOT**: Only 12 sequences with continuous 30-second tracking
-- **Target**: Generate tracking data for 4,229 corner kicks
+- **Corner Frames Extracted**: 4,830 single frames from corner moments
+  - 4,229 visible corners + 607 "not shown" corners (4 failed extractions)
+  - Frames saved to: `data/datasets/soccernet/soccernet_corner_frames/`
+  - CSV metadata: `data/insights/corners_with_frames_v2.csv`
+- **Target**: Generate tracking data for all 4,836 corners (now have frames ready!)
 
 ## Recommended Solution: TrackLab + Fine-tuned YOLOv8
 
@@ -28,35 +32,48 @@
 
 ### Step 3: Process Corner Kick Sequences
 
-#### 3.1 Extract Corner Clips
-- **Duration**: 20 seconds total (10s before, 10s after corner kick)
-- **Rationale**: 10 seconds after is sufficient to capture immediate outcome
-- **Frame Rate**: 25 FPS × 20s = 500 frames per corner
+#### 3.1 Extract Corner Clips ✅ COMPLETED (Alternative: Single Frames)
+- **Implemented Solution**: Single frame extraction at corner moment
+- **Alternative**: 20 seconds clips (10s before, 10s after corner kick)
+- **Available Now**: 4,830 corner moment frames ready for analysis
+- **Frame Rate**: 25 FPS (if switching to clips: 25 FPS × 20s = 500 frames per corner)
 
-#### 3.2 Determine Corner Outcomes
-Using Labels-v3.json, we can automatically label corner outcomes:
+#### 3.2 Determine Corner Outcomes ✅ DATA AVAILABLE
+Now using both Labels-v2.json (4,836 corners) and Labels-v3.json for outcome analysis:
 ```python
 def get_corner_outcome(corner_timestamp, game_labels):
     """
     Check if a goal occurred within ~30 seconds after corner
-    by comparing timestamps in Labels-v3.json
+    by comparing timestamps in Labels-v2.json (more complete) or Labels-v3.json
     """
-    for event in game_labels['actions']:
-        if event['label'] == 'Goal':
-            time_diff = event['position'] - corner_timestamp
-            if 0 < time_diff < 30000:  # Within 30 seconds
+    # Labels-v2.json has 'annotations' array with more events
+    for annotation in game_labels.get('annotations', []):
+        if annotation['label'] == 'Goal':
+            # Parse timestamps to compare
+            goal_time = parse_time(annotation['gameTime'])
+            corner_time = parse_time(corner_timestamp)
+            if 0 < goal_time - corner_time < 30:  # Within 30 seconds
                 return 'GOAL'
     return 'NO_GOAL'
 ```
 
-#### 3.3 Run Tracking Pipeline
-1. Load corner kick timestamps from Labels-v3.json
-2. Extract 20-second video clips
-3. Run TrackLab pipeline:
+#### 3.3 Run Tracking Pipeline (NEXT STEPS)
+Current status: **Ready to start with 4,830 corner frames**
+
+**Option A: Single Frame Analysis (Quick Start)**
+1. Load extracted corner frames from `data/datasets/soccernet/soccernet_corner_frames/`
+2. Run detection on single frames:
+   - Detection: YOLOv8X (fine-tuned) on each frame
+   - Output: Player positions, ball location at corner moment
+   - No temporal tracking needed for static analysis
+
+**Option B: Video Clip Analysis (Full Tracking)**
+1. Extract 20-second clips around corner moments (using existing infrastructure)
+2. Run TrackLab pipeline:
    - Detection: YOLOv8X (fine-tuned)
-   - Tracking: ByteTrack
-   - Output: Player positions, ball location, team assignments
-4. Label with outcome (GOAL/NO_GOAL) based on subsequent events
+   - Tracking: ByteTrack for temporal consistency
+   - Output: Player trajectories, ball movement, team assignments
+3. Label with outcome (GOAL/NO_GOAL) based on Labels-v2.json events
 
 ### Step 4: Alternative Quick Start Options
 
@@ -107,10 +124,11 @@ for game in games:
 - **Outcome Label**: GOAL/NO_GOAL based on subsequent events
 
 ### Dataset Statistics:
-- **Total Corners**: 4,229
-- **Frames per Corner**: 500 (20s × 25fps)
-- **Total Frames**: ~2.1 million frames to process
-- **Storage Required**: ~1.5TB for tracking data (JSON format)
+- **Total Corners**: 4,836 (4,229 visible + 607 not shown)
+- **Successfully Extracted Frames**: 4,830 (99.9% success rate)
+- **Current Storage**: ~1.2GB for corner frames (JPEG format)
+- **Option A Storage**: Current setup (single frames)
+- **Option B Storage**: ~1.5TB if processing 20s clips (500 frames × 4,836 corners)
 
 ## Validation Strategy
 
@@ -135,13 +153,23 @@ for game in games:
 3. **Pre-trained Models**: Leverage SoccerNet 2024 challenge winners' approaches
 4. **Validation Data**: Can verify quality using SNMOT ground truth and V3 annotations
 
-## Next Steps
+## Next Steps (UPDATED)
 
-1. Choose tracking implementation (TrackLab or alternatives)
-2. Set up environment with CUDA support
-3. Test pipeline on one game to verify:
-   - Corner extraction works correctly
-   - Tracking produces expected outputs
-   - Outcome labeling is accurate
-4. Scale to full dataset with parallel processing if available
-5. Export tracking data in format suitable for geometric deep learning models
+✅ **COMPLETED**: Corner frame extraction (4,830 frames ready)
+✅ **COMPLETED**: Data pipeline with Labels-v2.json support
+✅ **COMPLETED**: Outcome labeling infrastructure
+
+**IMMEDIATE NEXT STEPS**:
+1. **Choose analysis approach**:
+   - Option A: Single frame analysis (faster, good for formation analysis)
+   - Option B: Full video tracking (comprehensive, better for tactical sequences)
+2. **Set up detection environment** with CUDA support
+3. **Test on sample frames**: Run YOLOv8 detection on 10-20 corner frames
+4. **Validate results**: Cross-check with V3 annotations where available
+5. **Scale processing**: Apply to all 4,830 corner frames
+6. **Export for ML**: Format data for geometric deep learning models (graph structures)
+
+**FILES READY FOR PROCESSING**:
+- Corner frames: `data/datasets/soccernet/soccernet_corner_frames/*.jpg`
+- Metadata: `data/insights/corners_with_frames_v2.csv`
+- Labels: Both v2 (comprehensive) and v3 (sparse) available
