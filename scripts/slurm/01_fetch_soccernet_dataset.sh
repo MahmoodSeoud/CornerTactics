@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=4
 
 # Load conda environment
-source ~/miniconda3/etc/profile.d/conda.sh
+source /opt/itu/easybuild/software/Anaconda3/2024.02-1/etc/profile.d/conda.sh
 conda activate robo
 
 # Set work directory

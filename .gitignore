@@ -1,3 +1,8 @@
+# External repositories (cloned for tools)
+SoccerNet-v3/
+ByteTrack/
+sn-tracking/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -66,9 +71,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific data files (large datasets)
-data/
-data_224p/
-data_720p/
+data*
 downloads/
 raw_data/
 soccernet_data/

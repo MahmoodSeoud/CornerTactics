@@ -9,8 +9,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 
-# Activate conda environment
-source ~/.bashrc
+# Load conda environment
+source /opt/itu/easybuild/software/Anaconda3/2024.02-1/etc/profile.d/conda.sh
 conda activate robo
 
 # Set work directory
