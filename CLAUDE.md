@@ -79,8 +79,8 @@ positions = loader.get_player_positions()
 ## Key Technical Details
 
 - **Video Format**: MKV files (1_720p.mkv for first half, 2_720p.mkv for second half)
-- **Annotations**: Labels-v2.json contains corner events with gameTime and team
-- **Corner Detection**: Finds events where `label == "Corner"` in annotations
+- **Annotations**: Labels-v3.json contains corner events in actions dict with imageMetadata
+- **Corner Detection**: Finds events where `imageMetadata.label == "Corner"` in actions
 - **Clip Extraction**: Default 30 seconds (10s before, 20s after corner)
 - **Output Format**: CSV with game, half, time, team, visibility columns
 - **Primary Dataset**: 4,229 visible corner kicks for tracking
@@ -93,7 +93,7 @@ positions = loader.get_player_positions()
 
 - Pipeline ALWAYS processes entire dataset (no partial processing)
 - SoccerNet API downloads complete splits (~100GB per split)
-- Each game directory must contain both video files and Labels-v2.json
+- Each game directory must contain both video files and Labels-v3.json
 - Video quality is 720p (high quality) for analysis
 
 ## File Responsibilities

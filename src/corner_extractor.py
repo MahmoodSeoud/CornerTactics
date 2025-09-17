@@ -24,32 +24,34 @@ class CornerKickExtractor:
         
     def get_corner_kicks(self) -> List[Dict]:
         """Get all corner kick events from annotations."""
-        labels_file = self.game_path / "Labels-v2.json"
-        
+        labels_file = self.game_path / "Labels-v3.json"
+
         with open(labels_file, 'r') as f:
             data = json.load(f)
-            
+
         corners = []
-        for annotation in data['annotations']:
-            if annotation['label'] == 'Corner':
-                game_time = annotation['gameTime']
+        # Labels-v3.json has different structure: actions dict instead of annotations array
+        for image_name, action_data in data.get('actions', {}).items():
+            metadata = action_data.get('imageMetadata', {})
+            if metadata.get('label') == 'Corner':
+                game_time = metadata.get('gameTime', '')
                 half, time_str = game_time.split(' - ')
                 minutes, seconds = map(int, time_str.split(':'))
-                
+
                 corners.append({
-                    'half': int(half),
+                    'half': int(metadata.get('half', half)),
                     'minutes': minutes,
                     'seconds': seconds,
                     'total_seconds': minutes * 60 + seconds,
-                    'team': annotation['team'],
+                    'team': 'unknown',  # Team info not directly available in v3
                     'game_time': game_time
                 })
-                
+
         return corners
     
     def extract_clip(self, corner: Dict, duration: int = 30, before: int = 10) -> str:
         """Extract a video clip for a corner kick."""
-        video_file = self.game_path / f"{corner['half']}.mkv"
+        video_file = self.game_path / f"{corner['half']}_720p.mkv"
         
         if not video_file.exists():
             logger.warning(f"Video file {video_file.name} not found")

@@ -23,31 +23,38 @@ def temp_data_dir(tmp_path):
     game_path = tmp_path / "england_epl" / "2015-2016" / "2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
     game_path.mkdir(parents=True)
     
-    # Create mock Labels-v2.json
+    # Create mock Labels-v3.json (v3 format has actions dict with imageMetadata)
     labels = {
-        "annotations": [
-            {
-                "gameTime": "1 - 5:23",
-                "label": "Corner", 
-                "team": "home",
-                "visibility": "visible"
+        "GameMetadata": {"num_actions": 3},
+        "actions": {
+            "5.png": {
+                "imageMetadata": {
+                    "gameTime": "1 - 5:23",
+                    "label": "Corner",
+                    "half": 1,
+                    "visibility": "visible"
+                }
             },
-            {
-                "gameTime": "2 - 12:45", 
-                "label": "Corner",
-                "team": "away",
-                "visibility": "visible"
+            "12.png": {
+                "imageMetadata": {
+                    "gameTime": "2 - 12:45",
+                    "label": "Corner",
+                    "half": 2,
+                    "visibility": "visible"
+                }
             },
-            {
-                "gameTime": "1 - 10:30",
-                "label": "Foul",
-                "team": "home", 
-                "visibility": "visible"
+            "10.png": {
+                "imageMetadata": {
+                    "gameTime": "1 - 10:30",
+                    "label": "Foul",
+                    "half": 1,
+                    "visibility": "visible"
+                }
             }
-        ]
+        }
     }
-    
-    with open(game_path / "Labels-v2.json", 'w') as f:
+
+    with open(game_path / "Labels-v3.json", 'w') as f:
         json.dump(labels, f)
     
     # Create mock video files
@@ -82,7 +89,7 @@ class TestSoccerNetDataLoader:
         # Create game directory without videos
         game_path = tmp_path / "league" / "season" / "game"
         game_path.mkdir(parents=True)
-        (game_path / "Labels-v2.json").touch()
+        (game_path / "Labels-v3.json").touch()
         
         loader = SoccerNetDataLoader(str(tmp_path))
         games = loader.list_games()
@@ -90,14 +97,14 @@ class TestSoccerNetDataLoader:
         assert games == []
     
     def test_load_annotations_success(self, temp_data_dir):
-        """Test loading annotations from existing Labels-v2.json file."""
+        """Test loading annotations from existing Labels-v3.json file."""
         loader = SoccerNetDataLoader(str(temp_data_dir))
         game_path = "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
-        
+
         annotations = loader.load_annotations(game_path)
-        
-        assert "annotations" in annotations
-        assert len(annotations["annotations"]) == 3
+
+        assert "actions" in annotations
+        assert len(annotations["actions"]) == 3
     
     def test_load_annotations_file_not_found(self, temp_data_dir):
         """Test that load_annotations raises FileNotFoundError for missing files."""
@@ -118,13 +125,13 @@ class TestSoccerNetDataLoader:
         
         # Check first corner
         assert corners[0]['gameTime'] == "1 - 5:23"
-        assert corners[0]['team'] == "home"
+        assert corners[0]['team'] == "unknown"  # Team info not available in v3
         assert corners[0]['half'] == "1"
         assert corners[0]['visibility'] == "visible"
-        
-        # Check second corner 
+
+        # Check second corner
         assert corners[1]['gameTime'] == "2 - 12:45"
-        assert corners[1]['team'] == "away"
+        assert corners[1]['team'] == "unknown"  # Team info not available in v3
         assert corners[1]['half'] == "2"
     
     def test_get_corner_events_no_corners(self, tmp_path):
@@ -132,9 +139,19 @@ class TestSoccerNetDataLoader:
         game_path = tmp_path / "league" / "season" / "game"
         game_path.mkdir(parents=True)
         
-        # Create annotations with no corners
-        labels = {"annotations": [{"gameTime": "1 - 5:23", "label": "Foul", "team": "home"}]}
-        with open(game_path / "Labels-v2.json", 'w') as f:
+        # Create annotations with no corners (v3 format)
+        labels = {
+            "actions": {
+                "5.png": {
+                    "imageMetadata": {
+                        "gameTime": "1 - 5:23",
+                        "label": "Foul",
+                        "half": 1
+                    }
+                }
+            }
+        }
+        with open(game_path / "Labels-v3.json", 'w') as f:
             json.dump(labels, f)
         
         loader = SoccerNetDataLoader(str(tmp_path))

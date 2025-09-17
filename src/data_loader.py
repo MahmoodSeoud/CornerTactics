@@ -23,11 +23,11 @@ class SoccerNetDataLoader:
         
     def load_annotations(self, game_path: str) -> Dict:
         """Load annotations for a game."""
-        labels_file = self.data_dir / game_path / "Labels-v2.json"
-        
+        labels_file = self.data_dir / game_path / "Labels-v3.json"
+
         if not labels_file.exists():
             raise FileNotFoundError(f"Annotations not found: {labels_file}")
-        
+
         with open(labels_file, 'r') as f:
             return json.load(f)
     
@@ -48,14 +48,17 @@ class SoccerNetDataLoader:
         """Extract corner kick events from game annotations."""
         annotations = self.load_annotations(game_path)
         corners = []
-        
-        for annotation in annotations.get('annotations', []):
-            if annotation.get('label') == 'Corner':
+
+        # Labels-v3.json has different structure: actions dict instead of annotations array
+        for image_name, action_data in annotations.get('actions', {}).items():
+            metadata = action_data.get('imageMetadata', {})
+            if metadata.get('label') == 'Corner':
+                game_time = metadata.get('gameTime', '')
                 corners.append({
-                    'gameTime': annotation.get('gameTime'),
-                    'team': annotation.get('team'),
-                    'half': annotation.get('gameTime', '').split(' - ')[0] if ' - ' in annotation.get('gameTime', '') else '1',
-                    'visibility': annotation.get('visibility', 'visible')
+                    'gameTime': game_time,
+                    'team': 'unknown',  # Team info not directly available in v3
+                    'half': str(metadata.get('half', 1)),
+                    'visibility': metadata.get('visibility', 'visible')
                 })
-        
+
         return corners
