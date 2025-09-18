@@ -30,7 +30,7 @@ class CornerFrameExtractor:
         """Extract a single frame at the corner kick moment.
 
         Args:
-            game_time: Game time string (e.g., "1 - 05:30")
+            game_time: Game time string (e.g., "1 - 05:30" or just "05:30")
             team: Team name
             half: Half number (1 or 2)
             offset_seconds: Seconds offset from corner moment (default 0 = exact moment)
@@ -38,13 +38,25 @@ class CornerFrameExtractor:
         Returns:
             Path to extracted frame or None if extraction failed
         """
-        # Parse time
+        # Parse time - handle both v2 format ("1 - 05:30") and v3 format ("05:30")
         try:
-            _, time_str = game_time.split(' - ')
+            if ' - ' in game_time:
+                # v2 format: "1 - 05:30"
+                _, time_str = game_time.split(' - ')
+            else:
+                # v3 format: "05:30" or other simple formats
+                time_str = game_time
+
             minutes, seconds = map(int, time_str.split(':'))
             total_seconds = minutes * 60 + seconds + offset_seconds
-        except:
-            logger.error(f"Failed to parse game time: {game_time}")
+
+            # Validate time makes sense
+            if total_seconds < 0:
+                logger.warning(f"Negative timestamp after offset: {total_seconds}s")
+                total_seconds = 0
+
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse game time '{game_time}': {e}")
             return None
 
         video_file = self.game_path / f"{half}_720p.mkv"
@@ -93,19 +105,29 @@ class CornerFrameExtractor:
         """Extract a frame for a corner kick event.
 
         Args:
-            game_time: Full game time string (e.g., "1 - 05:30")
+            game_time: Game time string (e.g., "1 - 05:30" or "05:30")
             team: Team name
-            half: Optional half number (will parse from game_time if not provided)
+            half: Half number (required for v3 format, optional for v2 format)
 
         Returns:
             Path to extracted frame or None
         """
+        # For v2 format, extract half from game_time if not provided
         if half is None:
-            try:
-                half_str, _ = game_time.split(' - ')
-                half = int(half_str)
-            except:
-                logger.error(f"Could not determine half from game_time: {game_time}")
+            if ' - ' in game_time:
+                try:
+                    half_str, _ = game_time.split(' - ')
+                    half = int(half_str)
+                except (ValueError, AttributeError):
+                    logger.error(f"Could not determine half from game_time: {game_time}")
+                    return None
+            else:
+                logger.error(f"Half number required for game_time format: {game_time}")
                 return None
+
+        # Validate half number
+        if half not in [1, 2]:
+            logger.error(f"Invalid half number: {half}, must be 1 or 2")
+            return None
 
         return self.extract_frame(game_time, team, half, offset_seconds=0)

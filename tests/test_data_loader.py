@@ -20,7 +20,9 @@ from data_loader import SoccerNetDataLoader
 @pytest.fixture
 def temp_data_dir(tmp_path):
     """Create a temporary data directory with mock game structure."""
-    game_path = tmp_path / "england_epl" / "2015-2016" / "2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
+    # Create the full soccernet_videos path that data_loader expects
+    videos_dir = tmp_path / "datasets" / "soccernet" / "soccernet_videos"
+    game_path = videos_dir / "england_epl" / "2015-2016" / "2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
     game_path.mkdir(parents=True)
     
     # Create mock Labels-v3.json (v3 format has actions dict with imageMetadata)
@@ -86,20 +88,21 @@ class TestSoccerNetDataLoader:
     
     def test_list_games_empty_when_no_videos(self, tmp_path):
         """Test that list_games returns empty list when no video files exist."""
-        # Create game directory without videos
-        game_path = tmp_path / "league" / "season" / "game"
+        # Create game directory without videos but in the right structure
+        videos_dir = tmp_path / "datasets" / "soccernet" / "soccernet_videos"
+        game_path = videos_dir / "league" / "season" / "game"
         game_path.mkdir(parents=True)
         (game_path / "Labels-v3.json").touch()
-        
+
         loader = SoccerNetDataLoader(str(tmp_path))
         games = loader.list_games()
-        
+
         assert games == []
     
     def test_load_annotations_success(self, temp_data_dir):
         """Test loading annotations from existing Labels-v3.json file."""
         loader = SoccerNetDataLoader(str(temp_data_dir))
-        game_path = "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
+        game_path = "datasets/soccernet/soccernet_videos/england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
 
         annotations = loader.load_annotations(game_path)
 
@@ -116,8 +119,8 @@ class TestSoccerNetDataLoader:
     def test_get_corner_events_extracts_corners_only(self, temp_data_dir):
         """Test that get_corner_events extracts only corner kick events."""
         loader = SoccerNetDataLoader(str(temp_data_dir))
-        game_path = "england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
-        
+        game_path = "datasets/soccernet/soccernet_videos/england_epl/2015-2016/2015-11-07 - 18-00 Manchester United 2 - 0 West Brom"
+
         corners = loader.get_corner_events(game_path)
         
         # Should have 2 corners (not the 1 foul)
@@ -126,17 +129,18 @@ class TestSoccerNetDataLoader:
         # Check first corner
         assert corners[0]['gameTime'] == "1 - 5:23"
         assert corners[0]['team'] == "unknown"  # Team info not available in v3
-        assert corners[0]['half'] == "1"
+        assert corners[0]['half'] == 1  # Should be integer, not string
         assert corners[0]['visibility'] == "visible"
 
         # Check second corner
         assert corners[1]['gameTime'] == "2 - 12:45"
         assert corners[1]['team'] == "unknown"  # Team info not available in v3
-        assert corners[1]['half'] == "2"
+        assert corners[1]['half'] == 2  # Should be integer, not string
     
     def test_get_corner_events_no_corners(self, tmp_path):
         """Test get_corner_events returns empty list when no corners exist."""
-        game_path = tmp_path / "league" / "season" / "game"
+        videos_dir = tmp_path / "datasets" / "soccernet" / "soccernet_videos"
+        game_path = videos_dir / "league" / "season" / "game"
         game_path.mkdir(parents=True)
         
         # Create annotations with no corners (v3 format)
@@ -155,7 +159,7 @@ class TestSoccerNetDataLoader:
             json.dump(labels, f)
         
         loader = SoccerNetDataLoader(str(tmp_path))
-        corners = loader.get_corner_events("league/season/game")
+        corners = loader.get_corner_events("datasets/soccernet/soccernet_videos/league/season/game")
         
         assert corners == []
     
