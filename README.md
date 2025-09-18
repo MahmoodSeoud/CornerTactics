@@ -11,20 +11,34 @@ Soccer corner kick analysis pipeline that processes SoccerNet broadcast videos t
 
 ## Quick Start
 
-### HPC Cluster (Recommended)
+### Phase 1: Corner Frame Extraction (NEW!)
+
+Extract single frames at the exact moment each corner kick is taken:
 
 ```bash
-# Download missing video files
-sbatch scripts/slurm/download_videos.sh
+# Extract frames from all corners (requires Labels-v3.json + videos)
+python src/cli.py --data-dir ./data
 
-# Analyze corners (no video clips) - fast
-sbatch scripts/slurm/analyze_corners.sh
-
-# Extract corner clips + analyze - slow  
-sbatch scripts/slurm/extract_corners.sh
+# Custom output location
+python src/cli.py --data-dir ./data --output ./my_corner_frames.csv
 ```
 
-### Local Development
+**Output**: ~4,836 corner frames (~1GB) + metadata CSV for machine learning analysis.
+
+### HPC Cluster (Full Pipeline)
+
+```bash
+# Download SoccerNet data
+sbatch scripts/slurm/01_fetch_soccernet_dataset.sh
+
+# Extract corner frames
+sbatch scripts/slurm/05_extract_corner_clips.sh
+
+# Analysis only (legacy)
+sbatch scripts/slurm/analyze_corners.sh
+```
+
+### Local Development (Legacy)
 
 ```bash
 # Analyze only (uses existing data)
@@ -60,9 +74,15 @@ data/
 
 ## Pipeline Architecture
 
+### Phase 1: Corner Frame Extraction (Current)
 1. **Data Loading** (`src/data_loader.py`) - Loads SoccerNet annotations and lists available games
-2. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events  
-3. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
+2. **Frame Extraction** (`src/frame_extractor.py`) - Extracts single frames at corner moments using ffmpeg
+3. **Batch Pipeline** (`src/corner_frame_pipeline.py`) - Processes all games and generates metadata CSV
+4. **CLI Interface** (`src/cli.py`) - Command-line tool for easy frame extraction
+
+### Phase 2: Video Analysis (Legacy/Future)
+1. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events
+2. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
 
 ## SLURM Job Scripts
 
@@ -87,8 +107,14 @@ All scripts properly configured with conda environment activation:
 
 ## File Responsibilities
 
-- `main.py` - Entry point, orchestrates full pipeline
-- `src/data_loader.py` - Game discovery and annotation parsing  
+### Core Pipeline (Phase 1)
+- `src/cli.py` - Command-line interface for corner frame extraction
+- `src/corner_frame_pipeline.py` - Batch processing pipeline for all games
+- `src/frame_extractor.py` - Single frame extraction using ffmpeg at corner timestamps
+- `src/data_loader.py` - Game discovery and annotation parsing (Labels-v2/v3)
+
+### Legacy/Utilities
+- `main.py` - Entry point for legacy full pipeline (30s clips)
 - `src/corner_extractor.py` - Video clip extraction using ffmpeg
 - `src/download_soccernet.py` - SoccerNet dataset downloads
 - `scripts/slurm/*.sh` - HPC cluster job scripts
