@@ -1,159 +1,124 @@
 #!/usr/bin/env python3
 """
-SoccerNet Download Script
-Direct interface for downloading broadcast videos and tracking data.
+SoccerNet Download Script for CornerTactics Project
+
+Downloads essential data for corner kick analysis:
+1. Labels-v3.json - Corner event timestamps
+2. Broadcast videos (720p) - For extracting 30s corner clips
+3. Tracking data - Ground truth for 12 corner sequences
 """
 
 import argparse
 import sys
-import logging
 from pathlib import Path
 from SoccerNet.Downloader import SoccerNetDownloader
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+def download_corner_labels(data_dir: str, splits: list):
+    """Download Labels-v3.json containing corner event annotations."""
+    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
+
+    print(f"Downloading corner labels for splits: {splits}")
+    downloader.downloadGames(files=["Labels-v3.json"], split=splits)
+    print("✓ Corner labels downloaded!")
 
 
-def download_broadcast_videos(data_dir: str, quality: str, splits: list, password: str):
-    """Download broadcast videos in specified quality."""
-    data_path = Path(data_dir)
-    data_path.mkdir(exist_ok=True)
-    
-    downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
-    if password:
-        downloader.password = password
-    
-    files = [f"1_{quality}.mkv", f"2_{quality}.mkv"]
-    logger.info(f"Downloading {quality} broadcast videos for splits: {splits}")
-    
-    try:
-        downloader.downloadGames(files=files, split=splits)
-        logger.info(f"Successfully downloaded {quality} videos")
-    except Exception as e:
-        if "google-analytics.com" in str(e):
-            logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-        else:
-            logger.error(f"Failed to download {quality} videos: {e}")
-            raise
+def download_broadcast_videos(data_dir: str, splits: list, password: str):
+    """Download 720p broadcast videos for corner clip extraction."""
+    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
+    downloader.password = password
+
+    print(f"Downloading 720p videos for splits: {splits}")
+    print("Warning: This requires ~100GB per split!")
+
+    # Download both halves of each game
+    files = ["1_720p.mkv", "2_720p.mkv"]
+    downloader.downloadGames(files=files, split=splits)
+    print("✓ Broadcast videos downloaded!")
 
 
-def download_tracklets(data_dir: str, task: str, splits: list):
-    """Download tracking data."""
-    data_path = Path(data_dir)
-    data_path.mkdir(exist_ok=True)
-    
-    downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
-    
-    logger.info(f"Downloading tracklets '{task}' for splits: {splits}")
-    try:
-        downloader.downloadDataTask(task=task, split=splits)
-        logger.info(f"Successfully downloaded tracklets '{task}'")
-    except Exception as e:
-        if "google-analytics.com" in str(e):
-            logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-        else:
-            logger.error(f"Failed to download tracklets '{task}': {e}")
-            raise
+def download_tracking_data(data_dir: str, splits: list):
+    """Download SNMOT tracking data (includes 12 corner sequences)."""
+    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
 
-
-def download_labels(data_dir: str, version: str, splits: list):
-    """Download match labels/annotations."""
-    data_path = Path(data_dir)
-    data_path.mkdir(exist_ok=True)
-
-    downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
-
-    # If version is "both", download both v2 and v3
-    if version == "both":
-        files = ["Labels-v2.json", "Labels-v3.json"]
-    elif version:
-        files = [f"Labels-{version}.json"]
-    else:
-        files = ["Labels-v2.json"]  # Default to v2
-
-    logger.info(f"Downloading labels {files} for splits: {splits}")
-
-    try:
-        downloader.downloadGames(files=files, split=splits)
-        logger.info(f"Successfully downloaded labels")
-    except Exception as e:
-        if "google-analytics.com" in str(e):
-            logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-        else:
-            logger.error(f"Failed to download labels: {e}")
-            raise
-
-
-def download_frames(data_dir: str, version: str, splits: list):
-    """Download v3 frames with bounding boxes."""
-    data_path = Path(data_dir)
-    data_path.mkdir(exist_ok=True)
-    
-    downloader = SoccerNetDownloader(LocalDirectory=str(data_path))
-    
-    files = [f"Frames-{version}.zip"] if version else ["Frames-v3.zip"]
-    logger.info(f"Downloading frames {files} for splits: {splits}")
-    
-    try:
-        downloader.downloadGames(files=files, split=splits, task="frames")
-        logger.info(f"Successfully downloaded frames")
-    except Exception as e:
-        if "google-analytics.com" in str(e):
-            logger.warning(f"Analytics connection failed, but download may have succeeded: {e}")
-        else:
-            logger.error(f"Failed to download frames: {e}")
-            raise
+    print(f"Downloading tracking data for splits: {splits}")
+    downloader.downloadDataTask(task="tracking", split=splits)
+    print("✓ Tracking data downloaded!")
 
 
 def main():
-    """Main function for command-line interface."""
-    parser = argparse.ArgumentParser(description='Download SoccerNet broadcast videos and tracking data')
-    
+    parser = argparse.ArgumentParser(
+        description='Download SoccerNet data for CornerTactics',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Step 1: Download corner labels only (lightweight, ~100MB)
+  python src/download_soccernet.py --labels
+
+  # Step 2: Download tracking data for validation (moderate, ~5GB)
+  python src/download_soccernet.py --tracking
+
+  # Step 3: Download broadcast videos (heavy, ~300GB, requires password)
+  python src/download_soccernet.py --videos --password YOUR_PASSWORD
+
+  # Or download everything at once:
+  python src/download_soccernet.py --all --password YOUR_PASSWORD
+        """
+    )
+
     # Download options
-    parser.add_argument('--videos', choices=['720p', '224p'], help='Download broadcast videos (720p or 224p)')
-    parser.add_argument('--tracklets', choices=['tracking', 'tracking-2023'], help='Download tracking data')
-    parser.add_argument('--labels', choices=['v3', 'v2', 'v1'], help='Download match labels/annotations')
-    parser.add_argument('--frames', choices=['v3'], help='Download v3 frames with bounding boxes')
-    
-    # Options
-    parser.add_argument('--splits', nargs='+', default=['train', 'valid', 'test', 'challenge'], 
-                       help='Splits to download (default: all)')
-    parser.add_argument('--data-dir', default='data', help='Data directory (default: data)')
-    parser.add_argument('--password', required=False, 
-                       help='Password for videos (required for video downloads)')
-    
+    parser.add_argument('--labels', action='store_true',
+                       help='Download Labels-v3.json (corner timestamps)')
+    parser.add_argument('--videos', action='store_true',
+                       help='Download 720p broadcast videos (requires password)')
+    parser.add_argument('--tracking', action='store_true',
+                       help='Download SNMOT tracking data')
+    parser.add_argument('--all', action='store_true',
+                       help='Download all data (labels + videos + tracking)')
+
+    # Configuration
+    parser.add_argument('--password', type=str,
+                       help='SoccerNet password (required for videos)')
+    parser.add_argument('--splits', nargs='+',
+                       default=['train', 'valid', 'test'],
+                       help='Data splits to download (default: train valid test)')
+    parser.add_argument('--data-dir', default='./data/datasets/soccernet',
+                       help='Base directory for SoccerNet data')
+
     args = parser.parse_args()
-    
-    if not args.videos and not args.tracklets and not args.labels and not args.frames:
+
+    # Handle --all flag
+    if args.all:
+        args.labels = True
+        args.videos = True
+        args.tracking = True
+
+    # Check if any option selected
+    if not any([args.labels, args.videos, args.tracking]):
         parser.print_help()
         sys.exit(1)
-    
-    # Check password requirement for videos
+
+    # Validate password requirement
     if args.videos and not args.password:
-        print("ERROR: --password required for video downloads")
+        print("ERROR: --password required for downloading videos")
+        print("Get your password at: https://www.soccer-net.org/")
         sys.exit(1)
-    
-    # Download labels
+
+    # Create data directory
+    Path(args.data_dir).mkdir(parents=True, exist_ok=True)
+
+    # Execute downloads in order of size/importance
     if args.labels:
-        print(f"Downloading labels {args.labels}...")
-        download_labels(args.data_dir, args.labels, args.splits)
-    
-    # Download frames (v3)
-    if args.frames:
-        print(f"Downloading frames {args.frames}...")
-        download_frames(args.data_dir, args.frames, args.splits)
-    
-    # Download videos
+        download_corner_labels(args.data_dir, args.splits)
+
+    if args.tracking:
+        download_tracking_data(args.data_dir, args.splits)
+
     if args.videos:
-        print(f"Downloading {args.videos} broadcast videos...")
-        download_broadcast_videos(args.data_dir, args.videos, args.splits, args.password)
-    
-    # Download tracklets
-    if args.tracklets:
-        print(f"Downloading {args.tracklets} tracklets...")
-        download_tracklets(args.data_dir, args.tracklets, args.splits)
-    
-    print("Download complete!")
+        download_broadcast_videos(args.data_dir, args.splits, args.password)
+
+    print("\n✓ All downloads complete!")
+    print(f"Data saved to: {args.data_dir}")
 
 
 if __name__ == '__main__':

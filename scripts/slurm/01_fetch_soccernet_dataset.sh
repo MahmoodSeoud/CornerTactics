@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=download_all_soccernet
+#SBATCH --job-name=download_soccernet
 #SBATCH --partition=dgpu
 #SBATCH --account=researchers
-#SBATCH --output=logs/slurm/download_all_%j.out
-#SBATCH --error=logs/slurm/download_all_%j.err
+#SBATCH --output=logs/slurm/download_%j.out
+#SBATCH --error=logs/slurm/download_%j.err
 #SBATCH --time=10-00:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
@@ -17,46 +17,31 @@ cd /home/mseo/CornerTactics
 
 # Create output directories
 mkdir -p logs/slurm
-mkdir -p data/datasets/soccernet/soccernet_videos
-mkdir -p data/datasets/soccernet/soccernet_tracking
+mkdir -p data/datasets/soccernet
 
-# SoccerNet password
+# SoccerNet password (replace with your actual password)
 PASSWORD="s0cc3rn3t"
 
-echo "Starting complete SoccerNet download at $(date)"
+echo "Starting SoccerNet download for CornerTactics at $(date)"
 echo "Node: $(hostname)"
 
-# Test network speed first
-echo "Testing network speed..."
-curl -s https://www.google.com -o /dev/null -w "Speed: %{speed_download} bytes/s\n"
+# Test network connection
+echo "Testing network connectivity..."
+curl -s https://www.soccer-net.org -o /dev/null && echo "✓ Network OK" || echo "⚠ Network issues"
 
-# Download both v2 and v3 labels (v2 has more corner annotations)
-echo "Downloading v2 and v3 labels..."
+# Download all data needed for corner analysis
+echo "Downloading all data (labels + tracking + videos)..."
 python src/download_soccernet.py \
-    --labels both \
-    --data-dir data/datasets/soccernet/soccernet_videos \
-    --splits train valid test
-
-# Download v3 frames with bounding boxes (for player detection)
-echo "Downloading v3 frames with bounding boxes..."
-python src/download_soccernet.py \
-    --frames v3 \
-    --data-dir data/datasets/soccernet/soccernet_videos \
-    --splits train valid test
-
-# Download 720p broadcast videos (large files)
-echo "Downloading 720p broadcast videos..."
-python src/download_soccernet.py \
-    --videos 720p \
+    --all \
     --password "$PASSWORD" \
-    --data-dir data/datasets/soccernet/soccernet_videos \
+    --data-dir data/datasets/soccernet \
     --splits train valid test
 
-# Download tracking data
-echo "Downloading tracking data..."
-python src/download_soccernet.py \
-    --tracklets tracking \
-    --data-dir data/datasets/soccernet/soccernet_tracking \
-    --splits train valid test
+echo "SoccerNet download finished at $(date)"
 
-echo "Complete SoccerNet download finished at $(date)"
+# Verify downloads
+echo ""
+echo "Verifying downloaded data:"
+echo "Labels: $(find data/datasets/soccernet -name "Labels-v3.json" | wc -l) files"
+echo "Videos: $(find data/datasets/soccernet -name "*.mkv" | wc -l) files"
+echo "Tracking: $(find data/datasets/soccernet -name "gameinfo.ini" | wc -l) sequences"
