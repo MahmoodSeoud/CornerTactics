@@ -65,19 +65,18 @@ class SoccerNetDataLoader:
 
                 # Check if labels exist (v2 or v3)
                 has_labels = False
-                if self.use_v2_labels:
-                    # Check for Labels-v2.json in data-old (backward compatibility)
-                    v2_data_old = Path("data-old") / relative_path / "Labels-v2.json"
-                    # Check for Labels-v2.json in main data directory
-                    v2_data = self.data_dir / relative_path / "Labels-v2.json"
-                    if v2_data_old.exists() or v2_data.exists():
-                        has_labels = True
 
-                if not has_labels:
-                    # Check for Labels-v3.json in current data
-                    v3_path = self.data_dir / relative_path / "Labels-v3.json"
-                    if v3_path.exists():
-                        has_labels = True
+                # Check for Labels-v2.json in data-old (backward compatibility)
+                v2_data_old = Path("data-old") / relative_path / "Labels-v2.json"
+                # Check for Labels-v2.json in main data directory
+                v2_data = self.data_dir / relative_path / "Labels-v2.json"
+                if v2_data_old.exists() or v2_data.exists():
+                    has_labels = True
+
+                # Check for Labels-v3.json in current data
+                v3_path = self.data_dir / relative_path / "Labels-v3.json"
+                if v3_path.exists():
+                    has_labels = True
 
                 if has_labels:
                     games.append(game_path_str)
