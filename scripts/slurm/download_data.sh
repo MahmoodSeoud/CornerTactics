@@ -19,15 +19,11 @@ cd /home/mseo/CornerTactics
 mkdir -p logs/slurm
 mkdir -p data/datasets/soccernet
 
-# SoccerNet password (replace with your actual password)
+# SoccerNet password
 PASSWORD="s0cc3rn3t"
 
-echo "Starting SoccerNet download for CornerTactics at $(date)"
+echo "Starting SoccerNet download at $(date)"
 echo "Node: $(hostname)"
-
-# Test network connection
-echo "Testing network connectivity..."
-curl -s https://www.soccer-net.org -o /dev/null && echo "✓ Network OK" || echo "⚠ Network issues"
 
 # Download all data needed for corner analysis
 echo "Downloading all data (labels + tracking + videos)..."
@@ -37,11 +33,12 @@ python src/download_soccernet.py \
     --data-dir data/datasets/soccernet \
     --splits train valid test
 
-echo "SoccerNet download finished at $(date)"
+echo "Download finished at $(date)"
 
 # Verify downloads
 echo ""
-echo "Verifying downloaded data:"
-echo "Labels: $(find data/datasets/soccernet -name "Labels-v3.json" | wc -l) files"
+echo "Downloaded data summary:"
+echo "Labels-v2: $(find data/datasets/soccernet -name "Labels-v2.json" | wc -l) files"
+echo "Labels-v3: $(find data/datasets/soccernet -name "Labels-v3.json" | wc -l) files"
 echo "Videos: $(find data/datasets/soccernet -name "*.mkv" | wc -l) files"
 echo "Tracking: $(find data/datasets/soccernet -name "gameinfo.ini" | wc -l) sequences"

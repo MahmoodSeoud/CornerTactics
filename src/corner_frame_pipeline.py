@@ -9,8 +9,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from data_loader import SoccerNetDataLoader
-from frame_extractor import CornerFrameExtractor
+from .data_loader import SoccerNetDataLoader
+from .frame_extractor import CornerFrameExtractor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

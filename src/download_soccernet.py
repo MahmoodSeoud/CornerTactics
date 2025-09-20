@@ -15,17 +15,19 @@ from SoccerNet.Downloader import SoccerNetDownloader
 
 
 def download_corner_labels(data_dir: str, splits: list):
-    """Download Labels-v3.json containing corner event annotations."""
-    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
+    """Download Labels-v2.json and Labels-v3.json containing corner event annotations."""
+    videos_dir = str(Path(data_dir) / "videos")
+    downloader = SoccerNetDownloader(LocalDirectory=videos_dir)
 
     print(f"Downloading corner labels for splits: {splits}")
-    downloader.downloadGames(files=["Labels-v3.json"], split=splits)
+    downloader.downloadGames(files=["Labels-v2.json", "Labels-v3.json"], split=splits)
     print("✓ Corner labels downloaded!")
 
 
 def download_broadcast_videos(data_dir: str, splits: list, password: str):
     """Download 720p broadcast videos for corner clip extraction."""
-    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
+    videos_dir = str(Path(data_dir) / "videos")
+    downloader = SoccerNetDownloader(LocalDirectory=videos_dir)
     downloader.password = password
 
     print(f"Downloading 720p videos for splits: {splits}")
@@ -39,7 +41,8 @@ def download_broadcast_videos(data_dir: str, splits: list, password: str):
 
 def download_tracking_data(data_dir: str, splits: list):
     """Download SNMOT tracking data (includes 12 corner sequences)."""
-    downloader = SoccerNetDownloader(LocalDirectory=data_dir)
+    tracking_dir = str(Path(data_dir) / "tracking")
+    downloader = SoccerNetDownloader(LocalDirectory=tracking_dir)
 
     print(f"Downloading tracking data for splits: {splits}")
     downloader.downloadDataTask(task="tracking", split=splits)

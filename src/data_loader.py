@@ -17,15 +17,13 @@ logger = logging.getLogger(__name__)
 class SoccerNetDataLoader:
     """Access SoccerNet game data and annotations."""
     
-    def __init__(self, data_dir: str = "data", use_v2_labels: bool = True):
+    def __init__(self, data_dir: str = "data"):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
-        self.use_v2_labels = use_v2_labels  # Flag to prefer v2 labels when available
         
-    def load_annotations(self, game_path: str) -> Dict:
+    def load_annotations(self, game_path: str, prefer_v2: bool = True) -> Dict:
         """Load annotations for a game."""
-        # Try Labels-v2.json first if use_v2_labels is True
-        if self.use_v2_labels:
+        if prefer_v2:
             # Check in data-old first for backward compatibility
             data_old_path = Path("data-old") / game_path / "Labels-v2.json"
             if data_old_path.exists():
@@ -38,20 +36,21 @@ class SoccerNetDataLoader:
                 with open(v2_path, 'r') as f:
                     return json.load(f)
 
-        # Fall back to Labels-v3.json in current data dir
-        labels_file = self.data_dir / game_path / "Labels-v3.json"
-        if not labels_file.exists():
-            raise FileNotFoundError(f"No annotations found for {game_path}")
+        # Try Labels-v3.json
+        v3_path = self.data_dir / game_path / "Labels-v3.json"
+        if v3_path.exists():
+            with open(v3_path, 'r') as f:
+                return json.load(f)
 
-        with open(labels_file, 'r') as f:
-            return json.load(f)
+        # Return empty dict if no labels found
+        return {}
     
     def list_games(self) -> List[str]:
         """List all games with video files."""
         games = []
 
-        # Look specifically in the soccernet_videos directory
-        videos_dir = self.data_dir / "datasets" / "soccernet" / "soccernet_videos"
+        # Look specifically in the videos directory
+        videos_dir = self.data_dir / "datasets" / "soccernet" / "videos"
 
         if not videos_dir.exists():
             logger.warning(f"Videos directory not found: {videos_dir}")
@@ -87,16 +86,14 @@ class SoccerNetDataLoader:
     
     def get_corner_events(self, game_path: str) -> List[Dict]:
         """Extract corner kick events from game annotations."""
-        annotations = self.load_annotations(game_path)
         corners = []
 
-        # Check if it's Labels-v2 format (has 'annotations' array)
-        if 'annotations' in annotations:
-            # Labels-v2.json format
-            for annotation in annotations.get('annotations', []):
+        # Load v2 labels (has ALL corners)
+        v2_annotations = self.load_annotations(game_path, prefer_v2=True)
+        if 'annotations' in v2_annotations:
+            for annotation in v2_annotations.get('annotations', []):
                 if annotation.get('label') == 'Corner':
                     game_time = annotation.get('gameTime', '')
-                    # Parse half from gameTime (e.g., "1 - 05:30")
                     half = 1
                     if game_time and ' - ' in game_time:
                         half = int(game_time.split(' - ')[0])
@@ -105,19 +102,27 @@ class SoccerNetDataLoader:
                         'gameTime': game_time,
                         'team': annotation.get('team', 'unknown'),
                         'half': half,
-                        'visibility': annotation.get('visibility', 'unknown')
+                        'visibility': annotation.get('visibility', 'unknown'),
+                        'source': 'v2'
                     })
-        else:
-            # Labels-v3.json format (has 'actions' dict)
-            for image_name, action_data in annotations.get('actions', {}).items():
+
+        # Load v3 labels (has corners with spatial annotations)
+        v3_annotations = self.load_annotations(game_path, prefer_v2=False)
+        if 'actions' in v3_annotations:
+            for image_name, action_data in v3_annotations.get('actions', {}).items():
                 metadata = action_data.get('imageMetadata', {})
                 if metadata.get('label') == 'Corner':
                     game_time = metadata.get('gameTime', '')
-                    corners.append({
-                        'gameTime': game_time,
-                        'team': 'unknown',  # Team info not directly available in v3
-                        'half': int(metadata.get('half', 1)),
-                        'visibility': metadata.get('visibility', 'visible')
-                    })
+
+                    # Check if this corner already exists from v2
+                    existing = any(c['gameTime'] == game_time for c in corners)
+                    if not existing:
+                        corners.append({
+                            'gameTime': game_time,
+                            'team': 'unknown',
+                            'half': int(metadata.get('half', 1)),
+                            'visibility': metadata.get('visibility', 'visible'),
+                            'source': 'v3'
+                        })
 
         return corners

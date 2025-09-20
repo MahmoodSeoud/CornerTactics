@@ -23,9 +23,9 @@ echo "Node: $(hostname)"
 mkdir -p logs/slurm
 mkdir -p data/insights
 
-# Extract single frames at corner kick moments using new CLI
+# Extract single frames at corner kick moments
 echo "Extracting single frames at corner kick timestamps..."
-python src/cli.py \
+python extract_corners.py \
     --data-dir data \
     --output data/insights/corner_frames_metadata.csv
 
@@ -43,10 +43,10 @@ else
     echo "⚠ CSV file not created - check for errors above"
 fi
 
-if [ -d "data/datasets/soccernet/soccernet_corner_frames" ]; then
-    echo "Frame directory: data/datasets/soccernet/soccernet_corner_frames"
-    echo "Total frames extracted: $(find data/datasets/soccernet/soccernet_corner_frames -name "*.jpg" | wc -l)"
-    echo "Storage used: $(du -sh data/datasets/soccernet/soccernet_corner_frames | cut -f1)"
+if [ -d "data/datasets/soccernet/corner_frames" ]; then
+    echo "Frame directory: data/datasets/soccernet/corner_frames"
+    echo "Total frames extracted: $(find data/datasets/soccernet/corner_frames -name "*.jpg" | wc -l)"
+    echo "Storage used: $(du -sh data/datasets/soccernet/corner_frames | cut -f1)"
 else
     echo "⚠ Frame directory not found - check for errors above"
 fi

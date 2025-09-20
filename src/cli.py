@@ -8,7 +8,7 @@ import sys
 import logging
 from pathlib import Path
 
-from corner_frame_pipeline import CornerFramePipeline
+from .corner_frame_pipeline import CornerFramePipeline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

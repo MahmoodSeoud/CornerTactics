@@ -21,7 +21,7 @@ class CornerKickExtractor:
         self.game_path = Path(data_dir) / game_path
         if output_dir is None:
             # Store clips in soccernet data structure
-            self.output_dir = Path(data_dir) / "datasets" / "soccernet" / "soccernet_corner_clips"
+            self.output_dir = Path(data_dir) / "datasets" / "soccernet" / "corner_clips"
         else:
             self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
