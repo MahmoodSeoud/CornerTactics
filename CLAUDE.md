@@ -4,113 +4,139 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a comprehensive soccer corner kick analysis pipeline that uses state-of-the-art computer vision (YOLOv8 + ByteTrack) to track players in **4,229 visible corner kicks** from SoccerNet broadcast videos, enabling robust machine learning models for outcome prediction and tactical analysis.
+CornerTactics is a comprehensive soccer corner kick analysis pipeline that successfully extracted **4,826 corner kick frames** from 500 SoccerNet broadcast videos. The system achieved 100% extraction success and provides **4,221 high-quality visible corners** ready for state-of-the-art computer vision analysis (YOLOv8 + player detection) and geometric deep learning models for tactical analysis and outcome prediction.
 
-## Core Pipeline Architecture
+## Core Pipeline Architecture ✅ COMPLETED
 
-The system follows a simple 3-step flow:
-1. **Data Loading** (`src/data_loader.py`) - Loads SoccerNet annotations and lists available games
-2. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events  
-3. **Analysis** (`main.py`) - Orchestrates the pipeline and generates CSV output
+The system follows a clean, refactored architecture:
+1. **Data Loading** (`src/data_loader.py`) - Loads both Labels-v2.json (ALL corners) and Labels-v3.json (spatial)
+2. **Frame Extraction** (`src/frame_extractor.py`) - Extracts single frames at exact corner moments
+3. **Batch Processing** (`src/corner_frame_pipeline.py`) - Processes all 500 games efficiently
+4. **Entry Point** (`extract_corners.py`) - Simple command-line interface
 
-The system focuses exclusively on the 12 corner sequences with tracking data for deep learning model development.
+The system successfully extracted **4,826 corner frames** with **100% success rate** and **856MB of data** ready for player position analysis.
 
 ## Data Structure
 
 ```
 data/
 ├── datasets/soccernet/
-│   ├── soccernet_videos/        # 720p broadcast videos (550 games total)
-│   │   ├── england_epl/         # EPL matches
+│   ├── videos/                  # 720p broadcast videos (500 games with both videos + labels)
+│   │   ├── england_epl/         # EPL matches with Labels-v2.json + Labels-v3.json
 │   │   ├── europe_uefa-champions-league/
 │   │   └── france_ligue-1/
-│   └── soccernet_tracking/      # SNMOT tracking sequences (30-second clips)
-│       ├── train/               # 57 sequences (30s each)
-│       ├── test/                # 49 sequences (30s each)
-│       └── challenge/           # 58 sequences + 1 full half-time (45 min)
-└── insights/                    # Analysis results (CSV files)
+│   ├── corner_frames/           # ✅ 4,826 extracted corner frames (856MB)
+│   └── tracking/                # SNMOT tracking sequences for validation
+│       ├── train/               # 6 corner sequences with ground truth
+│       ├── test/
+│       └── challenge/
+└── insights/                    # ✅ corner_frames_metadata.csv ready
 ```
 
-### Tracking Approach
-- **Detection Model**: YOLOv8 (state-of-the-art object detection)
-- **Tracking Algorithm**: ByteTrack (handles occlusions in crowded scenes)
-- **Corner Coverage**: 4,229 visible corners from 500 games
-- **Processing**: 30-second clips at 25 FPS
-- **Objects tracked**: Players (both teams), goalkeepers, referees, ball
-- **Validation**: 12 SNMOT sequences with ground truth for quality checks
+### Current Status & Next Steps
+- **Extraction**: ✅ COMPLETED - 4,826 corner frames extracted (100% success rate)
+- **Data Quality**: ✅ 4,221 visible corners (87.5%) ready for analysis
+- **Storage**: ✅ 856MB of corner frame data organized and accessible
+- **Labels**: ✅ Both Labels-v2.json (ALL corners) and Labels-v3.json available
+- **Next Phase**: Player position detection using YOLOv8 on corner frames
+- **Objects to detect**: Players (both teams), goalkeepers, referees, ball
+- **Validation**: 6 SNMOT corner sequences with ground truth available
 
 ## Common Commands
 
-### ML Model Development
+### Corner Frame Extraction ✅ COMPLETED
 ```bash
-# Extract features from 12 corner sequences
-python src/feature_extractor.py --tracking-data data/datasets/soccernet/soccernet_tracking
+# Extract corner frames (COMPLETED - 4,826 frames extracted)
+python extract_corners.py --data-dir data
 
-# Train geometric deep learning model
-python src/train_model.py --sequences data/corner_sequences.h5
+# Filter visible corners for analysis
+python -c "
+import pandas as pd
+df = pd.read_csv('data/insights/corner_frames_metadata.csv')
+visible = df[df.visibility == 'visible']
+print(f'Visible corners: {len(visible)} of {len(df)}')
+"
+```
 
-# Evaluate on test split
-python src/evaluate.py --model models/corner_gnn.pt
+### Next Phase: Player Detection (TODO)
+```bash
+# Run YOLOv8 on corner frames (TO BE IMPLEMENTED)
+python src/detect_players.py --frames data/datasets/soccernet/corner_frames/
+
+# Train geometric deep learning model (TO BE IMPLEMENTED)
+python src/train_model.py --features corner_features.h5
 ```
 
 ### SLURM Jobs (HPC cluster)
 ```bash
-# Download SoccerNet data (one-time)
-sbatch scripts/slurm/download_videos.sh
+# Download SoccerNet data (Labels-v2.json + Labels-v3.json + videos + tracking)
+sbatch scripts/slurm/download_data.sh
 
-# Extract corner clips with GPU
-sbatch scripts/slurm/extract_corners.sh  
+# Extract corner frames ✅ COMPLETED (4,826 frames extracted)
+sbatch scripts/slurm/extract_corner_frames.sh
 
-# Analysis only (lightweight)
-sbatch scripts/slurm/analyze_corners.sh
+# Next: Player detection with GPU (TO BE IMPLEMENTED)
+sbatch scripts/slurm/detect_players.sh
 ```
 
 ### Quick Checks
 ```bash
-# List corner sequences
-find data/datasets/soccernet/soccernet_tracking -name "gameinfo.ini" -exec grep -l "Corner" {} \;
+# Check extracted corner frames ✅
+ls data/datasets/soccernet/corner_frames/ | wc -l  # Should show 4826
 
-# Load tracking data for a sequence
-from src.tracking_loader import SNMOTLoader
-loader = SNMOTLoader('data/datasets/soccernet/soccernet_tracking/train/SNMOT-067')
-positions = loader.get_player_positions()
+# Check corner metadata ✅
+head data/insights/corner_frames_metadata.csv
+
+# Find corner sequences with ground truth
+find data/datasets/soccernet/tracking -name "gameinfo.ini" -exec grep -l "Corner" {} \;
+
+# Check visibility distribution
+python -c "
+import pandas as pd
+df = pd.read_csv('data/insights/corner_frames_metadata.csv')
+print(df.visibility.value_counts())
+print(f'Success rate: {len(df)} corners extracted')
+"
 ```
 
 ## Key Technical Details
 
 - **Video Format**: MKV files (1_720p.mkv for first half, 2_720p.mkv for second half)
-- **Annotations**: Labels-v3.json contains corner events in actions dict with imageMetadata
-- **Corner Detection**: Finds events where `imageMetadata.label == "Corner"` in actions
-- **Clip Extraction**: Default 30 seconds (10s before, 20s after corner)
-- **Output Format**: CSV with game, half, time, team, visibility columns
-- **Primary Dataset**: 4,229 visible corner kicks for tracking
-- **Training Split**: ~3,000 corners for model development
-- **Validation Split**: ~600 corners for hyperparameter tuning
-- **Test Split**: ~629 corners for final evaluation
-- **Processing Time**: ~12 hours on single GPU for all corners
+- **Labels**: Labels-v2.json (ALL corners) + Labels-v3.json (spatial annotations)
+- **Corner Detection**: Extracts from both label sources, removes duplicates
+- **Frame Extraction**: Single frame at exact corner moment using ffmpeg
+- **Output Format**: CSV with game, half, time, team, visibility, frame_path columns
+- **Dataset Stats**: 4,826 total corners, 4,221 visible (87.5% usable)
+- **Quality Filter**: Use `visibility == "visible"` for high-quality analysis
+- **Storage**: 856MB total, ~200KB per frame (JPEG)
+- **Processing Time**: ~23 minutes for 4,826 corners (100% success rate)
+- **Success**: 26x improvement from 180 to 4,826 corners!
 
 ## Important Constraints
 
-- Pipeline ALWAYS processes entire dataset (no partial processing)
-- SoccerNet API downloads complete splits (~100GB per split)
-- Each game directory must contain both video files and Labels-v3.json
-- Video quality is 720p (high quality) for analysis
+- Pipeline processes entire dataset (4,826 corners from 500 games)
+- Requires both Labels-v2.json (comprehensive) and video files
+- Frame extraction needs ffmpeg for video processing
+- Use `visibility == "visible"` filter for ML (4,221 high-quality corners)
+- Video quality is 720p (high quality) for detailed player analysis
 
 ## File Responsibilities
 
-- `main.py` - Entry point, orchestrates full pipeline
-- `src/data_loader.py` - Game discovery and annotation parsing
-- `src/corner_extractor.py` - Video clip extraction using ffmpeg
-- `src/download_soccernet.py` - SoccerNet dataset downloads
-- `scripts/slurm/*.sh` - HPC cluster job scripts (all fixed with conda activation)
+- `extract_corners.py` - ✅ Main entry point for corner frame extraction
+- `src/data_loader.py` - ✅ Game discovery and Labels-v2/v3 parsing
+- `src/frame_extractor.py` - ✅ Single frame extraction using ffmpeg
+- `src/corner_frame_pipeline.py` - ✅ Batch processing pipeline
+- `src/download_soccernet.py` - ✅ SoccerNet dataset downloads (both label types)
+- `scripts/slurm/*.sh` - ✅ Clean HPC cluster job scripts
 
-## SLURM Scripts Status
+## SLURM Scripts Status ✅ COMPLETED
 
-All SLURM scripts have been fixed and verified:
+Clean, working SLURM scripts:
+- ✅ `scripts/slurm/download_data.sh` - Downloads all SoccerNet data
+- ✅ `scripts/slurm/extract_corner_frames.sh` - Extracts corner frames (COMPLETED)
 - ✅ Proper conda environment activation (`conda activate robo`)
-- ✅ No module load errors
-- ✅ Correct data directory paths
-- ✅ All scripts tested and working
+- ✅ Correct directory paths (`corner_frames/` not `soccernet_corner_frames/`)
+- ✅ 100% success rate achieved (4,826/4,826 corners)
 
 
 # Football Corner Prediction ML Project

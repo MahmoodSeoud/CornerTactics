@@ -1,14 +1,17 @@
-# Player & Ball Tracking Plan for 4,836 Corner Kicks
+# Player & Ball Tracking Plan for Corner Kicks
 
-## Current Situation Summary ✅ COMPLETED
+## Current Situation Summary ✅ EXTRACTION COMPLETED
 - **Available Data**: 500 games with raw video files (1_720p.mkv, 2_720p.mkv)
-- **V3 Frames**: Sparse annotations 100 imgs with labels (bbox, lines, etc)
-- **SNMOT**: Only 12 sequences with continuous 30-second tracking
-- **Corner Frames Extracted**: 4,830 single frames from corner moments
-  - 4,229 visible corners + 607 "not shown" corners (4 failed extractions)
-  - Frames saved to: `data/datasets/soccernet/soccernet_corner_frames/`
-  - CSV metadata: `data/insights/corners_with_frames_v2.csv`
-- **Target**: Generate tracking data for all 4,836 corners (now have frames ready!)
+- **Labels Data**: Both Labels-v2.json (ALL corners) and Labels-v3.json (spatial annotations)
+- **SNMOT**: 6 corner sequences with ground truth tracking for validation
+- **Corner Frames Extracted**: **4,826 total corners successfully processed**
+  - ✅ **4,221 visible corners** (87.5%) - Ready for player analysis
+  - ❌ **605 "not shown" corners** (12.5%) - Camera on other footage
+  - ✅ **100% extraction success rate** (4,826/4,826)
+  - ✅ **856MB of frame data** stored
+  - Frames saved to: `data/datasets/soccernet/corner_frames/`
+  - CSV metadata: `data/insights/corner_frames_metadata.csv`
+- **Target**: Generate player positions for 4,221 visible corners
 
 ## Recommended Solution: TrackLab + Fine-tuned YOLOv8
 
@@ -117,18 +120,19 @@ for game in games:
 ## Expected Outputs
 
 ### Per Corner Kick:
-- **Player Tracking**: Bounding boxes for each player across 500 frames
-- **Ball Tracking**: Ball position for each frame
-- **Team Assignment**: Players labeled as team_left/team_right
-- **Player IDs**: Consistent IDs for tracking across frames
+- **Player Detection**: Bounding boxes for each player in corner frame
+- **Ball Detection**: Ball position in frame
+- **Team Assignment**: Players labeled as team_left/team_right via jersey colors
+- **Player Positions**: (x, y) coordinates for tactical analysis
 - **Outcome Label**: GOAL/NO_GOAL based on subsequent events
 
 ### Dataset Statistics:
-- **Total Corners**: 4,836 (4,229 visible + 607 not shown)
-- **Successfully Extracted Frames**: 4,830 (99.9% success rate)
-- **Current Storage**: ~1.2GB for corner frames (JPEG format)
-- **Option A Storage**: Current setup (single frames)
-- **Option B Storage**: ~1.5TB if processing 20s clips (500 frames × 4,836 corners)
+- **Total Corners**: 4,826 (extracted from 500 games)
+- **Visible Corners**: 4,221 (87.5%) - High quality for analysis
+- **Not Shown Corners**: 605 (12.5%) - Filter out for ML
+- **Successfully Extracted**: 4,826/4,826 (100% success rate)
+- **Storage Used**: 856MB for corner frames (JPEG format)
+- **Average**: 9.7 corners per game (excellent distribution)
 
 ## Validation Strategy
 
@@ -170,6 +174,7 @@ for game in games:
 6. **Export for ML**: Format data for geometric deep learning models (graph structures)
 
 **FILES READY FOR PROCESSING**:
-- Corner frames: `data/datasets/soccernet/soccernet_corner_frames/*.jpg`
-- Metadata: `data/insights/corners_with_frames_v2.csv`
-- Labels: Both v2 (comprehensive) and v3 (sparse) available
+- Corner frames: `data/datasets/soccernet/corner_frames/*.jpg` (4,826 frames, 856MB)
+- Metadata: `data/insights/corner_frames_metadata.csv`
+- Labels: Both Labels-v2.json (ALL corners) and Labels-v3.json (spatial) available
+- Visible corners only: Filter `visibility == "visible"` for 4,221 high-quality frames

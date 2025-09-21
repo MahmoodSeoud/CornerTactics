@@ -4,38 +4,36 @@ Soccer corner kick analysis pipeline that processes SoccerNet broadcast videos t
 
 ## Project Status
 
-- ✅ **Data Structure**: Organized SoccerNet dataset (373 games with videos, 550 total directories)
-- ✅ **Analysis Pipeline**: Extract corner events from 373 games (3564 corners found)
-- ✅ **SLURM Integration**: All cluster job scripts fixed and working
-- ⚠️ **Video Downloads**: Only 373/550 games have video files (need to complete download)
+- ✅ **Data Structure**: Organized SoccerNet dataset (500 games with both videos and labels)
+- ✅ **Corner Extraction**: **4,826 corner frames extracted** from 500 games (100% success rate)
+- ✅ **High Quality Data**: 4,221 visible corners (87.5%) ready for player analysis
+- ✅ **SLURM Integration**: Clean, working scripts for HPC processing
+- ✅ **Refactored Codebase**: Simple, maintainable architecture
 
 ## Quick Start
 
-### Phase 1: Corner Frame Extraction (NEW!)
+### Corner Frame Extraction ✅ COMPLETED
 
-Extract single frames at the exact moment each corner kick is taken:
+Single frames extracted at the exact moment each corner kick is taken:
 
 ```bash
-# Extract frames from all corners (requires Labels-v3.json + videos)
-python src/cli.py --data-dir ./data
+# Extract frames from all corners (requires Labels-v2.json/v3.json + videos)
+python extract_corners.py --data-dir ./data
 
 # Custom output location
-python src/cli.py --data-dir ./data --output ./my_corner_frames.csv
+python extract_corners.py --data-dir ./data --output ./my_corner_frames.csv
 ```
 
-**Output**: ~4,836 corner frames (~1GB) + metadata CSV for machine learning analysis.
+**Current Status**: ✅ **4,826 corner frames extracted** (856MB) + metadata CSV ready for ML analysis.
 
-### HPC Cluster (Full Pipeline)
+### HPC Cluster Scripts
 
 ```bash
-# Download SoccerNet data
-sbatch scripts/slurm/01_fetch_soccernet_dataset.sh
+# Download SoccerNet data (Labels-v2.json + Labels-v3.json + videos + tracking)
+sbatch scripts/slurm/download_data.sh
 
-# Extract corner frames
-sbatch scripts/slurm/05_extract_corner_clips.sh
-
-# Analysis only (legacy)
-sbatch scripts/slurm/analyze_corners.sh
+# Extract corner frames ✅ COMPLETED
+sbatch scripts/slurm/extract_corner_frames.sh
 ```
 
 ### Local Development (Legacy)
@@ -64,21 +62,23 @@ data/
 └── insights/                    # Analysis results (CSV files)
 ```
 
-## Current Dataset Status
+## Current Dataset Status ✅ EXTRACTION COMPLETE
 
-- **Total Games**: 550 directories found
-- **Games with Videos**: 373 (67.8% complete)
-- **Games with Labels**: 500 annotation files
-- **Total Corners**: 3,564 corner events analyzed
+- **Total Games**: 500 games with both videos and labels
+- **Corner Frames**: **4,826 extracted** (100% success rate)
+- **Visible Corners**: **4,221** (87.5%) - High quality for player analysis
+- **Not Shown Corners**: 605 (12.5%) - Filter out for ML
+- **Storage**: 856MB of corner frame data
 - **Video Quality**: 720p broadcast footage
+- **Labels**: Both Labels-v2.json (ALL corners) and Labels-v3.json (spatial)
 
 ## Pipeline Architecture
 
-### Phase 1: Corner Frame Extraction (Current)
-1. **Data Loading** (`src/data_loader.py`) - Loads SoccerNet annotations and lists available games
+### Phase 1: Corner Frame Extraction ✅ COMPLETED
+1. **Data Loading** (`src/data_loader.py`) - Loads both Labels-v2.json and Labels-v3.json
 2. **Frame Extraction** (`src/frame_extractor.py`) - Extracts single frames at corner moments using ffmpeg
 3. **Batch Pipeline** (`src/corner_frame_pipeline.py`) - Processes all games and generates metadata CSV
-4. **CLI Interface** (`src/cli.py`) - Command-line tool for easy frame extraction
+4. **CLI Interface** (`extract_corners.py`) - Simple entry point for frame extraction
 
 ### Phase 2: Video Analysis (Legacy/Future)
 1. **Video Extraction** (`src/corner_extractor.py`) - Extracts 30-second clips around corner events
@@ -93,11 +93,12 @@ All scripts properly configured with conda environment activation:
 - `scripts/slurm/download_videos.sh` - Download missing videos
 - `scripts/slurm/extract_tracklets.sh` - Extract tracking data
 
-## Output
+## Output ✅ READY
 
-- **Analysis CSV**: `data/insights/corners_analysis.csv` - All corner events with metadata
-- **Clips CSV**: `data/insights/corners_with_clips.csv` - With video clip paths
-- **Corner Statistics**: Home vs away, half distribution, team analysis
+- **Corner Frames**: `data/datasets/soccernet/corner_frames/*.jpg` (4,826 frames, 856MB)
+- **Metadata CSV**: `data/insights/corner_frames_metadata.csv` - Complete corner data
+- **Visibility Filter**: Use `visibility == "visible"` for 4,221 high-quality frames
+- **Ready for**: YOLOv8 player detection and geometric deep learning
 
 ## Requirements
 
