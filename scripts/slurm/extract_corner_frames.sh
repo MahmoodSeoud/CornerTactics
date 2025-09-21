@@ -23,11 +23,12 @@ echo "Node: $(hostname)"
 mkdir -p logs/slurm
 mkdir -p data/insights
 
-# Extract single frames at corner kick moments
+# Extract single frames at corner kick moments into visibility-based directories
 echo "Extracting single frames at corner kick timestamps..."
 python extract_corners.py \
     --data-dir data \
-    --output data/insights/corner_frames_metadata.csv
+    --output data/insights/corner_frames_metadata.csv \
+    --split-by-visibility
 
 echo "Corner frame extraction completed at $(date)"
 
@@ -44,9 +45,22 @@ else
 fi
 
 if [ -d "data/datasets/soccernet/corner_frames" ]; then
-    echo "Frame directory: data/datasets/soccernet/corner_frames"
+    echo "Frame directories created:"
+    echo "  Visible frames: data/datasets/soccernet/corner_frames/visible"
+    echo "  Not shown frames: data/datasets/soccernet/corner_frames/not_shown"
+
+    if [ -d "data/datasets/soccernet/corner_frames/visible" ]; then
+        echo "Visible frames extracted: $(find data/datasets/soccernet/corner_frames/visible -name "*.jpg" | wc -l)"
+        echo "Visible storage: $(du -sh data/datasets/soccernet/corner_frames/visible | cut -f1)"
+    fi
+
+    if [ -d "data/datasets/soccernet/corner_frames/not_shown" ]; then
+        echo "Not shown frames extracted: $(find data/datasets/soccernet/corner_frames/not_shown -name "*.jpg" | wc -l)"
+        echo "Not shown storage: $(du -sh data/datasets/soccernet/corner_frames/not_shown | cut -f1)"
+    fi
+
     echo "Total frames extracted: $(find data/datasets/soccernet/corner_frames -name "*.jpg" | wc -l)"
-    echo "Storage used: $(du -sh data/datasets/soccernet/corner_frames | cut -f1)"
+    echo "Total storage used: $(du -sh data/datasets/soccernet/corner_frames | cut -f1)"
 else
     echo "⚠ Frame directory not found - check for errors above"
 fi

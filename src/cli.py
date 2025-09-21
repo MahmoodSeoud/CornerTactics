@@ -33,12 +33,14 @@ Examples:
                        help='Root data directory containing SoccerNet data')
     parser.add_argument('--output',
                        help='Output CSV file path (default: data_dir/insights/corner_frames_metadata.csv)')
+    parser.add_argument('--split-by-visibility', action='store_true',
+                       help='Split frames into visible/ and not_shown/ subdirectories')
 
     args = parser.parse_args()
 
     try:
         # Create and run pipeline
-        pipeline = CornerFramePipeline(args.data_dir, args.output)
+        pipeline = CornerFramePipeline(args.data_dir, args.output, split_by_visibility=args.split_by_visibility)
         result_csv = pipeline.extract_all_corners()
 
         print(f"Corner frame extraction complete!")

@@ -19,17 +19,19 @@ logger = logging.getLogger(__name__)
 class CornerFramePipeline:
     """Pipeline to extract frames for all corners and generate metadata CSV."""
 
-    def __init__(self, data_dir: str, output_csv: Optional[str] = None):
+    def __init__(self, data_dir: str, output_csv: Optional[str] = None, split_by_visibility: bool = False):
         """Initialize the pipeline.
 
         Args:
             data_dir: Root data directory containing SoccerNet data
             output_csv: Optional custom path for output CSV file
+            split_by_visibility: Whether to split frames into visible/not_shown directories
         """
         self.data_dir = data_dir
         self.data_loader = SoccerNetDataLoader(data_dir)
         self.output_dir = Path(data_dir) / "insights"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.split_by_visibility = split_by_visibility
 
         # Configure output CSV path
         if output_csv:
@@ -76,7 +78,7 @@ class CornerFramePipeline:
                     total_corners += len(corners)
 
                     # Create frame extractor for this game
-                    extractor = CornerFrameExtractor(game_path, self.data_dir)
+                    extractor = CornerFrameExtractor(game_path, self.data_dir, split_by_visibility=self.split_by_visibility)
 
                     # Extract frame for each corner
                     for corner_index, corner in enumerate(corners, 1):
@@ -85,7 +87,8 @@ class CornerFramePipeline:
                         frame_path = extractor.extract_corner_frame(
                             corner['gameTime'],
                             corner.get('team', 'unknown'),
-                            corner['half']
+                            corner['half'],
+                            corner.get('visibility', 'unknown')
                         )
 
                         if frame_path:
