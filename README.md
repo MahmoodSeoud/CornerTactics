@@ -13,13 +13,19 @@ Clean, simple soccer corner kick analysis pipeline that extracts 20-second video
 
 ```bash
 # Download SoccerNet dataset (HPC cluster)
-sbatch scripts/slurm/download_soccernet.sh
+sbatch scripts/slurm/download_data.sh
 
-# Extract 20-second corner clips (HPC cluster)
-sbatch scripts/slurm/extract_corners.sh
+# Download GSR gamestate data (HPC cluster)
+sbatch scripts/slurm/download_gsr.sh
+
+# Unzip GSR gamestate data
+sbatch scripts/slurm/unzip_gsr_data.sh
+
+# Extract corner frames (HPC cluster)
+sbatch scripts/slurm/extract_corner_frames.sh
 
 # Or run locally
-python scripts/extract_corners.py --data-dir ./data --split-by-visibility
+python scripts/extract_corners.py --data-dir ./data
 ```
 
 ## Architecture
@@ -31,8 +37,10 @@ CornerTactics/
 ├── scripts/
 │   ├── extract_corners.py          # Main script (Carmack-refactored)
 │   └── slurm/                      # HPC job scripts
-│       ├── extract_corners.sh      # Corner frame extraction
-│       └── download_soccernet.sh   # Dataset download
+│       ├── download_data.sh        # SoccerNet dataset download
+│       ├── download_gsr.sh         # GSR gamestate data download
+│       ├── unzip_gsr_data.sh       # Unzip GSR gamestate data
+│       └── extract_corner_frames.sh # Corner frame extraction
 └── src/                            # Library code
     ├── data_loader.py              # Load games and corner events
     └── download_soccernet.py       # SoccerNet dataset downloader

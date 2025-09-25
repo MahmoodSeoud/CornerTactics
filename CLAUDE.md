@@ -77,8 +77,14 @@ head data/insights/corner_pitch_summary.csv
 # Download SoccerNet data (Labels-v2.json + Labels-v3.json + videos + tracking)
 sbatch scripts/slurm/download_data.sh
 
+# Download GSR (Game State Reconstruction) data
+sbatch scripts/slurm/download_gsr.sh
+
 # Extract corner frames ✅ COMPLETED (4,826 frames extracted)
 sbatch scripts/slurm/extract_corner_frames.sh
+
+# Unzip GSR gamestate data
+sbatch scripts/slurm/unzip_gsr_data.sh
 
 # Next: Player detection with GPU (TO BE IMPLEMENTED)
 sbatch scripts/slurm/detect_players.sh
@@ -169,7 +175,9 @@ git submodule update --init --recursive
 
 Clean, working SLURM scripts:
 - ✅ `scripts/slurm/download_data.sh` - Downloads all SoccerNet data
+- ✅ `scripts/slurm/download_gsr.sh` - Downloads GSR gamestate data
 - ✅ `scripts/slurm/extract_corner_frames.sh` - Extracts corner frames (COMPLETED)
+- ✅ `scripts/slurm/unzip_gsr_data.sh` - Unzips GSR gamestate data to correct structure
 - ✅ Proper conda environment activation (`conda activate robo`)
 - ✅ Correct directory paths (`corner_frames/` not `soccernet_corner_frames/`)
 - ✅ 100% success rate achieved (4,826/4,826 corners)
