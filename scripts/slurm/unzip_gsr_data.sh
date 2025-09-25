@@ -4,7 +4,7 @@
 #SBATCH --account=researchers
 #SBATCH --output=logs/unzip_gsr_data_%j.out
 #SBATCH --error=logs/unzip_gsr_data_%j.err
-#SBATCH --time=01:00:00
+#SBATCH --time=10-00:00:00
 #SBATCH --mem=8G
 #SBATCH --cpus-per-task=2
 
