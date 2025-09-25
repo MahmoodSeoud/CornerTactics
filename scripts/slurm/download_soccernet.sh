@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=download_soccernet
+#SBATCH --job-name=sn_download
 #SBATCH --partition=dgpu
 #SBATCH --account=researchers
-#SBATCH --output=logs/slurm/download_%j.out
-#SBATCH --error=logs/slurm/download_%j.err
+#SBATCH --output=logs/sn_download_%j.out
+#SBATCH --error=logs/sn_download_%j.err
 #SBATCH --time=10-00:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
@@ -16,7 +16,7 @@ conda activate robo
 cd /home/mseo/CornerTactics
 
 # Create output directories
-mkdir -p logs/slurm
+mkdir -p logs
 mkdir -p data/datasets/soccernet
 
 # SoccerNet password

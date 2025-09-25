@@ -9,7 +9,7 @@ CornerTactics is a comprehensive soccer corner kick analysis pipeline that succe
 ## Core Pipeline Architecture ✅ COMPLETED
 
 The system follows a clean, refactored architecture:
-1. **Data Loading** (`src/data_loader.py`) - Loads both Labels-v2.json (ALL corners) and Labels-v3.json (spatial)
+1. **Data Loading** (`src/data_loader.py`) - Loads Labels-v2.json exclusively (ALL corners, no replays)
 2. **Frame Extraction** (`src/frame_extractor.py`) - Extracts single frames at exact corner moments
 3. **Batch Processing** (`src/corner_frame_pipeline.py`) - Processes all 500 games efficiently
 4. **Entry Point** (`extract_corners.py`) - Simple command-line interface
@@ -37,17 +37,19 @@ data/
 - **Extraction**: ✅ COMPLETED - 4,826 corner frames extracted (100% success rate)
 - **Data Quality**: ✅ 4,221 visible corners (87.5%) ready for analysis
 - **Storage**: ✅ 856MB of corner frame data organized and accessible
-- **Labels**: ✅ Both Labels-v2.json (ALL corners) and Labels-v3.json available
-- **Next Phase**: Player position detection using YOLOv8 on corner frames
-- **Objects to detect**: Players (both teams), goalkeepers, referees, ball
-- **Validation**: 6 SNMOT corner sequences with ground truth available
+- **Labels**: ✅ Using Labels-v2.json exclusively (contains ALL corners vs v3's sparse replays)
+- **Player Detection**: 🔄 IN PROGRESS - YOLOv8x detecting players on all corner frames
+- **GSR Pipeline**: 🔄 INSTALLING - Full SoccerNet Game State Reconstruction system
+- **Pitch Coordinates**: ✅ Extract real-world (x,y) positions + team ID + jersey numbers
+- **Next Phase**: Geometric deep learning on player tactical formations
+- **Data Quality**: State-of-the-art accuracy with complete player identification
 
 ## Common Commands
 
 ### Corner Frame Extraction ✅ COMPLETED
 ```bash
 # Extract corner frames (COMPLETED - 4,826 frames extracted)
-python extract_corners.py --data-dir data
+python scripts/extract_corners.py --data-dir data
 
 # Filter visible corners for analysis
 python -c "
@@ -58,13 +60,16 @@ print(f'Visible corners: {len(visible)} of {len(df)}')
 "
 ```
 
-### Next Phase: Player Detection (TODO)
+### Player Detection & Pitch Coordinates ✅ ACTIVE
 ```bash
-# Run YOLOv8 on corner frames (TO BE IMPLEMENTED)
-python src/detect_players.py --frames data/datasets/soccernet/corner_frames/
+# Run YOLOv8 on all corner frames (IN PROGRESS)
+python src/detect_players.py --frames-dir data/datasets/soccernet/corner_frames --output-dir data/player_detections --model yolov8x --confidence 0.4 --visualize
 
-# Train geometric deep learning model (TO BE IMPLEMENTED)
-python src/train_model.py --features corner_features.h5
+# Extract pitch coordinates for corners with Labels-v3 data
+python src/corner_pitch_processor.py
+
+# Check results
+head data/insights/corner_pitch_summary.csv
 ```
 
 ### SLURM Jobs (HPC cluster)
@@ -102,8 +107,8 @@ print(f'Success rate: {len(df)} corners extracted')
 ## Key Technical Details
 
 - **Video Format**: MKV files (1_720p.mkv for first half, 2_720p.mkv for second half)
-- **Labels**: Labels-v2.json (ALL corners) + Labels-v3.json (spatial annotations)
-- **Corner Detection**: Extracts from both label sources, removes duplicates
+- **Labels**: Labels-v2.json exclusively (contains ALL corners, ~10 per game vs v3's ~0.2)
+- **Corner Detection**: Extracts only from Labels-v2.json to avoid replays from v3
 - **Frame Extraction**: Single frame at exact corner moment using ffmpeg
 - **Output Format**: CSV with game, half, time, team, visibility, frame_path columns
 - **Dataset Stats**: 4,826 total corners, 4,221 visible (87.5% usable)
@@ -111,6 +116,36 @@ print(f'Success rate: {len(df)} corners extracted')
 - **Storage**: 856MB total, ~200KB per frame (JPEG)
 - **Processing Time**: ~23 minutes for 4,826 corners (100% success rate)
 - **Success**: 26x improvement from 180 to 4,826 corners!
+
+## External Dependencies
+
+This project integrates with several external GitHub repositories. Here's our approach:
+
+### Current Method: Clone & Ignore
+```bash
+# External tools cloned locally but not tracked in git
+git clone https://github.com/SoccerNet/sn-gamestate.git
+git clone https://github.com/SoccerNet/SoccerNet-v3.git
+```
+
+**Pros:** Simple, allows local modifications, fast setup
+**Cons:** No version tracking, manual updates
+
+### Alternative: Git Submodules (for stable dependencies)
+```bash
+# If you need version tracking and reproducibility
+git submodule add https://github.com/SoccerNet/sn-gamestate.git
+git submodule update --init --recursive
+```
+
+**Use submodules when:**
+- You need a specific version pinned
+- Multiple people work on the project
+- You want reproducible builds
+
+**Current external repos:**
+- `sn-gamestate/` - SoccerNet Game State Reconstruction pipeline
+- `SoccerNet-v3/` - SoccerNet dataset tools and utilities
 
 ## Important Constraints
 
@@ -122,10 +157,11 @@ print(f'Success rate: {len(df)} corners extracted')
 
 ## File Responsibilities
 
-- `extract_corners.py` - ✅ Main entry point for corner frame extraction
+- `scripts/extract_corners.py` - ✅ Main entry point for corner frame extraction
 - `src/data_loader.py` - ✅ Game discovery and Labels-v2/v3 parsing
-- `src/frame_extractor.py` - ✅ Single frame extraction using ffmpeg
-- `src/corner_frame_pipeline.py` - ✅ Batch processing pipeline
+- `src/detect_players.py` - 🔄 YOLOv8x player detection on corner frames
+- `src/pitch_coordinates.py` - ✅ NEW: Camera calibration & pitch coordinate mapping
+- `src/corner_pitch_processor.py` - ✅ NEW: Integration pipeline for pitch coordinates
 - `src/download_soccernet.py` - ✅ SoccerNet dataset downloads (both label types)
 - `scripts/slurm/*.sh` - ✅ Clean HPC cluster job scripts
 
@@ -176,3 +212,86 @@ When implementing:
 - Represent each corner kick as a heterogeneous graph (players, ball, goal posts as different node types)
 - Apply geometric transformations to augment limited training data
 - Focus on interpretable geometric features that coaches can understand
+
+# SoccerNet Game State Reconstruction (GSR) Setup
+
+## Overview
+The SoccerNet Game State Reconstruction pipeline tracks and identifies soccer players from broadcast video to create minimap visualizations showing player positions, jersey numbers, and team affiliations.
+
+## Installation Issues & Solutions ✅ RESOLVED
+
+### 1. PyTorch + Transformers Compatibility Issue
+**Problem**: The repository has conflicting dependency requirements:
+- `pyproject.toml` pins `torch==1.13.1` (for GPU compatibility)
+- But newer `huggingface-hub` requires `transformers>=4.48.0`
+- This creates a version conflict causing import errors
+
+**Solution**: Pin `transformers==4.47.1` in `pyproject.toml`:
+```toml
+dependencies = [
+    "torch==1.13.1",
+    "transformers==4.47.1",  # Fixed version for torch 1.13.1 compatibility
+    # ... other deps
+]
+```
+
+**Reference**: [GitHub Issue #31](https://github.com/SoccerNet/sn-gamestate/issues/31#issue-3262738825)
+
+### 2. SSL Certificate Issue in UV Container Environment
+**Problem**: UV creates a container environment where SSL certificates are in different paths than the host system:
+- Host uses: `/opt/itu/easybuild/software/Anaconda3/2024.02-1/ssl/cert.pem`
+- UV container expects: `/etc/ssl/certs/ca-certificates.crt` (missing)
+- UV container has: `/etc/ssl/certs/ca-bundle.crt` (Rocky Linux format)
+
+**Solution**: Set SSL environment variables before running UV commands:
+```bash
+export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
+export CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
+uv run python -c "from SoccerNet.Downloader import SoccerNetDownloader; ..."
+```
+
+### 3. Dataset Version Mismatch
+**Problem**: Code expects `gamestate-2025` but SoccerNet provides `gamestate-2024`
+
+**Solution**: Create symlink after download:
+```bash
+ln -s gamestate-2024 data/SoccerNetGS/gamestate-2025
+```
+
+## Working SLURM Script Template
+```bash
+#!/bin/bash
+#SBATCH --job-name=soccernet_gsr
+#SBATCH --partition=acltr
+#SBATCH --gres=gpu:1
+#SBATCH --mem=16G
+#SBATCH --time=02:00:00
+
+cd /home/mseo/CornerTactics/sn-gamestate
+
+# Fix SSL certificates for UV container
+export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
+export CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
+
+# Install dependencies with fixed versions
+uv pip install -e .
+uv run mim install mmcv==2.0.1
+
+# Run GSR pipeline
+uv run tracklab -cn soccernet
+```
+
+## GSR Pipeline Components
+- **Detection**: YOLOv11 for player detection
+- **Re-ID**: PRTReid for player re-identification
+- **Tracking**: BPBreID + StrongSORT
+- **Jersey Numbers**: MMOCR for number recognition
+- **Team Assignment**: K-means on embeddings
+- **Pitch Mapping**: Camera calibration (NBJW/PnLCalib)
+- **Visualization**: MP4 output with minimap overlay
+
+## Output
+Successful runs generate MP4 visualizations at:
+```
+outputs/sn-gamestate/{date}/{time}/visualization/videos/
+```

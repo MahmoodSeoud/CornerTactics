@@ -84,7 +84,7 @@ class SoccerNetDataLoader:
         return sorted(games)
     
     def get_corner_events(self, game_path: str) -> List[Dict]:
-        """Extract corner kick events from game annotations."""
+        """Extract corner kick events from Labels-v2.json only."""
         corners = []
 
         # Load v2 labels (has ALL corners)
@@ -101,27 +101,7 @@ class SoccerNetDataLoader:
                         'gameTime': game_time,
                         'team': annotation.get('team', 'unknown'),
                         'half': half,
-                        'visibility': annotation.get('visibility', 'unknown'),
-                        'source': 'v2'
+                        'visibility': annotation.get('visibility', 'unknown')
                     })
-
-        # Load v3 labels (has corners with spatial annotations)
-        v3_annotations = self.load_annotations(game_path, prefer_v2=False)
-        if 'actions' in v3_annotations:
-            for image_name, action_data in v3_annotations.get('actions', {}).items():
-                metadata = action_data.get('imageMetadata', {})
-                if metadata.get('label') == 'Corner':
-                    game_time = metadata.get('gameTime', '')
-
-                    # Check if this corner already exists from v2
-                    existing = any(c['gameTime'] == game_time for c in corners)
-                    if not existing:
-                        corners.append({
-                            'gameTime': game_time,
-                            'team': 'unknown',
-                            'half': int(metadata.get('half', 1)),
-                            'visibility': metadata.get('visibility', 'visible'),
-                            'source': 'v3'
-                        })
 
         return corners

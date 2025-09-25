@@ -1,7 +1,17 @@
-# External repositories (cloned for tools)
+# External repositories and dependencies
+# Option 1: Tools/libraries cloned but not tracked (current approach)
 SoccerNet-v3/
 ByteTrack/
 sn-tracking/
+sn-gamestate/
+
+# Option 2: If using as submodules, remove above and use:
+# git submodule add https://github.com/SoccerNet/sn-gamestate.git
+# git submodule add https://github.com/SoccerNet/SoccerNet-v3.git
+
+# Vendor directories (if copying specific files)
+vendor/
+third_party/
 
 # Python
 __pycache__/
