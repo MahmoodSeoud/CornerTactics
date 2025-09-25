@@ -85,9 +85,7 @@ def extract_clip_with_ffmpeg(video_path: Path, start_seconds: int, duration: int
         '-ss', str(start_seconds),  # Start time
         '-i', str(video_path),      # Input video
         '-t', str(duration),        # Duration
-        '-c:v', 'libx264',          # H.264 codec
-        '-c:a', 'aac',              # AAC audio codec
-        '-crf', '23',               # Good quality
+        '-c', 'copy',               # Copy codecs without re-encoding
         str(output_path)
     ]
 

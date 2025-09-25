@@ -16,7 +16,6 @@ conda activate robo
 cd /home/mseo/CornerTactics
 
 # Create output directories
-mkdir -p logs
 mkdir -p data/datasets/soccernet
 
 # SoccerNet password
