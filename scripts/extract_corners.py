@@ -88,7 +88,6 @@ def extract_clip_with_ffmpeg(video_path: Path, start_seconds: int, duration: int
         '-c:v', 'libx264',          # H.264 codec
         '-c:a', 'aac',              # AAC audio codec
         '-crf', '23',               # Good quality
-        '-preset', 'medium',        # Balance speed vs compression
         str(output_path)
     ]
 
