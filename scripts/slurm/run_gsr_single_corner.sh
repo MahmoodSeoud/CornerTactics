@@ -5,7 +5,7 @@
 #SBATCH --partition=acltr
 #SBATCH --gres=gpu:a100_40gb:1
 #SBATCH --mem=16G
-#SBATCH --time=01:00:00
+#SBATCH --time=10:00:00
 #SBATCH --cpus-per-task=4
 
 # Load conda environment
@@ -23,5 +23,7 @@ export CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
 echo "GPU Information:"
 nvidia-smi
 
-uv run tracklab -cn corner_clips
+# Auto-answer 'no' to download prompt since datasets are already present
+# Use tvcalib instead of nbjw_calib to avoid keypoint passing issues
+echo "n" | uv run tracklab -cn soccernet 
 
