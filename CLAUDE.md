@@ -97,6 +97,24 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 - Uses mplsoccer for pitch visualization
 - Output: `data/statsbomb/corners_with_players_2x2.png`
 
+**`scripts/visualize_single_corner.py`**
+- Individual corner visualization script
+- Professional broadcast style: grass pitch, red attacking, blue defending
+- Cropped to attacking half (right side of pitch) for focused view
+- Transparent players (70% alpha) for overlap visibility
+- Dotted line trajectory with heat spot for ball landing
+- Useful for quick testing or analyzing specific corners
+- Output: `data/statsbomb/single_corner_<corner_id>.png`
+- Run via: `scripts/slurm/visualize_single_corner.sh`
+
+**`scripts/visualize_all_corners.py`**
+- Batch generation of all corner kick visualizations
+- Processes entire dataset (~1,118 corners)
+- Same broadcast-style presentation as test script
+- Output: `data/statsbomb/corner_images/corner_<corner_id>.png`
+- Progress bar via tqdm
+- Run via: `scripts/slurm/visualize_all_corners.sh`
+
 ### SLURM Scripts (`scripts/slurm/`)
 
 All SLURM scripts follow this pattern:
@@ -125,7 +143,9 @@ python scripts/<script_name>.py
 
 **Available SLURM scripts**:
 - `download_statsbomb_corners.sh`: Download StatsBomb 360 corner data
-- `visualize_corners_players.sh`: Create corner visualizations
+- `visualize_corners_players.sh`: Create corner visualizations (2x2 grid)
+- `visualize_single_corner.sh`: Generate single corner visualization with cropped view
+- `visualize_all_corners.sh`: Batch generate all 1,118 corner visualizations (4 hours, 16GB RAM)
 - `cleanup_archives.sh`: Clean up downloaded archive files
 
 ## Dependencies
