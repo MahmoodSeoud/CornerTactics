@@ -61,8 +61,9 @@ class StatsBombCornerLoader:
         # Filter for corner kicks
         # Corner kicks are Pass events with pass_type containing "Corner"
         corner_events = events[
-            (events['type_name'] == 'Pass') &
-            (events['pass_type_name'].str.contains('Corner', case=False, na=False))
+            (events['type'] == 'Pass') &
+            (events['pass_type'].notna()) &
+            (events['pass_type'].str.contains('Corner', case=False, na=False))
         ].copy()
 
         logger.info(f"Found {len(corner_events)} corner kick events")
@@ -90,11 +91,11 @@ class StatsBombCornerLoader:
             division=division,
             season=season,
             gender=gender,
-            split=False,
-            fmt='df'
+            split=False
         )
 
         logger.info(f"Fetched {len(events)} total events")
+        logger.info(f"Events type: {type(events)}")
         return events
 
     def get_next_action(self, events_df: pd.DataFrame, corner_idx: int,
@@ -115,7 +116,7 @@ class StatsBombCornerLoader:
 
         corner_event = events_df.iloc[corner_idx]
         corner_possession = corner_event.get('possession', None)
-        corner_team = corner_event.get('team_name', None)
+        corner_team = corner_event.get('team', None)
         corner_timestamp = corner_event.get('timestamp', None)
 
         # Look at subsequent events
@@ -136,17 +137,17 @@ class StatsBombCornerLoader:
                 except:
                     pass
 
-            event_type = next_event.get('type_name', 'Unknown')
+            event_type = next_event.get('type', 'Unknown')
 
             # Key outcome events
             if event_type in ['Shot', 'Goal', 'Clearance', 'Interception',
                              'Duel', 'Foul Committed', 'Foul Won']:
                 return {
                     'outcome_type': event_type,
-                    'outcome_team': next_event.get('team_name', None),
-                    'outcome_player': next_event.get('player_name', None),
-                    'same_team': next_event.get('team_name') == corner_team,
-                    'shot_outcome': next_event.get('shot_outcome_name', None) if event_type == 'Shot' else None,
+                    'outcome_team': next_event.get('team', None),
+                    'outcome_player': next_event.get('player', None),
+                    'same_team': next_event.get('team') == corner_team,
+                    'shot_outcome': next_event.get('shot_outcome', None) if event_type == 'Shot' else None,
                     'location': next_event.get('location', None),
                     'index_diff': i - corner_idx
                 }
@@ -193,10 +194,17 @@ class StatsBombCornerLoader:
         # Fetch all events
         events = self.fetch_competition_events(country, division, season, gender)
 
-        # Filter corner kicks
+        # Filter corner kicks - pass_type can be string or NaN
+        def is_corner(pass_type):
+            if pd.isna(pass_type):
+                return False
+            if isinstance(pass_type, str):
+                return 'corner' in pass_type.lower()
+            return False
+
         corner_events = events[
-            (events['type_name'] == 'Pass') &
-            (events['pass_type_name'].str.contains('Corner', case=False, na=False))
+            (events['type'] == 'Pass') &
+            events['pass_type'].apply(is_corner)
         ].copy()
 
         logger.info(f"Processing {len(corner_events)} corner kicks...")
@@ -226,15 +234,15 @@ class StatsBombCornerLoader:
                 'period': corner.get('period', None),
                 'minute': corner.get('minute', None),
                 'second': corner.get('second', None),
-                'team': corner.get('team_name', None),
-                'player': corner.get('player_name', None),
+                'team': corner.get('team', None),
+                'player': corner.get('player', None),
                 'corner_x': corner_x,
                 'corner_y': corner_y,
                 'end_x': end_x,
                 'end_y': end_y,
-                'pass_height': corner.get('pass_height_name', None),
-                'pass_body_part': corner.get('pass_body_part_name', None),
-                'pass_outcome': corner.get('pass_outcome_name', 'Complete'),
+                'pass_height': corner.get('pass_height', None),
+                'pass_body_part': corner.get('pass_body_part', None),
+                'pass_outcome': corner.get('pass_outcome', 'Complete'),
             }
 
             # Add next action data

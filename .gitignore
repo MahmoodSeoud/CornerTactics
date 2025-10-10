@@ -136,3 +136,4 @@ secrets.yaml
 # Cache directories
 cache/
 .cache/
+.nfs*

@@ -1,113 +1,209 @@
 # CornerTactics
 
-Clean, simple soccer corner kick analysis pipeline that extracts 20-second video clips from SoccerNet broadcast videos around corner kick moments.
+A soccer analytics research project for analyzing and predicting corner kick outcomes using StatsBomb open data.
 
-## Status 🎯 READY FOR VIDEO EXTRACTION
+## Overview
 
-- **4,826 corner events identified** from 500 SoccerNet games
-- **Ready to extract 20-second video clips** around each corner kick
-- **Clean, Carmack-style codebase** - simple functions that do one thing well
-- **HPC-ready** with working SLURM scripts
+CornerTactics analyzes corner kick outcomes using StatsBomb's open data, combining event data with 360-degree player positioning freeze frames to understand what happens after corner kicks in professional soccer.
+
+**Key Data**: StatsBomb Open Data provides event data with 360 freeze frames showing exact player positions at the moment of corner kicks
+
+## Features
+
+- Download and process StatsBomb corner kick data with 360 player positions
+- Extract corner kick outcomes (shots, clearances, goals, etc.)
+- Visualize player positioning during corner kicks
+- SLURM cluster integration for large-scale data processing
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8+
+- Conda (recommended for environment management)
+- Access to SLURM cluster (optional, for large-scale processing)
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd CornerTactics
+```
+
+2. Create and activate conda environment:
+```bash
+conda create -n robo python=3.10
+conda activate robo
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 ## Quick Start
 
+### Download StatsBomb Corner Data
+
+**Local execution:**
 ```bash
-# Download SoccerNet dataset (HPC cluster)
-sbatch scripts/slurm/download_data.sh
-
-# Download GSR gamestate data (HPC cluster)
-sbatch scripts/slurm/download_gsr.sh
-
-# Unzip GSR gamestate data
-sbatch scripts/slurm/unzip_gsr_data.sh
-
-# Extract corner frames (HPC cluster)
-sbatch scripts/slurm/extract_corner_frames.sh
-
-# Or run locally
-python scripts/extract_corners.py --data-dir ./data
+python scripts/download_statsbomb_corners.py
 ```
 
-## Architecture
+**SLURM cluster:**
+```bash
+sbatch scripts/slurm/download_statsbomb_corners.sh
+```
 
-**Clean and simple** - following John Carmack's principles:
+This downloads all professional men's corner kicks with 360 player position data from StatsBomb's open dataset. Output is saved to `data/statsbomb/corners_360.csv`.
+
+### Visualize Corner Kicks
+
+```bash
+python scripts/visualize_corners_with_players.py
+```
+
+Creates a 2x2 grid visualization showing corner kicks with player positions (attacking team in blue, defending team in orange).
+
+### Using the StatsBomb Loader
+
+```python
+from src.statsbomb_loader import StatsBombCornerLoader
+
+# Initialize loader
+loader = StatsBombCornerLoader(output_dir="data/statsbomb")
+
+# Get available competitions
+competitions = loader.get_available_competitions()
+print(competitions)
+
+# Build corner dataset for specific competition
+df = loader.build_corner_dataset(
+    country="England",
+    division="Premier League",
+    season="2019/2020",
+    gender="male"
+)
+
+# Save dataset
+loader.save_dataset(df, "corners_epl_2019.csv")
+```
+
+## Data Structure
+
+### StatsBomb Corner Dataset
+
+The corner dataset (`corners_360.csv`) includes:
+
+- **Match Info**: `match_id`, `competition`, `season`, `home_team`, `away_team`, `match_date`
+- **Corner Event**: `minute`, `second`, `team`, `player`
+- **Location**: `location_x`, `location_y`, `end_x`, `end_y` (StatsBomb 120x80 pitch)
+- **Player Positions**: `num_attacking_players`, `num_defending_players`, `attacking_positions`, `defending_positions` (JSON format)
+- **Outcome**: Analysis of what happened after the corner (shot, clearance, etc.)
+
+### Directory Structure
 
 ```
 CornerTactics/
 ├── scripts/
-│   ├── extract_corners.py          # Main script (Carmack-refactored)
-│   └── slurm/                      # HPC job scripts
-│       ├── download_data.sh        # SoccerNet dataset download
-│       ├── download_gsr.sh         # GSR gamestate data download
-│       ├── unzip_gsr_data.sh       # Unzip GSR gamestate data
-│       └── extract_corner_frames.sh # Corner frame extraction
-└── src/                            # Library code
-    ├── data_loader.py              # Load games and corner events
-    └── download_soccernet.py       # SoccerNet dataset downloader
+│   ├── download_statsbomb_corners.py    # Download StatsBomb 360 data
+│   ├── visualize_corners_with_players.py # Create visualizations
+│   └── slurm/                            # SLURM job scripts
+│       ├── download_statsbomb_corners.sh
+│       └── visualize_corners_players.sh
+├── src/
+│   └── statsbomb_loader.py               # StatsBomb data loader
+├── data/                                  # Data directory (gitignored)
+│   ├── statsbomb/                        # StatsBomb data
+│   └── datasets/                         # Other datasets
+├── requirements.txt
+├── CLAUDE.md                             # Development guide for Claude Code
+└── README.md
 ```
 
-**Key principles:**
-- Each function does one thing well
-- Linear data flow, no deep nesting
-- Clear variable names, no magic strings
-- Early returns, obvious error handling
+## SLURM Cluster Usage
 
-## Output
+For large-scale data processing, submit jobs to the SLURM cluster:
 
-**20-second video clips around corner kicks:**
-
-```
-data/
-├── datasets/soccernet/
-│   ├── videos/                     # 720p broadcast videos
-│   │   ├── england_epl/
-│   │   ├── europe_uefa-champions-league/
-│   │   └── france_ligue-1/
-│   └── corner_clips/               # 🎯 Ready to extract 4,826 clips
-│       ├── visible/                # High-quality visible corners (4,221 clips)
-│       └── not_shown/              # Lower quality corners (605 clips)
-└── insights/
-    └── corner_clips_metadata.csv   # Complete metadata with paths
-```
-
-**What you get:**
-- 20-second MP4 clips (H.264/AAC) around each corner kick
-- Start 5 seconds before corner, end 15 seconds after
-- 4,826 total clips from 500 games
-- 87.5% are high-quality "visible" corners perfect for tactical analysis
-- Complete player movements, set pieces, and outcomes
-
-## External Dependencies
-
-**Current approach: Clone & Ignore**
 ```bash
-# Clone external repos locally (not tracked in git)
-git clone https://github.com/SoccerNet/sn-gamestate.git
-git clone https://github.com/SoccerNet/SoccerNet-v3.git
+# Submit job
+sbatch scripts/slurm/<script_name>.sh
+
+# Check job status
+squeue -u $USER
+
+# View logs
+tail -f logs/<job_name>_<job_id>.out
 ```
 
-**Why this approach:**
-- Simple setup for research projects
-- Fast iteration, allows local modifications
-- No complex submodule workflows
+All SLURM scripts automatically:
+- Activate the `robo` conda environment
+- Install required dependencies
+- Set up Python path
+- Save logs to `logs/` at project root
 
-**External repositories:**
-- `sn-gamestate/` - Advanced player tracking and visualization pipeline
-- `SoccerNet-v3/` - Dataset tools and utilities
+## Data Sources
 
-*For production use or team collaboration, consider git submodules. See CLAUDE.md for details.*
+### StatsBomb Open Data
 
-## Requirements
+Free access to event data and 360 freeze frames for select competitions:
+- Champions League
+- Premier League
+- La Liga
+- World Cup
+- And more...
 
-- Python 3.11+ (conda environment recommended)
-- ffmpeg (for video frame extraction)
-- SoccerNet dataset access
+Documentation: https://github.com/statsbomb/open-data
 
-## Next Steps
+## Development
 
-1. **Extract Video Clips**: Run the extraction to get 4,826 corner video clips
-2. **Player Tracking**: Use `sn-gamestate/` for frame-by-frame player tracking
-3. **Tactical Analysis**: Analyze corner kick formations, player movements, and outcomes
-4. **Machine Learning**: Train models on corner kick success patterns and defensive strategies
+### Code Philosophy
 
-*See CLAUDE.md for detailed technical information and implementation notes.*
+This project follows a data-oriented approach:
+- Efficient pandas operations over loops
+- Batch processing for large datasets
+- Clear, straightforward code
+- Minimal abstraction
+
+See `CLAUDE.md` for detailed development guidelines.
+
+### Adding New Features
+
+1. Test locally with small data samples
+2. Create corresponding SLURM script for cluster execution
+3. Add documentation to `CLAUDE.md`
+4. Never commit large data files (already in `.gitignore`)
+
+## Coordinate Systems
+
+**StatsBomb Pitch**: 120 units wide × 80 units tall
+- X-axis: 0 (defensive goal) to 120 (attacking goal)
+- Y-axis: 0 (bottom sideline) to 80 (top sideline)
+- Corners typically at (120, 0) or (120, 80)
+
+## Dependencies
+
+Core dependencies:
+- `pandas`: Data processing and analysis
+- `statsbombpy`: StatsBomb API client
+- `matplotlib`: Plotting
+- `mplsoccer`: Soccer-specific visualizations
+- `tqdm`: Progress bars
+- `requests`: HTTP requests
+
+See `requirements.txt` for complete list with versions.
+
+## License
+
+This project uses StatsBomb's open data, which is freely available for research and non-commercial use. Please review StatsBomb's [license terms](https://github.com/statsbomb/open-data/blob/master/LICENSE.pdf) before use.
+
+## Contributing
+
+This is a research project. For questions or collaboration inquiries, please open an issue.
+
+## Acknowledgments
+
+- **StatsBomb** for providing open event and 360 data
+- **SoccerNet** for video and tracking datasets
+- **mplsoccer** for soccer pitch visualization tools

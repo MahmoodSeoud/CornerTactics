@@ -4,302 +4,201 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a comprehensive soccer corner kick analysis pipeline that successfully extracted **4,826 corner kick frames** from 500 SoccerNet broadcast videos. The system achieved 100% extraction success and provides **4,221 high-quality visible corners** ready for state-of-the-art computer vision analysis (YOLOv8 + player detection) and geometric deep learning models for tactical analysis and outcome prediction.
+CornerTactics is a soccer analytics research project focused on analyzing corner kick outcomes using StatsBomb open data (event data + 360 player positioning freeze frames). The project aims to predict corner kick outcomes by combining event data with detailed player positioning at the moment of the corner kick.
 
-## Core Pipeline Architecture ✅ COMPLETED
+## Development Environment
 
-The system follows a clean, refactored architecture:
-1. **Data Loading** (`src/data_loader.py`) - Loads Labels-v2.json exclusively (ALL corners, no replays)
-2. **Frame Extraction** (`src/frame_extractor.py`) - Extracts single frames at exact corner moments
-3. **Batch Processing** (`src/corner_frame_pipeline.py`) - Processes all 500 games efficiently
-4. **Entry Point** (`extract_corners.py`) - Simple command-line interface
+### SLURM Cluster Setup
+This project runs on an HPC cluster using SLURM for job scheduling. All major data processing tasks should be submitted as SLURM jobs.
 
-The system successfully extracted **4,826 corner frames** with **100% success rate** and **856MB of data** ready for player position analysis.
+**Conda Environment**: `robo`
+```bash
+conda activate robo
+```
 
-## Data Structure
+**Common SLURM Parameters**:
+- Partition: `dgpu` (for GPU jobs) or standard CPU partition
+- Account: `researchers`
+- Typical resources: 4-8 CPUs, 8-16GB RAM, 2-4 hour time limits
 
+### Running SLURM Jobs
+```bash
+# Submit a job
+sbatch scripts/slurm/<script_name>.sh
+
+# Check job status
+squeue -u $USER
+
+# View logs (created in logs/ at project root)
+tail -f logs/<job_name>_<job_id>.out
+tail -f logs/<job_name>_<job_id>.err
+```
+
+## Data Architecture
+
+### Data Sources
+
+**StatsBomb Open Data** (`data/statsbomb/`)
+- Event data with corner kick events
+- 360 freeze frame data with player positions at corner kick moments
+- Download script: `scripts/download_statsbomb_corners.py`
+- SLURM job: `scripts/slurm/download_statsbomb_corners.sh`
+- Output: `data/statsbomb/corners_360.csv`
+
+### Data Directory Structure
 ```
 data/
-├── datasets/soccernet/
-│   ├── videos/                  # 720p broadcast videos (500 games with both videos + labels)
-│   │   ├── england_epl/         # EPL matches with Labels-v2.json + Labels-v3.json
-│   │   ├── europe_uefa-champions-league/
-│   │   └── france_ligue-1/
-│   ├── corner_frames/           # ✅ 4,826 extracted corner frames (856MB)
-│   └── tracking/                # SNMOT tracking sequences for validation
-│       ├── train/               # 6 corner sequences with ground truth
-│       ├── test/
-│       └── challenge/
-└── insights/                    # ✅ corner_frames_metadata.csv ready
+└── statsbomb/              # StatsBomb data
+    └── corners_360.csv     # Corner kicks with player positions
 ```
 
-### Current Status & Next Steps
-- **Extraction**: ✅ COMPLETED - 4,826 corner frames extracted (100% success rate)
-- **Data Quality**: ✅ 4,221 visible corners (87.5%) ready for analysis
-- **Storage**: ✅ 856MB of corner frame data organized and accessible
-- **Labels**: ✅ Using Labels-v2.json exclusively (contains ALL corners vs v3's sparse replays)
-- **Player Detection**: 🔄 IN PROGRESS - YOLOv8x detecting players on all corner frames
-- **GSR Pipeline**: 🔄 INSTALLING - Full SoccerNet Game State Reconstruction system
-- **Pitch Coordinates**: ✅ Extract real-world (x,y) positions + team ID + jersey numbers
-- **Next Phase**: Geometric deep learning on player tactical formations
-- **Data Quality**: State-of-the-art accuracy with complete player identification
+**Important**: All data directories are gitignored. Large datasets (videos, CSVs, JSONs) are never committed to git.
 
-## Common Commands
+## Core Modules
 
-### Corner Frame Extraction ✅ COMPLETED
-```bash
-# Extract corner frames (COMPLETED - 4,826 frames extracted)
-python scripts/extract_corners.py --data-dir data
+### `src/statsbomb_loader.py`
+Main module for loading and processing StatsBomb data.
 
-# Filter visible corners for analysis
-python -c "
-import pandas as pd
-df = pd.read_csv('data/insights/corner_frames_metadata.csv')
-visible = df[df.visibility == 'visible']
-print(f'Visible corners: {len(visible)} of {len(df)}')
-"
+**Key Classes**:
+- `StatsBombCornerLoader`: Loads corner kick events and 360 player positioning data
+  - `get_available_competitions()`: Fetch available competitions
+  - `fetch_competition_events()`: Get all events for a competition
+  - `build_corner_dataset()`: Build dataset with corner events and outcomes
+  - `get_next_action()`: Analyze outcome after corner kick (shot, clearance, etc.)
+
+**Usage Example**:
+```python
+from src.statsbomb_loader import StatsBombCornerLoader
+
+loader = StatsBombCornerLoader(output_dir="data/statsbomb")
+df = loader.build_corner_dataset(
+    country="England",
+    division="Premier League",
+    season="2019/2020"
+)
+loader.save_dataset(df, "corners_epl_2019.csv")
 ```
 
-### Player Detection & Pitch Coordinates ✅ ACTIVE
-```bash
-# Run YOLOv8 on all corner frames (IN PROGRESS)
-python src/detect_players.py --frames-dir data/datasets/soccernet/corner_frames --output-dir data/player_detections --model yolov8x --confidence 0.4 --visualize
+## Key Scripts
 
-# Extract pitch coordinates for corners with Labels-v3 data
-python src/corner_pitch_processor.py
+### Data Download Scripts
 
-# Check results
-head data/insights/corner_pitch_summary.csv
-```
+**`scripts/download_statsbomb_corners.py`**
+- Fast pandas-based StatsBomb 360 downloader
+- Filters for professional men's competitions only (excludes youth/women's)
+- Priority order: Champions League, La Liga, Premier League, etc.
+- Extracts corners with 360 player position data
+- Output: `data/statsbomb/corners_360.csv` with player positions (JSON format)
+- Run via: `scripts/slurm/download_statsbomb_corners.sh`
 
-### SLURM Jobs (HPC cluster)
-```bash
-# Download SoccerNet data (Labels-v2.json + Labels-v3.json + videos + tracking)
-sbatch scripts/slurm/download_data.sh
+**`scripts/visualize_corners_with_players.py`**
+- Creates 2x2 grid visualization of corner kicks with player positions
+- Blue = attacking team, Orange = defending team, Red star = corner kick
+- Uses mplsoccer for pitch visualization
+- Output: `data/statsbomb/corners_with_players_2x2.png`
 
-# Download GSR (Game State Reconstruction) data
-sbatch scripts/slurm/download_gsr.sh
+### SLURM Scripts (`scripts/slurm/`)
 
-# Extract corner frames ✅ COMPLETED (4,826 frames extracted)
-sbatch scripts/slurm/extract_corner_frames.sh
-
-# Unzip GSR gamestate data
-sbatch scripts/slurm/unzip_gsr_data.sh
-
-# Next: Player detection with GPU (TO BE IMPLEMENTED)
-sbatch scripts/slurm/detect_players.sh
-```
-
-### Quick Checks
-```bash
-# Check extracted corner frames ✅
-ls data/datasets/soccernet/corner_frames/ | wc -l  # Should show 4826
-
-# Check corner metadata ✅
-head data/insights/corner_frames_metadata.csv
-
-# Find corner sequences with ground truth
-find data/datasets/soccernet/tracking -name "gameinfo.ini" -exec grep -l "Corner" {} \;
-
-# Check visibility distribution
-python -c "
-import pandas as pd
-df = pd.read_csv('data/insights/corner_frames_metadata.csv')
-print(df.visibility.value_counts())
-print(f'Success rate: {len(df)} corners extracted')
-"
-```
-
-## Key Technical Details
-
-- **Video Format**: MKV files (1_720p.mkv for first half, 2_720p.mkv for second half)
-- **Labels**: Labels-v2.json exclusively (contains ALL corners, ~10 per game vs v3's ~0.2)
-- **Corner Detection**: Extracts only from Labels-v2.json to avoid replays from v3
-- **Frame Extraction**: Single frame at exact corner moment using ffmpeg
-- **Output Format**: CSV with game, half, time, team, visibility, frame_path columns
-- **Dataset Stats**: 4,826 total corners, 4,221 visible (87.5% usable)
-- **Quality Filter**: Use `visibility == "visible"` for high-quality analysis
-- **Storage**: 856MB total, ~200KB per frame (JPEG)
-- **Processing Time**: ~23 minutes for 4,826 corners (100% success rate)
-- **Success**: 26x improvement from 180 to 4,826 corners!
-
-## External Dependencies
-
-This project integrates with several external GitHub repositories. Here's our approach:
-
-### Current Method: Clone & Ignore
-```bash
-# External tools cloned locally but not tracked in git
-git clone https://github.com/SoccerNet/sn-gamestate.git
-git clone https://github.com/SoccerNet/SoccerNet-v3.git
-```
-
-**Pros:** Simple, allows local modifications, fast setup
-**Cons:** No version tracking, manual updates
-
-### Alternative: Git Submodules (for stable dependencies)
-```bash
-# If you need version tracking and reproducibility
-git submodule add https://github.com/SoccerNet/sn-gamestate.git
-git submodule update --init --recursive
-```
-
-**Use submodules when:**
-- You need a specific version pinned
-- Multiple people work on the project
-- You want reproducible builds
-
-**Current external repos:**
-- `sn-gamestate/` - SoccerNet Game State Reconstruction pipeline
-- `SoccerNet-v3/` - SoccerNet dataset tools and utilities
-
-## Important Constraints
-
-- Pipeline processes entire dataset (4,826 corners from 500 games)
-- Requires both Labels-v2.json (comprehensive) and video files
-- Frame extraction needs ffmpeg for video processing
-- Use `visibility == "visible"` filter for ML (4,221 high-quality corners)
-- Video quality is 720p (high quality) for detailed player analysis
-
-## File Responsibilities
-
-- `scripts/extract_corners.py` - ✅ Main entry point for corner frame extraction
-- `src/data_loader.py` - ✅ Game discovery and Labels-v2/v3 parsing
-- `src/detect_players.py` - 🔄 YOLOv8x player detection on corner frames
-- `src/pitch_coordinates.py` - ✅ NEW: Camera calibration & pitch coordinate mapping
-- `src/corner_pitch_processor.py` - ✅ NEW: Integration pipeline for pitch coordinates
-- `src/download_soccernet.py` - ✅ SoccerNet dataset downloads (both label types)
-- `scripts/slurm/*.sh` - ✅ Clean HPC cluster job scripts
-
-## SLURM Scripts Status ✅ COMPLETED
-
-Clean, working SLURM scripts:
-- ✅ `scripts/slurm/download_data.sh` - Downloads all SoccerNet data
-- ✅ `scripts/slurm/download_gsr.sh` - Downloads GSR gamestate data
-- ✅ `scripts/slurm/extract_corner_frames.sh` - Extracts corner frames (COMPLETED)
-- ✅ `scripts/slurm/unzip_gsr_data.sh` - Unzips GSR gamestate data to correct structure
-- ✅ Proper conda environment activation (`conda activate robo`)
-- ✅ Correct directory paths (`corner_frames/` not `soccernet_corner_frames/`)
-- ✅ 100% success rate achieved (4,826/4,826 corners)
-
-
-# Football Corner Prediction ML Project
-
-## Geometric Deep Learning Context
-
-### Core Principles
-Geometric Deep Learning provides a unified framework for neural networks by incorporating geometric structure and symmetries. Key principles:
-
-- **Geometric Priors**: Leverage inherent symmetries and structure in data (e.g., spatial relationships on football pitch)
-- **Invariance & Equivariance**: Models should be invariant to irrelevant transformations (rotation, translation) but equivariant to meaningful ones
-- **Graph Neural Networks**: Represent players and ball as nodes with edges encoding relationships/distances
-
-### Application to Football Corner Kicks
-Following TacticAI's approach:
-
-- **Player Positions as Graphs**: Each player is a node, edges represent spatial relationships
-- **Temporal Dynamics**: Track how positions evolve during corner kick sequence  
-- **Geometric Features**: Distance matrices, angles, formation shapes as input features
-- **Data Efficiency**: GDL principles help with limited football data by encoding domain knowledge
-
-### Key Technical Components
-1. **Graph Representation**: Convert player coordinates to graph structure
-2. **Message Passing**: Information flow between connected players
-3. **Pooling Operations**: Aggregate local patterns into global tactical understanding
-4. **Geometric Invariances**: Ensure model works regardless of pitch orientation/camera angle
-
-### References
-- [Geometric Deep Learning: Grids, Groups, Graphs, Geodesics, and Gauges](https://arxiv.org/abs/2104.13478) - Foundational framework
-- [TacticAI: an AI assistant for football tactics](https://arxiv.org/abs/2310.10553) - Direct application to corner kicks
-- [Geometric Deep Learning Guide](https://geometricdeeplearning.com/) - Comprehensive resource
-- [YouTube Playlist](https://youtube.com/playlist?list=PLn2-dEmQeTfQ8YVuHBOvAhUlnIPYxkeu3&si=xBYpgKYo3szmUOHM) - Video tutorials
-
-### Implementation Notes for Claude Code
-When implementing:
-- Use PyTorch Geometric for graph neural networks
-- Represent each corner kick as a heterogeneous graph (players, ball, goal posts as different node types)
-- Apply geometric transformations to augment limited training data
-- Focus on interpretable geometric features that coaches can understand
-
-# SoccerNet Game State Reconstruction (GSR) Setup
-
-## Overview
-The SoccerNet Game State Reconstruction pipeline tracks and identifies soccer players from broadcast video to create minimap visualizations showing player positions, jersey numbers, and team affiliations.
-
-## Installation Issues & Solutions ✅ RESOLVED
-
-### 1. PyTorch + Transformers Compatibility Issue
-**Problem**: The repository has conflicting dependency requirements:
-- `pyproject.toml` pins `torch==1.13.1` (for GPU compatibility)
-- But newer `huggingface-hub` requires `transformers>=4.48.0`
-- This creates a version conflict causing import errors
-
-**Solution**: Pin `transformers==4.47.1` in `pyproject.toml`:
-```toml
-dependencies = [
-    "torch==1.13.1",
-    "transformers==4.47.1",  # Fixed version for torch 1.13.1 compatibility
-    # ... other deps
-]
-```
-
-**Reference**: [GitHub Issue #31](https://github.com/SoccerNet/sn-gamestate/issues/31#issue-3262738825)
-
-### 2. SSL Certificate Issue in UV Container Environment
-**Problem**: UV creates a container environment where SSL certificates are in different paths than the host system:
-- Host uses: `/opt/itu/easybuild/software/Anaconda3/2024.02-1/ssl/cert.pem`
-- UV container expects: `/etc/ssl/certs/ca-certificates.crt` (missing)
-- UV container has: `/etc/ssl/certs/ca-bundle.crt` (Rocky Linux format)
-
-**Solution**: Set SSL environment variables before running UV commands:
-```bash
-export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
-export CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
-uv run python -c "from SoccerNet.Downloader import SoccerNetDownloader; ..."
-```
-
-### 3. Dataset Version Mismatch
-**Problem**: Code expects `gamestate-2025` but SoccerNet provides `gamestate-2024`
-
-**Solution**: Create symlink after download:
-```bash
-ln -s gamestate-2024 data/SoccerNetGS/gamestate-2025
-```
-
-## Working SLURM Script Template
+All SLURM scripts follow this pattern:
 ```bash
 #!/bin/bash
-#SBATCH --job-name=soccernet_gsr
-#SBATCH --partition=acltr
-#SBATCH --gres=gpu:1
-#SBATCH --mem=16G
+#SBATCH --job-name=<name>
+#SBATCH --partition=dgpu
+#SBATCH --account=researchers
+#SBATCH --output=logs/<name>_%j.out
+#SBATCH --error=logs/<name>_%j.err
 #SBATCH --time=02:00:00
+#SBATCH --mem=8G
+#SBATCH --cpus-per-task=4
 
-cd /home/mseo/CornerTactics/sn-gamestate
+source /opt/itu/easybuild/software/Anaconda3/2024.02-1/etc/profile.d/conda.sh
+conda activate robo
+cd /home/mseo/CornerTactics
+export PYTHONPATH="${PYTHONPATH}:/home/mseo/CornerTactics"
 
-# Fix SSL certificates for UV container
-export SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
-export CURL_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt
+# Install dependencies
+pip install <dependencies> --quiet
 
-# Install dependencies with fixed versions
-uv pip install -e .
-uv run mim install mmcv==2.0.1
-
-# Run GSR pipeline
-uv run tracklab -cn soccernet
+# Run script
+python scripts/<script_name>.py
 ```
 
-## GSR Pipeline Components
-- **Detection**: YOLOv11 for player detection
-- **Re-ID**: PRTReid for player re-identification
-- **Tracking**: BPBreID + StrongSORT
-- **Jersey Numbers**: MMOCR for number recognition
-- **Team Assignment**: K-means on embeddings
-- **Pitch Mapping**: Camera calibration (NBJW/PnLCalib)
-- **Visualization**: MP4 output with minimap overlay
+**Available SLURM scripts**:
+- `download_statsbomb_corners.sh`: Download StatsBomb 360 corner data
+- `visualize_corners_players.sh`: Create corner visualizations
+- `cleanup_archives.sh`: Clean up downloaded archive files
 
-## Output
-Successful runs generate MP4 visualizations at:
+## Dependencies
+
+Core dependencies (install as needed):
+```bash
+pip install statsbombpy pandas tqdm matplotlib mplsoccer requests
 ```
-outputs/sn-gamestate/{date}/{time}/visualization/videos/
-```
+
+- **statsbombpy**: StatsBomb data access
+- **pandas**: Data processing
+- **tqdm**: Progress bars
+- **matplotlib**: Plotting
+- **mplsoccer**: Soccer pitch visualizations
+- **requests**: HTTP requests for data download
+
+## Development Workflow
+
+### Adding New Data Sources
+
+1. Create download script in `scripts/`
+2. Create corresponding SLURM script in `scripts/slurm/`
+3. Test locally first with small subset
+4. Submit SLURM job for full download
+5. Add output paths to `.gitignore` if needed
+
+### Working with Corner Data
+
+The main data structure for corners includes:
+- Match metadata (competition, season, teams, date)
+- Corner event (minute, second, team, player)
+- Corner location (x, y coordinates on 120x80 StatsBomb pitch)
+- Pass end location (where ball was aimed)
+- Player positions (attacking/defending positions in JSON format)
+- Outcome analysis (next action: shot, clearance, interception, etc.)
+
+### Coordinate Systems
+
+**StatsBomb Pitch**: 120x80 units
+- X: 0 (defensive end) to 120 (attacking end)
+- Y: 0 (bottom) to 80 (top)
+- Corners typically at (120, 0) or (120, 80)
+
+## Code Philosophy
+
+Think like John Carmack when writing code:
+- Prefer data-oriented design with pandas operations over loops
+- Use efficient batch processing for large datasets
+- Minimize memory allocation and data copying
+- Write clear, straightforward code without unnecessary abstractions
+- Comment complex logic, especially event matching and coordinate transformations
+
+## Git Workflow
+
+**Main branch**: `main`
+
+**Current branch**: `gsr-corner-clip-poc`
+
+**Commit message style** (based on recent commits):
+- Descriptive, action-oriented messages
+- Examples: "Add StatsBomb integration for corner kick outcome prediction"
+- Keep messages concise but informative
+
+## Important Notes
+
+1. **Large Files**: Never commit videos (*.mp4), large CSVs, or model files. All data paths are gitignored.
+
+2. **SLURM Jobs**: Always test scripts locally with small data samples before submitting long-running SLURM jobs.
+
+3. **Data Paths**: Use absolute paths in SLURM scripts (`/home/mseo/CornerTactics`), but relative paths in Python code for portability.
+
+4. **Player Position Data**: StatsBomb 360 freeze frames are stored as JSON strings in the CSV. Parse with `json.loads()` when needed.
+
+5. **Conda Environment**: The `robo` environment should be activated for all work. Dependencies are installed dynamically in SLURM scripts to ensure consistency.
+
+6. **Log Files**: SLURM logs are created in `logs/` at the project root (e.g., `#SBATCH --output=logs/sb_corners_%j.out` creates `/home/mseo/CornerTactics/logs/sb_corners_<job_id>.out`). Always check both .out and .err files when debugging.
