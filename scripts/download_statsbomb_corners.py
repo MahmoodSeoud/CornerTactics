@@ -36,7 +36,7 @@ except ImportError:
     print("✓ statsbombpy installed")
 
 # Create output directory
-output_dir = Path("data/statsbomb")
+output_dir = Path("data/datasets/statsbomb")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # Step 1: Get all competitions and matches
