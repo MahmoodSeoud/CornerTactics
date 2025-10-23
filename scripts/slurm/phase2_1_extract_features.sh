@@ -41,7 +41,7 @@ python scripts/extract_corner_features.py
 if [ $? -eq 0 ]; then
     echo ""
     echo "✅ Feature extraction completed successfully"
-    echo "Output files created in data/node_features/"
+    echo "Output files created in data/features/node_features/"
 else
     echo ""
     echo "❌ Feature extraction failed"

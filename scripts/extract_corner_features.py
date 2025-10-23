@@ -13,10 +13,10 @@ Usage:
     python scripts/extract_corner_features.py
 
 Output:
-    - data/datasets/statsbomb/corners_with_node_features.csv
-    - data/datasets/skillcorner/corners_with_node_features.csv
-    - data/node_features/statsbomb_player_features.parquet
-    - data/node_features/skillcorner_player_features.parquet
+    - data/raw/statsbomb/corners_with_node_features.csv
+    - data/raw/skillcorner/corners_with_node_features.csv
+    - data/features/node_features/statsbomb_player_features.parquet
+    - data/features/node_features/skillcorner_player_features.parquet
 """
 
 import sys
@@ -34,8 +34,8 @@ from src.feature_engineering import FeatureEngineer, PlayerFeatures
 
 
 def extract_statsbomb_features(
-    corners_path: str = "data/results/statsbomb/corners_360_with_outcomes.csv",
-    output_dir: str = "data/node_features"
+    corners_path: str = "data/raw/statsbomb/corners_360_with_outcomes.csv",
+    output_dir: str = "data/features/node_features"
 ) -> pd.DataFrame:
     """
     Extract features from StatsBomb corners dataset.
@@ -105,9 +105,9 @@ def extract_statsbomb_features(
 
 
 def extract_skillcorner_features(
-    corners_path: str = "data/results/skillcorner/skillcorner_corners_with_outcomes.csv",
-    tracking_base_dir: str = "data/datasets/skillcorner/data/matches",
-    output_dir: str = "data/node_features"
+    corners_path: str = "data/raw/skillcorner/skillcorner_corners_with_outcomes.csv",
+    tracking_base_dir: str = "data/raw/skillcorner/data/matches",
+    output_dir: str = "data/features/node_features"
 ) -> pd.DataFrame:
     """
     Extract features from SkillCorner corners dataset with tracking data.
@@ -253,10 +253,10 @@ def main():
     print(f"SkillCorner: {len(skillcorner_features)} player features extracted")
     print(f"Total: {len(statsbomb_features) + len(skillcorner_features)} player features")
     print("\nOutput files:")
-    print("  - data/node_features/statsbomb_player_features.parquet")
-    print("  - data/node_features/statsbomb_player_features.csv")
-    print("  - data/node_features/skillcorner_player_features.parquet")
-    print("  - data/node_features/skillcorner_player_features.csv")
+    print("  - data/features/node_features/statsbomb_player_features.parquet")
+    print("  - data/features/node_features/statsbomb_player_features.csv")
+    print("  - data/features/node_features/skillcorner_player_features.parquet")
+    print("  - data/features/node_features/skillcorner_player_features.csv")
 
 
 if __name__ == "__main__":

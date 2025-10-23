@@ -36,23 +36,48 @@ tail -f logs/<job_name>_<job_id>.err
 
 ## Data Architecture
 
+### Data Directory Structure
+```
+data/
+├── raw/                    # Original downloaded data
+│   ├── statsbomb/         # StatsBomb event + 360 freeze frame data
+│   ├── skillcorner/       # SkillCorner tracking data
+│   ├── soccernet/         # SoccerNet videos and labels
+│   └── soccersynth/       # Synthetic soccer data
+├── processed/             # Cleaned/unified datasets
+│   ├── unified_corners_dataset.csv
+│   └── unified_corners_dataset.parquet
+├── features/              # Extracted features
+│   └── node_features/     # Graph node features
+└── results/               # Analysis outputs
+    ├── skillcorner/
+    ├── statsbomb/
+    └── unified/
+```
+
+**Important**: All data directories are gitignored. Large datasets (videos, CSVs, JSONs) are never committed to git.
+
 ### Data Sources
 
-**StatsBomb Open Data** (`data/statsbomb/`)
+**StatsBomb Open Data** (`data/raw/statsbomb/`)
 - Event data with corner kick events
 - 360 freeze frame data with player positions at corner kick moments
 - Download script: `scripts/download_statsbomb_corners.py`
 - SLURM job: `scripts/slurm/download_statsbomb_corners.sh`
-- Output: `data/statsbomb/corners_360.csv`
+- Output: `data/raw/statsbomb/corners_360.csv`
 
-### Data Directory Structure
-```
-data/
-└── statsbomb/              # StatsBomb data
-    └── corners_360.csv     # Corner kicks with player positions
-```
+**SkillCorner Data** (`data/raw/skillcorner/`)
+- Player tracking data with x,y coordinates
+- Output: Processed tracking data files
 
-**Important**: All data directories are gitignored. Large datasets (videos, CSVs, JSONs) are never committed to git.
+**SoccerNet Data** (`data/raw/soccernet/`)
+- Video footage and event labels
+- Corner clip extraction and frame processing
+- Size: ~1.1TB of video data
+
+**Unified Dataset** (`data/processed/`)
+- Combined corner kick data from all sources
+- Files: `unified_corners_dataset.csv`, `unified_corners_dataset.parquet`
 
 ## Core Modules
 
@@ -70,7 +95,7 @@ Main module for loading and processing StatsBomb data.
 ```python
 from src.statsbomb_loader import StatsBombCornerLoader
 
-loader = StatsBombCornerLoader(output_dir="data/statsbomb")
+loader = StatsBombCornerLoader(output_dir="data/raw/statsbomb")
 df = loader.build_corner_dataset(
     country="England",
     division="Premier League",
@@ -88,14 +113,14 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 - Filters for professional men's competitions only (excludes youth/women's)
 - Priority order: Champions League, La Liga, Premier League, etc.
 - Extracts corners with 360 player position data
-- Output: `data/statsbomb/corners_360.csv` with player positions (JSON format)
+- Output: `data/raw/statsbomb/corners_360.csv` with player positions (JSON format)
 - Run via: `scripts/slurm/download_statsbomb_corners.sh`
 
 **`scripts/visualize_corners_with_players.py`**
 - Creates 2x2 grid visualization of corner kicks with player positions
 - Blue = attacking team, Orange = defending team, Red star = corner kick
 - Uses mplsoccer for pitch visualization
-- Output: `data/statsbomb/corners_with_players_2x2.png`
+- Output: `data/results/statsbomb/corners_with_players_2x2.png`
 
 **`scripts/visualize_single_corner.py`**
 - Individual corner visualization script
@@ -104,14 +129,14 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 - Transparent players (70% alpha) for overlap visibility
 - Dotted line trajectory with heat spot for ball landing
 - Useful for quick testing or analyzing specific corners
-- Output: `data/statsbomb/single_corner_<corner_id>.png`
+- Output: `data/results/statsbomb/single_corner_<corner_id>.png`
 - Run via: `scripts/slurm/visualize_single_corner.sh`
 
 **`scripts/visualize_all_corners.py`**
 - Batch generation of all corner kick visualizations
 - Processes entire dataset (~1,118 corners)
 - Same broadcast-style presentation as test script
-- Output: `data/statsbomb/corner_images/corner_<corner_id>.png`
+- Output: `data/results/statsbomb/corner_images/corner_<corner_id>.png`
 - Progress bar via tqdm
 - Run via: `scripts/slurm/visualize_all_corners.sh`
 
@@ -168,9 +193,12 @@ pip install statsbombpy pandas tqdm matplotlib mplsoccer requests
 
 1. Create download script in `scripts/`
 2. Create corresponding SLURM script in `scripts/slurm/`
-3. Test locally first with small subset
-4. Submit SLURM job for full download
-5. Add output paths to `.gitignore` if needed
+3. **Save raw data to `data/raw/<source_name>/`**
+4. **Save processed/unified data to `data/processed/`**
+5. **Save analysis outputs to `data/results/<source_name>/`**
+6. Test locally first with small subset
+7. Submit SLURM job for full download
+8. Add output paths to `.gitignore` if needed
 
 ### Working with Corner Data
 

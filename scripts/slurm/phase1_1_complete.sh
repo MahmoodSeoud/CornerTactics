@@ -85,7 +85,7 @@ echo ""
 # Uncomment to enable SoccerNet download:
 # echo "Starting SoccerNet download..."
 # python -c "from SoccerNet.Downloader import SoccerNetDownloader as SNdl
-# mySNdl = SNdl(LocalDirectory='data/datasets/soccernet')
+# mySNdl = SNdl(LocalDirectory='data/raw/soccernet')
 # mySNdl.downloadGames(files=['Labels-v2.json', 'Labels-v3.json'], split=['train', 'valid', 'test'], password='$SOCCERNET_PASSWORD')
 # mySNdl.downloadGames(files=['1_720p.mkv', '2_720p.mkv'], split=['train', 'valid', 'test'], password='$SOCCERNET_PASSWORD')
 # mySNdl.downloadGames(files=['gameinfo.ini'], split=['train', 'valid', 'test'], password='$SOCCERNET_PASSWORD')"
@@ -104,11 +104,11 @@ echo "======================================================================"
 echo ""
 
 # Check if SoccerNet data exists
-if [ -d "data/datasets/soccernet" ] && [ "$(find data/datasets/soccernet -name 'Labels*.json' | head -1)" ]; then
+if [ -d "data/raw/soccernet" ] && [ "$(find data/raw/soccernet -name 'Labels*.json' | head -1)" ]; then
     echo "SoccerNet data found, extracting corner clips..."
     python scripts/extract_soccernet_corners.py \
-        --data-dir data/datasets/soccernet \
-        --output data/datasets/soccernet/soccernet_corners.csv \
+        --data-dir data/raw/soccernet \
+        --output data/raw/soccernet/soccernet_corners.csv \
         --split-by-visibility
     step3_status=$?
 
@@ -179,57 +179,57 @@ echo "======================================================================"
 echo "Completed at: $(date)"
 echo ""
 echo "Output Files:"
-echo "  1. data/datasets/statsbomb/corners_360.csv"
-echo "  2. data/datasets/statsbomb/corners_360_with_outcomes.csv"
-echo "  3. data/datasets/skillcorner/skillcorner_corners.csv"
-if [ -f "data/datasets/soccernet/soccernet_corners.csv" ]; then
-    echo "  4. data/datasets/soccernet/soccernet_corners.csv"
+echo "  1. data/raw/statsbomb/corners_360.csv"
+echo "  2. data/raw/statsbomb/corners_360_with_outcomes.csv"
+echo "  3. data/raw/skillcorner/skillcorner_corners.csv"
+if [ -f "data/raw/soccernet/soccernet_corners.csv" ]; then
+    echo "  4. data/raw/soccernet/soccernet_corners.csv"
 fi
-echo "  5. data/unified_corners_dataset.parquet"
-echo "  6. data/unified_corners_dataset.csv"
+echo "  5. data/processed/unified_corners_dataset.parquet"
+echo "  6. data/processed/unified_corners_dataset.csv"
 echo ""
 
 # Verify all critical files exist
 all_good=true
 
 echo "Verification:"
-if [ -f "data/datasets/statsbomb/corners_360.csv" ]; then
-    echo "  ✓ StatsBomb corners: $(wc -l < data/datasets/statsbomb/corners_360.csv) lines, $(du -h data/datasets/statsbomb/corners_360.csv | cut -f1)"
+if [ -f "data/raw/statsbomb/corners_360.csv" ]; then
+    echo "  ✓ StatsBomb corners: $(wc -l < data/raw/statsbomb/corners_360.csv) lines, $(du -h data/raw/statsbomb/corners_360.csv | cut -f1)"
 else
-    echo "  ✗ Missing: data/datasets/statsbomb/corners_360.csv"
+    echo "  ✗ Missing: data/raw/statsbomb/corners_360.csv"
     all_good=false
 fi
 
-if [ -f "data/datasets/skillcorner/skillcorner_corners.csv" ]; then
-    echo "  ✓ SkillCorner corners: $(wc -l < data/datasets/skillcorner/skillcorner_corners.csv) lines, $(du -h data/datasets/skillcorner/skillcorner_corners.csv | cut -f1)"
+if [ -f "data/raw/skillcorner/skillcorner_corners.csv" ]; then
+    echo "  ✓ SkillCorner corners: $(wc -l < data/raw/skillcorner/skillcorner_corners.csv) lines, $(du -h data/raw/skillcorner/skillcorner_corners.csv | cut -f1)"
 else
-    echo "  ✗ Missing: data/datasets/skillcorner/skillcorner_corners.csv"
+    echo "  ✗ Missing: data/raw/skillcorner/skillcorner_corners.csv"
     all_good=false
 fi
 
-if [ -f "data/datasets/statsbomb/corners_360_with_outcomes.csv" ]; then
-    echo "  ✓ StatsBomb outcomes: $(wc -l < data/datasets/statsbomb/corners_360_with_outcomes.csv) lines, $(du -h data/datasets/statsbomb/corners_360_with_outcomes.csv | cut -f1)"
+if [ -f "data/raw/statsbomb/corners_360_with_outcomes.csv" ]; then
+    echo "  ✓ StatsBomb outcomes: $(wc -l < data/raw/statsbomb/corners_360_with_outcomes.csv) lines, $(du -h data/raw/statsbomb/corners_360_with_outcomes.csv | cut -f1)"
 else
-    echo "  ✗ Missing: data/datasets/statsbomb/corners_360_with_outcomes.csv"
+    echo "  ✗ Missing: data/raw/statsbomb/corners_360_with_outcomes.csv"
     all_good=false
 fi
 
-if [ -f "data/unified_corners_dataset.parquet" ]; then
-    echo "  ✓ Unified dataset (parquet): $(du -h data/unified_corners_dataset.parquet | cut -f1)"
+if [ -f "data/processed/unified_corners_dataset.parquet" ]; then
+    echo "  ✓ Unified dataset (parquet): $(du -h data/processed/unified_corners_dataset.parquet | cut -f1)"
 else
-    echo "  ✗ Missing: data/unified_corners_dataset.parquet"
+    echo "  ✗ Missing: data/processed/unified_corners_dataset.parquet"
     all_good=false
 fi
 
-if [ -f "data/unified_corners_dataset.csv" ]; then
-    echo "  ✓ Unified dataset (CSV): $(du -h data/unified_corners_dataset.csv | cut -f1)"
+if [ -f "data/processed/unified_corners_dataset.csv" ]; then
+    echo "  ✓ Unified dataset (CSV): $(du -h data/processed/unified_corners_dataset.csv | cut -f1)"
 else
-    echo "  ✗ Missing: data/unified_corners_dataset.csv"
+    echo "  ✗ Missing: data/processed/unified_corners_dataset.csv"
     all_good=false
 fi
 
-if [ -f "data/datasets/soccernet/soccernet_corners.csv" ]; then
-    echo "  ✓ SoccerNet corners: $(wc -l < data/datasets/soccernet/soccernet_corners.csv) lines, $(du -h data/datasets/soccernet/soccernet_corners.csv | cut -f1)"
+if [ -f "data/raw/soccernet/soccernet_corners.csv" ]; then
+    echo "  ✓ SoccerNet corners: $(wc -l < data/raw/soccernet/soccernet_corners.csv) lines, $(du -h data/raw/soccernet/soccernet_corners.csv | cut -f1)"
 fi
 
 echo ""

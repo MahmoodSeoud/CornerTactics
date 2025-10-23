@@ -90,7 +90,7 @@ echo "======================================================================"
 echo ""
 
 # Check if SoccerNet data exists
-if [ -d "data/datasets/soccernet" ] && [ -f "data/datasets/soccernet/soccernet_corners.csv" ]; then
+if [ -d "data/raw/soccernet" ] && [ -f "data/raw/soccernet/soccernet_corners.csv" ]; then
     echo "SoccerNet corners found, applying labels..."
     python scripts/label_soccernet_outcomes.py
     step3_status=$?
@@ -132,29 +132,29 @@ echo "Completed at: $(date)"
 echo ""
 
 echo "Output Files:"
-echo "  1. data/datasets/statsbomb/corners_360_with_outcomes.csv"
-if [ -f "data/datasets/skillcorner/skillcorner_corners_with_outcomes.csv" ]; then
-    echo "  2. data/datasets/skillcorner/skillcorner_corners_with_outcomes.csv"
+echo "  1. data/raw/statsbomb/corners_360_with_outcomes.csv"
+if [ -f "data/raw/skillcorner/skillcorner_corners_with_outcomes.csv" ]; then
+    echo "  2. data/raw/skillcorner/skillcorner_corners_with_outcomes.csv"
 fi
-if [ -f "data/datasets/soccernet/soccernet_corners_with_outcomes.csv" ]; then
-    echo "  3. data/datasets/soccernet/soccernet_corners_with_outcomes.csv"
+if [ -f "data/raw/soccernet/soccernet_corners_with_outcomes.csv" ]; then
+    echo "  3. data/raw/soccernet/soccernet_corners_with_outcomes.csv"
 fi
-echo "  4. data/unified_corners_dataset.parquet (updated)"
-echo "  5. data/unified_corners_dataset.csv (updated)"
+echo "  4. data/processed/unified_corners_dataset.parquet (updated)"
+echo "  5. data/processed/unified_corners_dataset.csv (updated)"
 echo ""
 
 # Verification
 all_good=true
 
 echo "Verification:"
-if [ -f "data/datasets/statsbomb/corners_360_with_outcomes.csv" ]; then
-    corners=$(wc -l < data/datasets/statsbomb/corners_360_with_outcomes.csv)
-    size=$(du -h data/datasets/statsbomb/corners_360_with_outcomes.csv | cut -f1)
+if [ -f "data/raw/statsbomb/corners_360_with_outcomes.csv" ]; then
+    corners=$(wc -l < data/raw/statsbomb/corners_360_with_outcomes.csv)
+    size=$(du -h data/raw/statsbomb/corners_360_with_outcomes.csv | cut -f1)
     echo "  ✓ StatsBomb outcomes: $corners lines, $size"
 
     # Check for actual outcomes (not all Possession)
-    goals=$(grep -c ",Goal," data/datasets/statsbomb/corners_360_with_outcomes.csv || echo "0")
-    shots=$(grep -c ",Shot," data/datasets/statsbomb/corners_360_with_outcomes.csv || echo "0")
+    goals=$(grep -c ",Goal," data/raw/statsbomb/corners_360_with_outcomes.csv || echo "0")
+    shots=$(grep -c ",Shot," data/raw/statsbomb/corners_360_with_outcomes.csv || echo "0")
     echo "    - Goals detected: $goals"
     echo "    - Shots detected: $shots"
 
@@ -163,33 +163,33 @@ if [ -f "data/datasets/statsbomb/corners_360_with_outcomes.csv" ]; then
         all_good=false
     fi
 else
-    echo "  ✗ Missing: data/datasets/statsbomb/corners_360_with_outcomes.csv"
+    echo "  ✗ Missing: data/raw/statsbomb/corners_360_with_outcomes.csv"
     all_good=false
 fi
 
-if [ -f "data/datasets/skillcorner/skillcorner_corners_with_outcomes.csv" ]; then
-    corners=$(wc -l < data/datasets/skillcorner/skillcorner_corners_with_outcomes.csv)
-    size=$(du -h data/datasets/skillcorner/skillcorner_corners_with_outcomes.csv | cut -f1)
+if [ -f "data/raw/skillcorner/skillcorner_corners_with_outcomes.csv" ]; then
+    corners=$(wc -l < data/raw/skillcorner/skillcorner_corners_with_outcomes.csv)
+    size=$(du -h data/raw/skillcorner/skillcorner_corners_with_outcomes.csv | cut -f1)
     echo "  ✓ SkillCorner outcomes: $corners lines, $size"
 fi
 
-if [ -f "data/datasets/soccernet/soccernet_corners_with_outcomes.csv" ]; then
-    corners=$(wc -l < data/datasets/soccernet/soccernet_corners_with_outcomes.csv)
-    size=$(du -h data/datasets/soccernet/soccernet_corners_with_outcomes.csv | cut -f1)
+if [ -f "data/raw/soccernet/soccernet_corners_with_outcomes.csv" ]; then
+    corners=$(wc -l < data/raw/soccernet/soccernet_corners_with_outcomes.csv)
+    size=$(du -h data/raw/soccernet/soccernet_corners_with_outcomes.csv | cut -f1)
     echo "  ✓ SoccerNet outcomes: $corners lines, $size"
 fi
 
-if [ -f "data/unified_corners_dataset.csv" ]; then
-    corners=$(wc -l < data/unified_corners_dataset.csv)
-    size=$(du -h data/unified_corners_dataset.csv | cut -f1)
+if [ -f "data/processed/unified_corners_dataset.csv" ]; then
+    corners=$(wc -l < data/processed/unified_corners_dataset.csv)
+    size=$(du -h data/processed/unified_corners_dataset.csv | cut -f1)
     echo "  ✓ Unified dataset (CSV): $corners lines, $size"
 
     # Check outcome distribution
     echo ""
     echo "Unified Dataset Outcome Distribution:"
-    python3 -c "import pandas as pd; df = pd.read_csv('data/unified_corners_dataset.csv'); print(df['outcome_category'].value_counts())" 2>/dev/null || echo "  (Could not analyze outcomes)"
+    python3 -c "import pandas as pd; df = pd.read_csv('data/processed/unified_corners_dataset.csv'); print(df['outcome_category'].value_counts())" 2>/dev/null || echo "  (Could not analyze outcomes)"
 else
-    echo "  ✗ Missing: data/unified_corners_dataset.csv"
+    echo "  ✗ Missing: data/processed/unified_corners_dataset.csv"
     all_good=false
 fi
 
