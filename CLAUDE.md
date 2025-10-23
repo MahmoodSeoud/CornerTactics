@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a soccer analytics research project focused on analyzing corner kick outcomes using StatsBomb open data (event data + 360 player positioning freeze frames). The project aims to predict corner kick outcomes by combining event data with detailed player positioning at the moment of the corner kick.
+CornerTactics is a soccer analytics research project focused on predicting corner kick outcomes using Graph Neural Networks (GNNs). The project implements the methodology from Bekkers & Sahasrabudhe (2024) "A Graph Neural Network Deep-Dive into Successful Counterattacks", applying it to corner kick scenarios with StatsBomb 360 freeze frames, SkillCorner tracking data, and SoccerNet videos.
+
+**Current Status**: Phase 2 Complete (Graph Construction) - Ready for Phase 3 (GNN Model Implementation)
 
 ## Development Environment
 
@@ -36,23 +38,84 @@ tail -f logs/<job_name>_<job_id>.err
 
 ## Data Architecture
 
-### Data Directory Structure
+### Project File Tree
 ```
-data/
-├── raw/                    # Original downloaded data
-│   ├── statsbomb/         # StatsBomb event + 360 freeze frame data
-│   ├── skillcorner/       # SkillCorner tracking data
-│   ├── soccernet/         # SoccerNet videos and labels
-│   └── soccersynth/       # Synthetic soccer data
-├── processed/             # Cleaned/unified datasets
-│   ├── unified_corners_dataset.csv
-│   └── unified_corners_dataset.parquet
-├── features/              # Extracted features
-│   └── node_features/     # Graph node features
-└── results/               # Analysis outputs
-    ├── skillcorner/
-    ├── statsbomb/
-    └── unified/
+CornerTactics/
+├── CLAUDE.md                          # This file - project guide
+├── README.md                          # Project README
+├── requirements.txt                   # Python dependencies
+├── CORNER_GNN_PLAN.md                # Master implementation plan (MOVED TO docs/)
+│
+├── docs/                              # 📚 Documentation
+│   ├── CORNER_GNN_PLAN.md            # Master GNN implementation plan
+│   ├── DATA_FEASIBILITY_ANALYSIS.md  # Data source analysis
+│   └── PROJECT_STATUS.md             # Current project status
+│
+├── src/                               # 🔧 Core Modules
+│   ├── statsbomb_loader.py           # StatsBomb data loading
+│   ├── outcome_labeler.py            # Corner outcome labeling (Phase 1.2)
+│   ├── feature_engineering.py        # Node feature extraction (Phase 2.1)
+│   └── graph_builder.py              # Adjacency matrix construction (Phase 2.2)
+│
+├── scripts/                           # 📜 Execution Scripts
+│   ├── download_statsbomb_corners.py      # Download StatsBomb 360 data
+│   ├── extract_skillcorner_corners.py     # Extract SkillCorner corners
+│   ├── extract_soccernet_corners.py       # Extract SoccerNet corners
+│   ├── integrate_corner_datasets.py       # Unify all datasets (Phase 1.1)
+│   ├── label_statsbomb_outcomes.py        # Label StatsBomb outcomes
+│   ├── label_skillcorner_outcomes.py      # Label SkillCorner outcomes
+│   ├── label_soccernet_outcomes.py        # Label SoccerNet outcomes
+│   ├── extract_corner_features.py         # Extract node features (Phase 2.1)
+│   ├── build_graph_dataset.py             # Build graphs (Phase 2.2)
+│   ├── visualize_graph_structure.py       # Visualize adjacency matrices
+│   ├── test_feature_extraction.py         # Testing utilities
+│   │
+│   ├── slurm/                             # SLURM Job Scripts
+│   │   ├── phase1_1_complete.sh          # Phase 1.1: Data integration
+│   │   ├── phase1_2_label_outcomes.sh    # Phase 1.2: Outcome labeling
+│   │   ├── phase2_1_extract_features.sh  # Phase 2.1: Node features
+│   │   └── phase2_2_build_graphs.sh      # Phase 2.2: Graph construction
+│   │
+│   └── visualization/                     # Visualization Scripts
+│       ├── visualize_corners_with_players.py
+│       ├── visualize_single_corner.py
+│       ├── visualize_all_corners.py
+│       └── *.sh (SLURM wrappers)
+│
+├── data/                              # 💾 Data Directory (gitignored)
+│   ├── raw/                          # Original downloaded data
+│   │   ├── statsbomb/               # StatsBomb 360 freeze frames
+│   │   ├── skillcorner/             # SkillCorner tracking data
+│   │   ├── soccernet/               # SoccerNet videos
+│   │   └── soccersynth/             # Synthetic data
+│   │
+│   ├── processed/                    # Unified datasets
+│   │   ├── unified_corners_dataset.csv
+│   │   └── unified_corners_dataset.parquet
+│   │
+│   ├── features/                     # Extracted features (Phase 2.1)
+│   │   └── node_features/
+│   │       ├── statsbomb_player_features.parquet
+│   │       ├── statsbomb_player_features.csv
+│   │       └── skillcorner_player_features.parquet
+│   │
+│   ├── graphs/                       # Graph datasets (Phase 2.2)
+│   │   └── adjacency_<strategy>/
+│   │       ├── statsbomb_graphs.pkl
+│   │       ├── skillcorner_graphs.pkl
+│   │       └── graph_statistics.json
+│   │
+│   └── results/                      # Analysis outputs
+│       ├── statsbomb/               # StatsBomb visualizations
+│       ├── skillcorner/             # SkillCorner results
+│       ├── graphs/                  # Graph structure visualizations
+│       └── unified/                 # Unified analysis
+│
+└── logs/                              # 📋 SLURM Job Logs
+    ├── phase1_1_*.out/err
+    ├── phase1_2_*.out/err
+    ├── phase2_1_*.out/err
+    └── phase2_2_*.out/err
 ```
 
 **Important**: All data directories are gitignored. Large datasets (videos, CSVs, JSONs) are never committed to git.
@@ -79,9 +142,10 @@ data/
 - Combined corner kick data from all sources
 - Files: `unified_corners_dataset.csv`, `unified_corners_dataset.parquet`
 
-## Core Modules
+## Core Modules (`src/`)
 
 ### `src/statsbomb_loader.py`
+**Phase**: Data loading foundation
 Main module for loading and processing StatsBomb data.
 
 **Key Classes**:
@@ -104,9 +168,90 @@ df = loader.build_corner_dataset(
 loader.save_dataset(df, "corners_epl_2019.csv")
 ```
 
+### `src/outcome_labeler.py`
+**Phase 1.2**: Outcome labeling
+Labels corner kick outcomes by analyzing subsequent events.
+
+**Key Classes**:
+- `OutcomeLabeler`: Analyzes events following corner kicks
+  - `label_corner_outcome()`: Classify outcome (goal/shot/clearance/possession)
+  - `calculate_xthreat()`: Compute expected threat value
+  - `get_temporal_features()`: Extract time/events to outcome
+
+**Outcome Categories**:
+- `goal`: Goal scored within 20 seconds
+- `shot`: Shot attempt (no goal)
+- `clearance`: Defensive clearance
+- `second_corner`: Another corner awarded
+- `possession`: Attacking team retains possession
+- `opposition_possession`: Defending team gains possession
+
+**Usage Example**:
+```python
+from src.outcome_labeler import OutcomeLabeler
+
+labeler = OutcomeLabeler()
+outcome = labeler.label_corner_outcome(events_df, corner_event_id)
+print(f"Outcome: {outcome['category']}, Goal: {outcome['goal_scored']}")
+```
+
+### `src/feature_engineering.py`
+**Phase 2.1**: Node feature engineering
+Extracts 14-dimensional feature vectors for each player in corner scenarios.
+
+**Key Classes**:
+- `FeatureEngineer`: Main feature extraction class
+- `PlayerFeatures`: Dataclass for 14-dimensional feature vectors
+
+**Feature Dimensions (14 total)**:
+1. **Spatial (4)**: x, y, distance_to_goal, distance_to_ball_target
+2. **Kinematic (4)**: vx, vy, velocity_magnitude, velocity_angle
+3. **Contextual (4)**: angle_to_goal, angle_to_ball, team_flag, in_penalty_box
+4. **Density (2)**: num_players_within_5m, local_density_score
+
+**Usage Example**:
+```python
+from src.feature_engineering import FeatureEngineer
+
+engineer = FeatureEngineer()
+features = engineer.extract_features_from_statsbomb_corner(corner_row)
+features_df = engineer.features_to_dataframe(features)
+```
+
+### `src/graph_builder.py`
+**Phase 2.2**: Adjacency matrix construction
+Converts player features into graph representations with various connectivity strategies.
+
+**Key Classes**:
+- `GraphBuilder`: Main graph construction class
+- `CornerGraph`: Complete graph representation dataclass
+- `EdgeFeatures`: 6-dimensional edge feature vectors
+
+**Adjacency Strategies (5 types)**:
+1. **team**: Connect teammates only (paper baseline)
+2. **distance**: Connect players within 10m
+3. **delaunay**: Spatial triangulation
+4. **ball_centric**: Focus on ball landing zone
+5. **zone**: Tactical zone-based
+
+**Edge Features (6 dimensions)**:
+- Normalized distance between players
+- Relative velocity (x, y components)
+- Relative velocity magnitude
+- Angle between players (sine, cosine)
+
+**Usage Example**:
+```python
+from src.graph_builder import GraphBuilder
+
+builder = GraphBuilder(adjacency_strategy='team')
+graph = builder.build_graph_from_features(features_df, corner_id)
+print(f"Nodes: {graph.num_nodes}, Edges: {graph.num_edges}")
+```
+
 ## Key Scripts
 
-### Data Download Scripts
+### Phase 1: Data Integration & Labeling
 
 **`scripts/download_statsbomb_corners.py`**
 - Fast pandas-based StatsBomb 360 downloader
@@ -116,13 +261,71 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 - Output: `data/raw/statsbomb/corners_360.csv` with player positions (JSON format)
 - Run via: `scripts/slurm/download_statsbomb_corners.sh`
 
-**`scripts/visualize_corners_with_players.py`**
+**`scripts/extract_skillcorner_corners.py`**
+- Extracts corner events from SkillCorner dynamic_events.csv
+- Matches with tracking data (10fps continuous)
+- Output: Corner events with tracking references
+
+**`scripts/extract_soccernet_corners.py`**
+- Extracts corner clips from SoccerNet dataset
+- Links video clips to tracking data
+- Output: Corner events with video references
+
+**`scripts/integrate_corner_datasets.py` (Phase 1.1)**
+- Combines StatsBomb, SkillCorner, and SoccerNet data
+- Creates unified corner dataset
+- Output: `data/processed/unified_corners_dataset.parquet`
+- Run via: `sbatch scripts/slurm/phase1_1_complete.sh`
+
+**`scripts/label_statsbomb_outcomes.py` (Phase 1.2)**
+- Labels corner outcomes for StatsBomb data
+- Analyzes subsequent events (15-20 second window)
+- Classifies: Goal/Shot/Clearance/Possession
+- Output: Corners with outcome labels
+
+**`scripts/label_skillcorner_outcomes.py` (Phase 1.2)**
+- Labels corner outcomes for SkillCorner data
+- Uses tracking data and dynamic events
+- Output: Corners with outcome labels
+
+**`scripts/label_soccernet_outcomes.py` (Phase 1.2)**
+- Labels corner outcomes for SoccerNet data
+- Uses video labels and action spotting
+- Output: Corners with outcome labels
+
+### Phase 2: Graph Construction
+
+**`scripts/extract_corner_features.py` (Phase 2.1)**
+- Extracts 14-dimensional node features for all players
+- Processes both StatsBomb 360 and SkillCorner tracking
+- Features: spatial, kinematic, contextual, density
+- Output: `data/features/node_features/statsbomb_player_features.parquet`
+- Run via: `sbatch scripts/slurm/phase2_1_extract_features.sh`
+
+**`scripts/build_graph_dataset.py` (Phase 2.2)**
+- Builds graph representations from node features
+- Supports 5 adjacency strategies (team/distance/delaunay/ball_centric/zone)
+- Computes 6-dimensional edge features
+- Output: `data/graphs/adjacency_<strategy>/<dataset>_graphs.pkl`
+- Run via: `sbatch scripts/slurm/phase2_2_build_graphs.sh`
+- CLI: `python scripts/build_graph_dataset.py --strategy team --dataset all`
+
+**`scripts/visualize_graph_structure.py` (Phase 2.2 Debug)**
+- Visualizes adjacency matrices overlaid on pitch
+- Compares all 5 strategies side-by-side
+- Professional broadcast-style rendering
+- Output: `data/results/graphs/strategy_comparison_<corner_id>.png`
+- CLI: `python scripts/visualize_graph_structure.py --strategy all --num-samples 1`
+
+### Visualization Scripts
+
+**`scripts/visualization/visualize_corners_with_players.py`**
 - Creates 2x2 grid visualization of corner kicks with player positions
 - Blue = attacking team, Orange = defending team, Red star = corner kick
 - Uses mplsoccer for pitch visualization
 - Output: `data/results/statsbomb/corners_with_players_2x2.png`
 
-**`scripts/visualize_single_corner.py`**
+**`scripts/visualization/visualize_single_corner.py`**
 - Individual corner visualization script
 - Professional broadcast style: grass pitch, red attacking, blue defending
 - Cropped to attacking half (right side of pitch) for focused view
@@ -130,15 +333,15 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 - Dotted line trajectory with heat spot for ball landing
 - Useful for quick testing or analyzing specific corners
 - Output: `data/results/statsbomb/single_corner_<corner_id>.png`
-- Run via: `scripts/slurm/visualize_single_corner.sh`
+- Run via: `scripts/visualization/visualize_single_corner.sh`
 
-**`scripts/visualize_all_corners.py`**
+**`scripts/visualization/visualize_all_corners.py`**
 - Batch generation of all corner kick visualizations
 - Processes entire dataset (~1,118 corners)
 - Same broadcast-style presentation as test script
 - Output: `data/results/statsbomb/corner_images/corner_<corner_id>.png`
 - Progress bar via tqdm
-- Run via: `scripts/slurm/visualize_all_corners.sh`
+- Run via: `scripts/visualization/visualize_all_corners.sh`
 
 ### SLURM Scripts (`scripts/slurm/`)
 
@@ -167,25 +370,45 @@ python scripts/<script_name>.py
 ```
 
 **Available SLURM scripts**:
-- `download_statsbomb_corners.sh`: Download StatsBomb 360 corner data
+
+**Phase 1 - Data Pipeline**:
+- `phase1_1_complete.sh`: Data integration (StatsBomb + SkillCorner + SoccerNet)
+- `phase1_2_label_outcomes.sh`: Outcome labeling for all datasets
+
+**Phase 2 - Graph Construction**:
+- `phase2_1_extract_features.sh`: Node feature extraction (14-dim)
+- `phase2_2_build_graphs.sh`: Graph dataset construction with adjacency matrices
+
+**Visualization**:
 - `visualize_corners_players.sh`: Create corner visualizations (2x2 grid)
 - `visualize_single_corner.sh`: Generate single corner visualization with cropped view
 - `visualize_all_corners.sh`: Batch generate all 1,118 corner visualizations (4 hours, 16GB RAM)
-- `cleanup_archives.sh`: Clean up downloaded archive files
 
 ## Dependencies
 
 Core dependencies (install as needed):
 ```bash
+# Phase 1: Data pipeline
 pip install statsbombpy pandas tqdm matplotlib mplsoccer requests
+
+# Phase 2: Graph construction
+pip install numpy scipy
+
+# Phase 3: GNN training (upcoming)
+pip install torch torch-geometric spektral tensorflow
 ```
 
+**Key Libraries**:
 - **statsbombpy**: StatsBomb data access
-- **pandas**: Data processing
+- **pandas**: Data processing and analysis
+- **numpy**: Numerical operations
+- **scipy**: Sparse matrices, spatial algorithms (Delaunay)
 - **tqdm**: Progress bars
-- **matplotlib**: Plotting
+- **matplotlib**: Plotting and visualization
 - **mplsoccer**: Soccer pitch visualizations
 - **requests**: HTTP requests for data download
+- **torch/torch-geometric**: PyTorch + graph neural networks (Phase 3)
+- **spektral/tensorflow**: Alternative GNN framework (Phase 3)
 
 ## Development Workflow
 
@@ -250,3 +473,52 @@ Think like John Carmack when writing code:
 5. **Conda Environment**: The `robo` environment should be activated for all work. Dependencies are installed dynamically in SLURM scripts to ensure consistency.
 
 6. **Log Files**: SLURM logs are created in `logs/` at the project root (e.g., `#SBATCH --output=logs/sb_corners_%j.out` creates `/home/mseo/CornerTactics/logs/sb_corners_<job_id>.out`). Always check both .out and .err files when debugging.
+
+## Documentation (`docs/`)
+
+The `docs/` directory contains comprehensive project documentation:
+
+**`docs/CORNER_GNN_PLAN.md`** (Primary Reference)
+- Master implementation plan for GNN system
+- Phase-by-phase breakdown (Phases 1-6)
+- Task checklists with completion status
+- Architecture specifications
+- Success metrics and publication targets
+- **Always check this for implementation roadmap**
+
+**`docs/DATA_FEASIBILITY_ANALYSIS.md`**
+- Analysis of available data sources
+- Dataset size estimates
+- Coverage and quality assessments
+- Recommendations for data combinations
+
+**`docs/PROJECT_STATUS.md`**
+- Current project progress tracker
+- Completed phases and deliverables
+- Active work and blockers
+- Next steps and priorities
+
+**Usage**: When starting a new phase or task, always consult `CORNER_GNN_PLAN.md` first to understand requirements and dependencies.
+
+## Project Status (as of October 23, 2024)
+
+**Completed Phases**:
+- ✅ Phase 1.1: Data Integration (1,118 StatsBomb corners + SkillCorner + SoccerNet)
+- ✅ Phase 1.2: Outcome Labeling (goal/shot/clearance/possession)
+- ✅ Phase 2.1: Node Feature Engineering (14-dim features, 21,231 players)
+- ✅ Phase 2.2: Adjacency Matrix Construction (5 strategies, 6-dim edges)
+
+**Current Phase**:
+- ⏳ Phase 3: GNN Model Implementation (NEXT)
+
+**Ready for Training**:
+- 1,118 corner graphs with node features and adjacency matrices
+- Multiple adjacency strategies for ablation studies
+- Outcome labels for supervised learning
+- Infrastructure for HPC training with SLURM
+
+**Next Immediate Tasks**:
+1. Set up Spektral/PyTorch Geometric environment
+2. Implement GNN architecture (GraphConv layers)
+3. Create training pipeline with data loaders
+4. Run baseline experiments with team-based adjacency

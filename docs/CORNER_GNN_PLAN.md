@@ -45,23 +45,23 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
   - [x] Include source, match_id, timestamp, players, outcome
 
 ### 1.2 Outcome Labeling Pipeline
-- [ ] Define success metrics
-  - [ ] Binary: Goal within 20 seconds (primary)
-  - [ ] Multi-class: Shot/Clearance/Second Corner/Possession
-  - [ ] xThreat: Expected threat value generated
+- [x] Define success metrics
+  - [x] Binary: Goal within 20 seconds (primary)
+  - [x] Multi-class: Shot/Clearance/Second Corner/Possession
+  - [x] xThreat: Expected threat value generated
 
-- [ ] Implement labeling functions
-  - [ ] `get_corner_outcome()` - extract outcome from event sequence
-  - [ ] `calculate_xthreat()` - compute threat value
-  - [ ] `get_temporal_features()` - time/events to outcome
+- [x] Implement labeling functions
+  - [x] `get_corner_outcome()` - extract outcome from event sequence
+  - [x] `calculate_xthreat()` - compute threat value
+  - [x] `get_temporal_features()` - time/events to outcome
 
 ## Phase 2: Graph Construction 🔧
 
 ### 2.1 Node Feature Engineering (12 dimensions per player)
-- [ ] Spatial features
-  - [ ] x, y coordinates (normalized to pitch dimensions)
-  - [ ] distance_to_goal
-  - [ ] distance_to_ball_target
+- [x] Spatial features
+  - [x] x, y coordinates (normalized to pitch dimensions)
+  - [x] distance_to_goal
+  - [x] distance_to_ball_target
 
 - [ ] Kinematic features (from SkillCorner 10fps)
   - [ ] velocity_x (vx)
@@ -69,28 +69,28 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
   - [ ] velocity_magnitude
   - [ ] velocity_angle
 
-- [ ] Contextual features
-  - [ ] angle_to_goal
-  - [ ] angle_to_ball
-  - [ ] team_flag (attacking/defending)
-  - [ ] in_penalty_box flag
+- [x] Contextual features
+  - [x] angle_to_goal
+  - [x] angle_to_ball
+  - [x] team_flag (attacking/defending)
+  - [x] in_penalty_box flag
 
-- [ ] Density features
-  - [ ] num_players_within_5m
-  - [ ] local_density_score
+- [x] Density features
+  - [x] num_players_within_5m
+  - [x] local_density_score
 
 ### 2.2 Adjacency Matrix Construction
-- [ ] Implement 5 connection strategies
-  - [ ] Team-based: Connect teammates only
-  - [ ] Distance-based: Connect players within 10m threshold
-  - [ ] Delaunay: Triangulation for spatial relationships
-  - [ ] Ball-centric: Connect players near ball trajectory
-  - [ ] Zone-based: Connect players in same tactical zone
+- [x] Implement 5 connection strategies
+  - [x] Team-based: Connect teammates only
+  - [x] Distance-based: Connect players within 10m threshold
+  - [x] Delaunay: Triangulation for spatial relationships
+  - [x] Ball-centric: Connect players near ball trajectory
+  - [x] Zone-based: Connect players in same tactical zone
 
 ### 2.3 Edge Features (6 dimensions)
-- [ ] Distance between connected players
-- [ ] Relative velocity
-- [ ] Angle differences (sine/cosine pairs)
+- [x] Distance between connected players
+- [x] Relative velocity
+- [x] Angle differences (sine/cosine pairs)
 
 ## Phase 3: GNN Model Implementation 🤖
 
@@ -156,22 +156,22 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 ## Phase 5: Implementation Files 📁
 
 ### Core Modules (`src/`)
-- [ ] `data_integration.py` - Merge all data sources
-- [ ] `graph_builder.py` - Convert tracking to graphs
+- [x] `data_integration.py` - Merge all data sources
+- [x] `graph_builder.py` - Convert tracking to graphs
 - [ ] `gnn_model.py` - Spektral GNN architecture
-- [ ] `feature_engineering.py` - Node/edge feature extraction
-- [ ] `outcome_labeler.py` - Label corner outcomes
+- [x] `feature_engineering.py` - Node/edge feature extraction
+- [x] `outcome_labeler.py` - Label corner outcomes
 - [ ] `train_gnn.py` - Training pipeline
 
 ### Scripts (`scripts/`)
-- [ ] `integrate_datasets.py` - Combine StatsBomb + SkillCorner + SoccerNet
-- [ ] `extract_skillcorner_corners.py` - Parse SkillCorner corners
-- [ ] `build_graph_dataset.py` - Create graph dataset
+- [x] `integrate_datasets.py` - Combine StatsBomb + SkillCorner + SoccerNet
+- [x] `extract_skillcorner_corners.py` - Parse SkillCorner corners
+- [x] `build_graph_dataset.py` - Create graph dataset
 - [ ] `evaluate_model.py` - Model evaluation
 - [ ] `predict_corner.py` - Inference on new corners
 
 ### SLURM Jobs (`scripts/slurm/`)
-- [ ] `integrate_data.sh` - Data integration job
+- [x] `integrate_data.sh` - Data integration job
 - [ ] `train_corner_gnn.sh` - GNN training job
 - [ ] `evaluate_gnn.sh` - Evaluation job
 - [ ] `hyperparam_search.sh` - Hyperparameter tuning
@@ -208,14 +208,13 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 - [x] Identified UnravelSports and US Soccer Federation codebases
 
 ### In Progress ⏳
-- [ ] Data integration pipeline
-- [ ] Feature engineering
+- [ ] GNN model implementation (Phase 3)
 
 ### Next Steps 📝
-1. Start with SkillCorner corner extraction script
-2. Implement StatsBomb outcome labeling
-3. Create first version of graph builder
-4. Set up Spektral environment on HPC
+1. Implement GNN model architecture (Phase 3.1)
+2. Set up Spektral environment on HPC
+3. Create training pipeline (Phase 4)
+4. Run initial experiments with team-based adjacency
 
 ## Notes & Observations
 
