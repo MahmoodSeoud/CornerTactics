@@ -39,7 +39,12 @@ def load_skillcorner_corners(data_dir):
     """Load SkillCorner corners with continuous tracking"""
     print("\nLoading SkillCorner corners...")
 
-    file_path = data_dir / "datasets" / "skillcorner" / "skillcorner_corners.csv"
+    # Try to load outcome-labeled version first
+    file_path = data_dir / "datasets" / "skillcorner" / "skillcorner_corners_with_outcomes.csv"
+    if not file_path.exists():
+        print(f"  Warning: {file_path} not found, trying without outcomes...")
+        file_path = data_dir / "datasets" / "skillcorner" / "skillcorner_corners.csv"
+
     if not file_path.exists():
         print(f"  Warning: {file_path} not found")
         return pd.DataFrame()
@@ -51,10 +56,12 @@ def load_skillcorner_corners(data_dir):
     df['corner_id'] = 'sc_' + df['match_id'].astype(str) + '_' + df['event_id'].astype(str)
     df['has_player_positions'] = False  # Will need to extract from tracking
     df['has_tracking'] = df['has_tracking'] if 'has_tracking' in df.columns else False
-    df['has_outcome'] = False  # Will need to label outcomes separately
+    df['has_outcome'] = 'outcome_category' in df.columns
 
     print(f"  Loaded {len(df)} SkillCorner corners")
     print(f"    With tracking data: {df['has_tracking'].sum()}")
+    if 'outcome_category' in df.columns:
+        print(f"    With outcomes: {df['has_outcome'].sum()}")
 
     return df
 
@@ -62,7 +69,12 @@ def load_soccernet_metadata(data_dir):
     """Load SoccerNet corner metadata from CSV"""
     print("\nLoading SoccerNet corners...")
 
-    soccernet_csv = data_dir / "datasets" / "soccernet" / "soccernet_corners.csv"
+    # Try to load outcome-labeled version first
+    soccernet_csv = data_dir / "datasets" / "soccernet" / "soccernet_corners_with_outcomes.csv"
+    if not soccernet_csv.exists():
+        print(f"  Warning: {soccernet_csv} not found, trying without outcomes...")
+        soccernet_csv = data_dir / "datasets" / "soccernet" / "soccernet_corners.csv"
+
     if not soccernet_csv.exists():
         print(f"  Warning: {soccernet_csv} not found")
         print(f"  Run extract_soccernet_corners.py first")
@@ -76,7 +88,7 @@ def load_soccernet_metadata(data_dir):
     df['has_video'] = df['video_available'] if 'video_available' in df.columns else False
     df['has_player_positions'] = False
     df['has_tracking'] = False
-    df['has_outcome'] = False
+    df['has_outcome'] = 'outcome_category' in df.columns
 
     print(f"  Loaded {len(df)} SoccerNet corners")
     if 'video_available' in df.columns:
