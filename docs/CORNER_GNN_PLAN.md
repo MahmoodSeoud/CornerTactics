@@ -6,22 +6,29 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 ## Data Inventory
 
 ### Available Datasets
-- [ ] **StatsBomb 360**: 1,118 corners with freeze-frame player positions
+- [x] **StatsBomb 360**: 1,118 corners with freeze-frame player positions
   - Location: `data/statsbomb/corners_360.csv`
-  - Status: ✅ Downloaded and ready
+  - Status: ✅ Downloaded and augmented
   - Features: Player positions (JSON), corner location, pass end location
+  - **Augmented**: 5,814 temporal graphs (5× temporal + mirrors)
 
-- [ ] **SkillCorner Open Data**: 10 A-League matches with continuous tracking
+- [x] **SkillCorner Open Data**: 10 A-League matches with continuous tracking
   - Location: `data/skillcorner/`
-  - Status: ✅ Downloaded
+  - Status: ✅ Downloaded and processed
   - Features: 10fps tracking, dynamic events, phases of play
-  - Corner events: ~30 per match (estimated ~300 total)
+  - Corner events: 317 corners
+  - **Temporal**: 1,555 graphs (5 frames per corner)
+  - Access: Via GitHub media URLs (bypasses Git LFS)
 
 - [ ] **SoccerNet**: Video clips and tracking data
   - Location: `data/datasets/soccernet/`
-  - Status: ✅ Downloaded
+  - Status: ⏳ Not yet integrated
   - Corner clips: 4,208 videos in `corner_clips/visible/`
   - Tracking data: Available in `tracking/`
+
+### **Final Dataset**: 7,369 graphs (6.6× increase from original)
+- Dangerous situations: ~1,261 (17.1% positive class)
+- Target: "Shot OR Goal" instead of goal-only
 
 ## Phase 1: Data Integration & Enrichment ⏳
 
@@ -87,30 +94,72 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
   - [x] Ball-centric: Connect players near ball trajectory
   - [x] Zone-based: Connect players in same tactical zone
 
-### 2.3 Edge Features (6 dimensions)
+### 2.3 SkillCorner Temporal Extraction ✅
+- [x] Access tracking data via GitHub media URLs
+  - [x] Bypass Git LFS budget limitations
+  - [x] Load 10fps tracking data directly from GitHub
+- [x] Extract temporal frames
+  - [x] 5 frames per corner: t = -2s, -1s, 0s, +1s, +2s
+  - [x] Extract 14-dim features for each frame
+  - [x] Output: 1,555 temporal graphs from 317 corners
+- [x] Label dangerous situations
+  - [x] 41 shots identified (13.2% positive class)
+
+### 2.4 StatsBomb Temporal Augmentation ✅
+- [x] Implement US Soccer Federation approach
+  - [x] 5 temporal offsets per corner
+  - [x] Position perturbations with Gaussian noise
+  - [x] Noise proportional to temporal distance
+- [x] Mirror augmentation
+  - [x] Flip y-coordinates for left/right symmetry
+  - [x] Applied to t=0 frames only
+  - [x] 224 additional graphs
+- [x] Update target label
+  - [x] Changed from "goal" (1.3%) to "shot OR goal" (18.2%)
+  - [x] 1,056 dangerous situations in augmented data
+- [x] Output: 5,814 augmented graphs
+
+### 2.5 Build SkillCorner Graphs and Merge Datasets ✅
+- [x] Build SkillCorner graph representations
+  - [x] Convert temporal features to graphs (1,555 graphs)
+  - [x] Apply team-based adjacency strategy
+  - [x] Label dangerous situations (202 shots, 13%)
+- [x] Merge with StatsBomb augmented graphs
+  - [x] Combine 5,814 StatsBomb + 1,555 SkillCorner = 7,369 total
+  - [x] Final positive class: 1,258 dangerous situations (17.1%)
+  - [x] Output: `combined_temporal_graphs.pkl`
+
+### 2.6 Edge Features (6 dimensions)
 - [x] Distance between connected players
 - [x] Relative velocity
 - [x] Angle differences (sine/cosine pairs)
 
-## Phase 3: GNN Model Implementation 🤖
+## Phase 3: GNN Model Implementation ✅
 
-### 3.1 Core Architecture (Spektral-based)
-- [ ] Set up environment
-  - [ ] Install spektral==1.2.0, tensorflow==2.14.0
-  - [ ] Install unravelsports package
+### 3.1 Core Architecture (PyTorch Geometric)
+- [x] Set up environment
+  - [x] Selected PyTorch Geometric over Spektral
+  - [x] Created installation script in SLURM job
 
-- [ ] Implement model layers
+- [x] Implement model layers (`src/gnn_model.py`)
   ```python
-  - [ ] GraphConv1: 12 → 64 (ReLU, Dropout=0.3)
-  - [ ] GraphConv2: 64 → 128 (ReLU, Dropout=0.3)
-  - [ ] GraphConv3: 128 → 64 (ReLU)
-  - [ ] Global Pooling: Mean + Max concatenation
-  - [ ] Dense1: 128 → 64 (ReLU)
-  - [ ] Dense2: 64 → 32 (ReLU)
-  - [ ] Output: 32 → 1 (Sigmoid for binary)
+  - [x] GraphConv1: 14 → 64 (ReLU, Dropout=0.3)
+  - [x] GraphConv2: 64 → 128 (ReLU, Dropout=0.3)
+  - [x] GraphConv3: 128 → 64 (ReLU)
+  - [x] Global Pooling: Mean + Max concatenation
+  - [x] Dense1: 128 → 64 (ReLU)
+  - [x] Dense2: 64 → 32 (ReLU)
+  - [x] Output: 32 → 1 (Sigmoid for binary)
   ```
 
-### 3.2 Multi-Modal Extension (Optional)
+### 3.2 Training Infrastructure
+- [x] Data loader module (`src/data_loader.py`)
+- [x] Training utilities (`src/train_utils.py`)
+- [x] Main training script (`scripts/train_gnn.py`)
+- [x] Evaluation script (`scripts/evaluate_model.py`)
+- [x] SLURM job script (`scripts/slurm/phase3_train_gnn.sh`)
+
+### 3.3 Multi-Modal Extension (Future Work)
 - [ ] Add CNN branch for video frames
 - [ ] Implement feature fusion layer
 - [ ] Joint training pipeline
@@ -153,27 +202,85 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
   - [ ] Plot important spatial patterns
   - [ ] Team-specific strategies
 
+## Pipeline Execution 🚀
+
+### Automated Full Pipeline
+**Script**: `scripts/slurm/RUN_FULL_PIPELINE.sh`
+
+Complete automated execution of all phases:
+```bash
+bash scripts/slurm/RUN_FULL_PIPELINE.sh
+```
+
+This will automatically:
+1. Submit all phases in order (1.1 → 1.2 → 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 3)
+2. Wait for each phase to complete before starting the next
+3. Check for successful completion
+4. Provide status updates
+
+**Total Runtime**: ~30-45 minutes
+
+### Manual Phase-by-Phase Execution
+```bash
+# Phase 1: Data Integration & Labeling (~10 min)
+sbatch scripts/slurm/phase1_1_complete.sh
+sbatch scripts/slurm/phase1_2_label_outcomes.sh
+
+# Phase 2: Feature Engineering & Graphs (~28 min)
+sbatch scripts/slurm/phase2_1_extract_features.sh        # ~10 min
+sbatch scripts/slurm/phase2_2_build_graphs.sh            # ~5 min
+sbatch scripts/slurm/phase2_3_skillcorner_temporal.sh    # ~10 min
+sbatch scripts/slurm/phase2_4_statsbomb_augment.sh       # ~2 min
+sbatch scripts/slurm/phase2_5_build_skillcorner_graphs.sh # ~1 min
+
+# Phase 3: Training (~5 min)
+sbatch scripts/slurm/phase3_train_gnn.sh
+```
+
+### Pipeline Documentation
+**Complete guide**: `scripts/slurm/PIPELINE_README.md`
+
+Contains detailed information about:
+- Each phase's purpose and outputs
+- Resource requirements
+- Expected file outputs
+- Troubleshooting tips
+- Success verification commands
+
 ## Phase 5: Implementation Files 📁
 
 ### Core Modules (`src/`)
 - [x] `data_integration.py` - Merge all data sources
 - [x] `graph_builder.py` - Convert tracking to graphs
-- [ ] `gnn_model.py` - Spektral GNN architecture
+- [x] `gnn_model.py` - PyTorch Geometric GNN architecture
 - [x] `feature_engineering.py` - Node/edge feature extraction
 - [x] `outcome_labeler.py` - Label corner outcomes
-- [ ] `train_gnn.py` - Training pipeline
+- [x] `data_loader.py` - PyTorch Geometric data loading
+- [x] `train_utils.py` - Training utilities and metrics
 
 ### Scripts (`scripts/`)
 - [x] `integrate_datasets.py` - Combine StatsBomb + SkillCorner + SoccerNet
 - [x] `extract_skillcorner_corners.py` - Parse SkillCorner corners
 - [x] `build_graph_dataset.py` - Create graph dataset
-- [ ] `evaluate_model.py` - Model evaluation
+- [x] `extract_skillcorner_temporal.py` - Extract temporal features from SkillCorner (Phase 2.3)
+- [x] `augment_statsbomb_temporal.py` - Temporal augmentation for StatsBomb (Phase 2.4)
+- [x] `build_skillcorner_graphs.py` - Build SkillCorner graphs and merge datasets (Phase 2.5)
+- [x] `train_gnn.py` - Main training pipeline
+- [x] `evaluate_model.py` - Model evaluation
 - [ ] `predict_corner.py` - Inference on new corners
 
 ### SLURM Jobs (`scripts/slurm/`)
-- [x] `integrate_data.sh` - Data integration job
-- [ ] `train_corner_gnn.sh` - GNN training job
-- [ ] `evaluate_gnn.sh` - Evaluation job
+- [x] `phase1_1_complete.sh` - Data integration job
+- [x] `phase1_2_label_outcomes.sh` - Outcome labeling
+- [x] `phase2_1_extract_features.sh` - Node feature extraction
+- [x] `phase2_2_build_graphs.sh` - Graph construction (StatsBomb baseline)
+- [x] `phase2_3_skillcorner_temporal.sh` - SkillCorner temporal extraction
+- [x] `phase2_4_statsbomb_augment.sh` - StatsBomb temporal augmentation
+- [x] `phase2_5_build_skillcorner_graphs.sh` - Build SkillCorner graphs and merge datasets
+- [x] `phase3_train_gnn.sh` - GNN training job (on combined dataset)
+- [x] `RUN_FULL_PIPELINE.sh` - **Automated pipeline execution script**
+- [x] `PIPELINE_README.md` - **Complete pipeline documentation**
+- [ ] `phase3_evaluate_gnn.sh` - Evaluation job
 - [ ] `hyperparam_search.sh` - Hyperparameter tuning
 
 ## Phase 6: Deployment & Analysis 📊
@@ -205,16 +312,39 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 - [x] Downloaded SkillCorner Open Data (10 matches)
 - [x] Downloaded SoccerNet corner clips (4,208 videos)
 - [x] Reviewed Bekkers & Sahasrabudhe (2024) paper
-- [x] Identified UnravelSports and US Soccer Federation codebases
+- [x] Phase 1.1: Data Integration - Unified dataset created
+- [x] Phase 1.2: Outcome Labeling - All corners labeled
+- [x] Phase 2.1: Node Feature Engineering - 14-dim features extracted
+- [x] Phase 2.2: Graph Construction - 5 adjacency strategies implemented
+- [x] Phase 2.3: SkillCorner Temporal Extraction - 1,555 temporal graphs from 317 corners
+- [x] Phase 2.4: StatsBomb Temporal Augmentation - 5,814 augmented graphs
+- [x] Phase 2.5: Build SkillCorner Graphs and Merge - 7,369 combined graphs
+- [x] Phase 3: GNN Model Implementation - PyTorch Geometric architecture complete
+- [x] Built graph dataset: 1,118 corners with team-based adjacency (baseline)
+- [x] Expanded dataset: 7,369 temporal graphs (6.6× increase)
+- [x] Combined StatsBomb + SkillCorner: 5,814 + 1,555 = 7,369 graphs
+- [x] Changed target label: "dangerous situation" (shot OR goal) - 17.1% positive class
+- [x] Created complete training infrastructure (model, data loader, training script)
+- [x] Implemented evaluation and visualization scripts
+- [x] Initial baseline training: Val AUC 0.765, Test AUC 0.271 (on small dataset)
+- [x] Created automated pipeline execution script (`RUN_FULL_PIPELINE.sh`)
+- [x] Documented complete pipeline (`PIPELINE_README.md`)
 
 ### In Progress ⏳
-- [ ] GNN model implementation (Phase 3)
+- [ ] Re-train GNN with expanded dataset (7,369 graphs, dangerous situation target)
 
 ### Next Steps 📝
-1. Implement GNN model architecture (Phase 3.1)
-2. Set up Spektral environment on HPC
-3. Create training pipeline (Phase 4)
-4. Run initial experiments with team-based adjacency
+1. **Monitor current training job** (28657): `tail -f logs/phase3_train_gnn_28657.out`
+2. **Reproduce full pipeline** (if needed): `bash scripts/slurm/RUN_FULL_PIPELINE.sh`
+3. Run ablation studies with different adjacency strategies:
+   ```bash
+   python scripts/build_graph_dataset.py --strategy distance
+   python scripts/build_graph_dataset.py --strategy delaunay
+   sbatch scripts/slurm/phase3_train_gnn.sh  # with different strategies
+   ```
+4. Evaluate model performance and analyze feature importance
+5. Fine-tune hyperparameters based on validation results
+6. Prepare results for MIT Sloan Sports Analytics Conference 2025
 
 ## Notes & Observations
 
@@ -223,12 +353,22 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 - StatsBomb has precise freeze-frames at corner moment
 - SoccerNet adds video for potential multi-modal learning
 - Combining all three gives unprecedented data richness
+- **Temporal augmentation successfully expanded dataset 6.6× (1,118 → 7,369 graphs)**
+- **Changing target to "dangerous situation" improved class balance (1.3% → 17.1%)**
+- **US Soccer Federation approach translates well to corner kick scenarios**
+- **GitHub media URLs provide reliable SkillCorner access without LFS limitations**
 
-### Challenges to Address
+### Challenges Addressed
+- ✅ Extreme class imbalance (1.3% goal rate) → Changed to "shot OR goal" (17.1%)
+- ✅ Small dataset (1,118 corners) → Temporal augmentation + SkillCorner (7,369 graphs)
+- ✅ SkillCorner Git LFS budget → Use GitHub media URLs
+- ✅ StatsBomb 360 data limitation → Applied US Soccer Fed augmentation approach
+
+### Remaining Challenges
 - Synchronizing different data formats and coordinate systems
 - Handling missing player tracking in some frames
-- Balancing dataset sizes from different sources
 - Computational requirements for training on HPC
+- Need to validate augmented data doesn't introduce bias
 
 ### References
 - Bekkers & Sahasrabudhe (2024): "A Graph Neural Network Deep-Dive into Successful Counterattacks"
@@ -253,6 +393,6 @@ Implementing a Graph Neural Network (GNN) based corner kick outcome prediction s
 
 ---
 
-*Last Updated: October 22, 2024*
+*Last Updated: October 23, 2024*
 *Project Lead: mseo*
-*Status: Planning Phase*
+*Status: Phase 2 Complete + Temporal Augmentation - Ready for Re-training*

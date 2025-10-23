@@ -92,6 +92,7 @@ output/
 results/
 exports/
 clips/
+runs/
 
 # Video files (potentially large)
 *.mp4

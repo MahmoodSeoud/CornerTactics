@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CornerTactics is a soccer analytics research project focused on predicting corner kick outcomes using Graph Neural Networks (GNNs). The project implements the methodology from Bekkers & Sahasrabudhe (2024) "A Graph Neural Network Deep-Dive into Successful Counterattacks", applying it to corner kick scenarios with StatsBomb 360 freeze frames, SkillCorner tracking data, and SoccerNet videos.
 
-**Current Status**: Phase 2 Complete (Graph Construction) - Ready for Phase 3 (GNN Model Implementation)
+**Current Status**: Phase 2 Complete + Temporal Augmentation - Ready for Phase 3 Training
+
+**Dataset**: 7,369 temporally augmented graphs (6.6× increase from original 1,118 corners)
 
 ## Development Environment
 
@@ -67,6 +69,9 @@ CornerTactics/
 │   ├── label_soccernet_outcomes.py        # Label SoccerNet outcomes
 │   ├── extract_corner_features.py         # Extract node features (Phase 2.1)
 │   ├── build_graph_dataset.py             # Build graphs (Phase 2.2)
+│   ├── extract_skillcorner_temporal.py    # Extract temporal SkillCorner features (Phase 2.3)
+│   ├── augment_statsbomb_temporal.py      # Temporal augmentation for StatsBomb (Phase 2.4)
+│   ├── train_gnn.py                       # Train GNN model (Phase 3)
 │   ├── visualize_graph_structure.py       # Visualize adjacency matrices
 │   ├── test_feature_extraction.py         # Testing utilities
 │   │
@@ -74,7 +79,10 @@ CornerTactics/
 │   │   ├── phase1_1_complete.sh          # Phase 1.1: Data integration
 │   │   ├── phase1_2_label_outcomes.sh    # Phase 1.2: Outcome labeling
 │   │   ├── phase2_1_extract_features.sh  # Phase 2.1: Node features
-│   │   └── phase2_2_build_graphs.sh      # Phase 2.2: Graph construction
+│   │   ├── phase2_2_build_graphs.sh      # Phase 2.2: Graph construction
+│   │   ├── phase2_3_skillcorner_temporal.sh  # Phase 2.3: SkillCorner temporal
+│   │   ├── phase2_4_statsbomb_augment.sh     # Phase 2.4: StatsBomb augmentation
+│   │   └── phase3_train_gnn.sh           # Phase 3: GNN training
 │   │
 │   └── visualization/                     # Visualization Scripts
 │       ├── visualize_corners_with_players.py
@@ -93,16 +101,18 @@ CornerTactics/
 │   │   ├── unified_corners_dataset.csv
 │   │   └── unified_corners_dataset.parquet
 │   │
-│   ├── features/                     # Extracted features (Phase 2.1)
-│   │   └── node_features/
-│   │       ├── statsbomb_player_features.parquet
-│   │       ├── statsbomb_player_features.csv
-│   │       └── skillcorner_player_features.parquet
+│   ├── features/                     # Extracted features
+│   │   ├── node_features/            # Phase 2.1: Single frame features
+│   │   │   ├── statsbomb_player_features.parquet
+│   │   │   └── statsbomb_player_features.csv
+│   │   └── temporal/                 # Phase 2.3: Temporal features
+│   │       ├── skillcorner_temporal_features.parquet
+│   │       └── skillcorner_temporal_features.csv
 │   │
-│   ├── graphs/                       # Graph datasets (Phase 2.2)
-│   │   └── adjacency_<strategy>/
-│   │       ├── statsbomb_graphs.pkl
-│   │       ├── skillcorner_graphs.pkl
+│   ├── graphs/                       # Graph datasets
+│   │   └── adjacency_team/           # Team-based adjacency strategy
+│   │       ├── statsbomb_graphs.pkl  # Original single-frame (Phase 2.2)
+│   │       ├── statsbomb_temporal_augmented.pkl  # Temporal augmented (Phase 2.4)
 │   │       └── graph_statistics.json
 │   │
 │   └── results/                      # Analysis outputs
@@ -375,9 +385,14 @@ python scripts/<script_name>.py
 - `phase1_1_complete.sh`: Data integration (StatsBomb + SkillCorner + SoccerNet)
 - `phase1_2_label_outcomes.sh`: Outcome labeling for all datasets
 
-**Phase 2 - Graph Construction**:
+**Phase 2 - Graph Construction & Augmentation**:
 - `phase2_1_extract_features.sh`: Node feature extraction (14-dim)
 - `phase2_2_build_graphs.sh`: Graph dataset construction with adjacency matrices
+- `phase2_3_skillcorner_temporal.sh`: SkillCorner temporal feature extraction (10fps tracking)
+- `phase2_4_statsbomb_augment.sh`: StatsBomb temporal augmentation (US Soccer Fed approach)
+
+**Phase 3 - GNN Training**:
+- `phase3_train_gnn.sh`: Train GNN model on augmented dataset
 
 **Visualization**:
 - `visualize_corners_players.sh`: Create corner visualizations (2x2 grid)
@@ -507,18 +522,30 @@ The `docs/` directory contains comprehensive project documentation:
 - ✅ Phase 1.2: Outcome Labeling (goal/shot/clearance/possession)
 - ✅ Phase 2.1: Node Feature Engineering (14-dim features, 21,231 players)
 - ✅ Phase 2.2: Adjacency Matrix Construction (5 strategies, 6-dim edges)
+- ✅ Phase 2.3: SkillCorner Temporal Extraction (1,555 temporal graphs from 317 corners)
+- ✅ Phase 2.4: StatsBomb Temporal Augmentation (5,814 augmented graphs)
+- ✅ Phase 3.0: GNN Model Implementation (PyTorch Geometric, 28k parameters)
 
 **Current Phase**:
-- ⏳ Phase 3: GNN Model Implementation (NEXT)
+- ⏳ Phase 3.1: Re-training with Expanded Dataset (NEXT)
 
-**Ready for Training**:
-- 1,118 corner graphs with node features and adjacency matrices
-- Multiple adjacency strategies for ablation studies
-- Outcome labels for supervised learning
-- Infrastructure for HPC training with SLURM
+**Dataset Summary**:
+- **Total Graphs**: 7,369 (6.6× increase from original)
+  - StatsBomb Augmented: 5,814 graphs (5× temporal + mirrors)
+  - SkillCorner Temporal: 1,555 graphs (real 10fps tracking)
+- **Dangerous Situations**: ~1,261 (17.1% positive class)
+  - Changed target from "goal" (1.3%) to "shot OR goal" for better balance
+- **Temporal Augmentation**: US Soccer Federation approach
+  - 5 temporal frames: t = -2s, -1s, 0s, +1s, +2s
+  - Position perturbations + mirror augmentation
+
+**Previous Training Results** (Original 1,118 corners, goal-only target):
+- Best Val AUC: 0.765
+- Test AUC: 0.271 (severe overfitting)
+- Only 14 goals (1.3%) - extreme class imbalance
 
 **Next Immediate Tasks**:
-1. Set up Spektral/PyTorch Geometric environment
-2. Implement GNN architecture (GraphConv layers)
-3. Create training pipeline with data loaders
-4. Run baseline experiments with team-based adjacency
+1. Update data loader to use augmented dataset
+2. Re-train with "dangerous situation" target (shot OR goal)
+3. Evaluate on test set with 17% positive class
+4. Compare against baseline (0.27 test AUC)
