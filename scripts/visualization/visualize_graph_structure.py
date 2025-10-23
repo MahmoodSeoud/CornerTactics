@@ -28,6 +28,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import FancyArrowPatch
 import argparse
 from typing import List, Dict
+from mplsoccer import Pitch, VerticalPitch
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -181,13 +182,18 @@ def compare_strategies_visualization(
 ):
     """
     Create comparison visualization of all adjacency strategies.
+    Uses mplsoccer with vertical orientation (goal at top).
+    Professional broadcast style matching StatsBomb visualizations.
 
     Args:
         graphs: Dictionary mapping strategy name to CornerGraph
         output_path: Path to save figure
     """
-    strategies = ['team', 'distance', 'delaunay', 'ball_centric', 'zone']
-    fig, axes = plt.subplots(2, 3, figsize=(20, 12))
+    strategies = ['team', 'team_with_ball', 'distance', 'delaunay', 'ball_centric', 'zone']
+
+    # Create 2x3 grid (6 strategies)
+    fig, axes = plt.subplots(2, 3, figsize=(24, 16))
+    fig.patch.set_facecolor('#ffffff')
     axes = axes.flatten()
 
     for idx, strategy in enumerate(strategies):
@@ -199,77 +205,220 @@ def compare_strategies_visualization(
 
         graph = graphs[strategy]
 
-        # Draw pitch (cropped)
-        draw_pitch(ax, crop_to_attacking_half=True)
+        # Create vertical pitch (goal at top)
+        # Use VerticalPitch class for proper vertical orientation
+        pitch = VerticalPitch(
+            pitch_type='statsbomb',
+            pitch_color='#195905',      # Rich grass green
+            line_color='#ffffff',        # White lines
+            linewidth=2.5,
+            line_zorder=2,
+            stripe=True,                 # Broadcast-style stripes
+            stripe_color='#1a6d08',      # Alternating grass shade
+            half=True,                   # Show only attacking half
+            pad_top=2,
+            pad_bottom=2,
+            pad_left=2,
+            pad_right=2
+        )
+
+        pitch.draw(ax=ax)
+
+        # Draw custom goal box behind the end line (vertical pitch: goal at top)
+        # StatsBomb goal is 8 yards wide centered at y=40 (y: 36-44)
+        # For vertical pitch, goal at x: 36-44, behind y=120 line
+        from matplotlib.patches import Rectangle
+        goal_box = Rectangle(
+            (36, 120),  # (x, y) bottom-left corner - starts AT the line
+            8,          # width (8 yards)
+            2.5,        # height (depth of goal extending behind)
+            linewidth=2.5,
+            edgecolor='#FFFFFF',
+            facecolor='#4A90E2',  # Blue fill like reference image
+            zorder=0,  # Behind everything
+            alpha=0.4
+        )
+        ax.add_patch(goal_box)
+
+        # Draw goal posts (thicker white lines at sides)
+        from matplotlib.lines import Line2D
+        # Left post
+        left_post = Line2D([36, 36], [120, 122.5], linewidth=3.5, color='#FFFFFF', zorder=1)
+        # Right post
+        right_post = Line2D([44, 44], [120, 122.5], linewidth=3.5, color='#FFFFFF', zorder=1)
+        # Crossbar
+        crossbar = Line2D([36, 44], [122.5, 122.5], linewidth=3.5, color='#FFFFFF', zorder=1)
+        ax.add_line(left_post)
+        ax.add_line(right_post)
+        ax.add_line(crossbar)
 
         # Extract positions and teams
-        positions = graph.node_features[:, :2]
+        # mplsoccer handles coordinate transform with orientation='vertical'
+        positions_orig = graph.node_features[:, :2]  # x, y in StatsBomb coords
         teams = graph.teams
 
-        # Plot nodes
+        # Check if this graph has a ball node (team_with_ball strategy)
+        has_ball_node = (strategy == 'team_with_ball')
+
+        # No coordinate transformation needed - mplsoccer handles it!
+        positions = positions_orig
+
+        # Plot nodes (players)
         attacking_mask = np.array([t == 'attacking' for t in teams])
         defending_mask = ~attacking_mask
 
-        ax.scatter(
-            positions[attacking_mask, 0],
-            positions[attacking_mask, 1],
-            c='red',
-            s=150,
-            edgecolors='white',
-            linewidths=1.5,
-            alpha=0.8,
-            zorder=10
-        )
+        # Attacking players
+        if attacking_mask.any():
+            pitch.scatter(
+                positions[attacking_mask, 0],
+                positions[attacking_mask, 1],
+                s=150,
+                color='#E31E24',
+                edgecolors='#FFFFFF',
+                linewidth=1,
+                zorder=9,
+                ax=ax,
+                alpha=0.75
+            )
 
-        ax.scatter(
-            positions[defending_mask, 0],
-            positions[defending_mask, 1],
-            c='blue',
-            s=150,
-            edgecolors='white',
-            linewidths=1.5,
-            alpha=0.8,
-            zorder=10
-        )
+        # Defending players
+        if defending_mask.any():
+            pitch.scatter(
+                positions[defending_mask, 0],
+                positions[defending_mask, 1],
+                s=150,
+                color='#0047AB',
+                edgecolors='#FFFFFF',
+                linewidth=1,
+                zorder=9,
+                ax=ax,
+                alpha=0.75
+            )
 
-        # Plot edges
+        # Plot edges (graph connections) - color by connection type
         edge_index = graph.edge_index
+        ball_node_idx = graph.num_nodes - 1 if has_ball_node else None
+
         for i in range(edge_index.shape[1]):
             src, dst = edge_index[:, i]
-            pos_src = positions[src]
-            pos_dst = positions[dst]
 
-            ax.plot(
+            # Check if edge involves ball node
+            is_ball_edge = (ball_node_idx is not None and
+                           (src == ball_node_idx or dst == ball_node_idx))
+
+            if is_ball_edge:
+                # Connection to ball: black
+                edge_color = '#000000'
+                edge_alpha = 0.8  # Very visible
+                player_idx = src if dst == ball_node_idx else dst
+                pos_src = positions[player_idx] if src == ball_node_idx else positions[src]
+                pos_dst = positions[player_idx] if dst == ball_node_idx else positions[dst]
+                # Get ball position from features (distance_to_ball_target columns)
+                # For simplicity, use corner location from first player's data
+                ball_x = graph.node_features[0, 0]  # Approximate ball location
+                ball_y = graph.node_features[0, 1]  # Will be improved
+                if src == ball_node_idx:
+                    pos_src = np.array([ball_x, ball_y])
+                else:
+                    pos_dst = np.array([ball_x, ball_y])
+            else:
+                # Player-to-player connection
+                pos_src = positions[src]
+                pos_dst = positions[dst]
+                team_src = teams[src]
+                team_dst = teams[dst]
+
+                if team_src == team_dst:
+                    # Same team connection
+                    if team_src == 'attacking':
+                        edge_color = '#E31E24'  # Bright red for attacking-attacking
+                        edge_alpha = 0.8  # Very visible
+                    else:
+                        edge_color = '#0047AB'  # Royal blue for defending-defending
+                        edge_alpha = 0.8  # Very visible
+                else:
+                    # Cross-team connection: yellow
+                    edge_color = '#FFD700'
+                    edge_alpha = 0.7  # Visible
+
+            # Draw edge line
+            pitch.plot(
                 [pos_src[0], pos_dst[0]],
                 [pos_src[1], pos_dst[1]],
-                color='yellow',
-                alpha=0.25,
-                linewidth=0.8,
-                zorder=1
+                color=edge_color,
+                alpha=edge_alpha,
+                linewidth=1.2,
+                zorder=1,
+                ax=ax
+            )
+
+        # Plot ball node if present
+        if has_ball_node and ball_node_idx is not None:
+            ball_x = graph.node_features[0, 0]
+            ball_y = graph.node_features[0, 1]
+
+            pitch.scatter(
+                ball_x, ball_y,
+                s=30,
+                color='#808080',
+                edgecolors='none',
+                linewidth=0,
+                marker='o',
+                zorder=15,
+                ax=ax,
+                alpha=1.0
             )
 
         # Title with statistics
         title = f"{strategy.upper()}\n"
         title += f"Edges: {graph.num_edges} | Avg Degree: {graph.num_edges / graph.num_nodes:.1f}"
-        ax.set_title(title, fontsize=12, fontweight='bold', color='white', pad=10)
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
 
-    # Hide unused subplot
-    axes[5].axis('off')
+    # Add legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Attacking Player',
+               markerfacecolor='#E31E24', markeredgecolor='#FFFFFF', markersize=8,
+               markeredgewidth=0.5, linestyle='None', alpha=0.75),
+        Line2D([0], [0], marker='o', color='w', label='Defending Player',
+               markerfacecolor='#0047AB', markeredgecolor='#FFFFFF', markersize=8,
+               markeredgewidth=0.5, linestyle='None', alpha=0.75),
+        Line2D([0], [0], marker='o', color='w', label='Ball Node',
+               markerfacecolor='#808080', markeredgecolor='none', markersize=6,
+               markeredgewidth=0, linestyle='None', alpha=1.0),
+        Line2D([0], [0], color='#E31E24', lw=3, alpha=0.8, label='Intra-Team (Attack)'),
+        Line2D([0], [0], color='#0047AB', lw=3, alpha=0.8, label='Intra-Team (Defense)'),
+        Line2D([0], [0], color='#FFD700', lw=3, alpha=0.7, label='Inter-Team'),
+        Line2D([0], [0], color='#000000', lw=3, alpha=0.8, label='Ball Connection')
+    ]
+
+    # Add legend to figure (not to subplot)
+    fig.legend(
+        handles=legend_elements,
+        loc='lower right',
+        fontsize=12,
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        title='Legend',
+        title_fontsize=14,
+        bbox_to_anchor=(0.98, 0.02)
+    )
 
     # Overall title
     corner_id = list(graphs.values())[0].corner_id
     fig.suptitle(
-        f"Adjacency Strategy Comparison - Corner: {corner_id}",
-        fontsize=16,
+        f"Graph Adjacency Strategy Comparison\nCorner: {corner_id}",
+        fontsize=18,
         fontweight='bold',
-        color='white',
         y=0.98
     )
 
-    plt.tight_layout()
-    fig.patch.set_facecolor('#1a5f3a')
-    plt.savefig(output_path, dpi=150, facecolor='#1a5f3a', bbox_inches='tight')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(output_path, dpi=200, facecolor='#ffffff', bbox_inches='tight')
     plt.close()
+
+    print(f"✅ Saved strategy comparison: {output_path}")
 
 
 def print_strategy_statistics(graphs: Dict[str, CornerGraph]):

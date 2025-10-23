@@ -8,11 +8,12 @@ Converts player node features into graph representations with multiple adjacency
 Based on Bekkers & Sahasrabudhe (2024) "A Graph Neural Network Deep-Dive into Successful Counterattacks"
 
 Adjacency Strategies:
-1. Team-based: Connect teammates + ball node to all (paper baseline)
-2. Distance-based: Connect players within threshold
-3. Delaunay: Spatial triangulation
-4. Ball-centric: Connect players near ball trajectory
-5. Zone-based: Connect players in same tactical zones
+1. Team-based: Connect teammates only
+2. Team-with-ball: Connect teammates + ball node (US Soccer Fed approach)
+3. Distance-based: Connect players within threshold
+4. Delaunay: Spatial triangulation
+5. Ball-centric: Connect players near ball trajectory
+6. Zone-based: Connect players in same tactical zones
 """
 
 import numpy as np
@@ -40,7 +41,7 @@ TACTICAL_ZONES = {
     'far_post': (114.0, 120.0, 40.0, 62.0),
 }
 
-AdjacencyStrategy = Literal['team', 'distance', 'delaunay', 'ball_centric', 'zone']
+AdjacencyStrategy = Literal['team', 'team_with_ball', 'distance', 'delaunay', 'ball_centric', 'zone']
 
 
 @dataclass
@@ -181,6 +182,22 @@ class GraphBuilder:
         # Build adjacency matrix based on strategy
         adjacency_matrix = self._build_adjacency_matrix(features_df)
 
+        # If team_with_ball strategy, add ball node to features
+        if self.adjacency_strategy == 'team_with_ball':
+            # Ball node features (14 dimensions, mostly zeros except position)
+            ball_x = features_df.iloc[0]['x']
+            ball_y = features_df.iloc[0]['y']
+            ball_features = np.zeros(14)
+            ball_features[0] = ball_x  # x position
+            ball_features[1] = ball_y  # y position
+            # distance_to_goal, distance_to_ball_target would be calculated but set to 0 for simplicity
+            # Ball has no velocity, angle features are 0
+            # team_flag = 0 (neutral)
+
+            node_features = np.vstack([node_features, ball_features])
+            player_ids.append('ball')
+            teams.append('ball')
+
         # Compute edge features
         edge_index, edge_features = self._compute_edge_features(features_df, adjacency_matrix)
 
@@ -212,6 +229,8 @@ class GraphBuilder:
         """
         if self.adjacency_strategy == 'team':
             return self._build_team_based_adjacency(features_df)
+        elif self.adjacency_strategy == 'team_with_ball':
+            return self._build_team_with_ball_adjacency(features_df)
         elif self.adjacency_strategy == 'distance':
             return self._build_distance_based_adjacency(features_df)
         elif self.adjacency_strategy == 'delaunay':
@@ -248,6 +267,43 @@ class GraphBuilder:
                 if teams[i] == teams[j]:
                     adjacency[i, j] = 1.0
                     adjacency[j, i] = 1.0  # Undirected graph
+
+        return csr_matrix(adjacency)
+
+    def _build_team_with_ball_adjacency(self, features_df: pd.DataFrame) -> csr_matrix:
+        """
+        Build team-with-ball adjacency: Connect teammates + ball node to all players.
+
+        US Soccer Federation approach:
+        - Each player connects to all teammates
+        - Ball is added as an additional node
+        - All players connect to the ball node
+
+        This creates a star topology with the ball at the center, plus team connections.
+
+        Args:
+            features_df: DataFrame with player features
+
+        Returns:
+            Sparse adjacency matrix (N_players+1, N_players+1) with ball as last node
+        """
+        n = len(features_df)
+        # Add one extra node for the ball
+        adjacency = np.zeros((n + 1, n + 1), dtype=np.float32)
+
+        # Connect teammates (same as team strategy)
+        teams = features_df['team'].values
+        for i in range(n):
+            for j in range(i + 1, n):
+                if teams[i] == teams[j]:
+                    adjacency[i, j] = 1.0
+                    adjacency[j, i] = 1.0  # Undirected graph
+
+        # Connect all players to ball node (index n)
+        ball_idx = n
+        for i in range(n):
+            adjacency[i, ball_idx] = 1.0
+            adjacency[ball_idx, i] = 1.0
 
         return csr_matrix(adjacency)
 
@@ -421,6 +477,21 @@ class GraphBuilder:
         positions = features_df[['x', 'y']].values
         velocities = features_df[['vx', 'vy']].values
 
+        # Check if we have a ball node (team_with_ball strategy)
+        n_players = len(features_df)
+        has_ball_node = (adjacency_matrix.shape[0] == n_players + 1)
+
+        if has_ball_node:
+            # Add ball position (use corner kick location or ball target)
+            # Use first player's ball target as approximation
+            ball_x = features_df.iloc[0]['x']  # Corner kick x location
+            ball_y = features_df.iloc[0]['y']  # Corner kick y location
+            ball_pos = np.array([[ball_x, ball_y]])
+            ball_vel = np.array([[0.0, 0.0]])  # Ball has no velocity in freeze frame
+
+            positions = np.vstack([positions, ball_pos])
+            velocities = np.vstack([velocities, ball_vel])
+
         # Iterate over edges
         for i, j in zip(adjacency_coo.row, adjacency_coo.col):
             if i < j:  # Only process each edge once (undirected)
@@ -474,7 +545,7 @@ def compare_adjacency_strategies(features_df: pd.DataFrame, corner_id: str) -> D
     Returns:
         Dictionary mapping strategy name to CornerGraph
     """
-    strategies: List[AdjacencyStrategy] = ['team', 'distance', 'delaunay', 'ball_centric', 'zone']
+    strategies: List[AdjacencyStrategy] = ['team', 'team_with_ball', 'distance', 'delaunay', 'ball_centric', 'zone']
     graphs = {}
 
     for strategy in strategies:
@@ -487,4 +558,4 @@ def compare_adjacency_strategies(features_df: pd.DataFrame, corner_id: str) -> D
 if __name__ == "__main__":
     # Example usage
     print("Graph Builder Module - Phase 2.2")
-    print("Adjacency strategies: team, distance, delaunay, ball_centric, zone")
+    print("Adjacency strategies: team, team_with_ball, distance, delaunay, ball_centric, zone")

@@ -120,25 +120,37 @@ for idx, (ax, corner_data) in enumerate(zip(axes.flatten(), corners_with_360)):
         else:
             defending_players.append(pos)
 
-    # Plot attacking team (blue)
+    # Plot attacking team
     if attacking_players:
         attacking_x = [p[0] for p in attacking_players]
         attacking_y = [p[1] for p in attacking_players]
         pitch.scatter(attacking_x, attacking_y,
-                     s=250, color='#1e90ff', edgecolors='white',
-                     linewidth=2.5, zorder=9, ax=ax, label='Attacking', alpha=0.9)
+                     s=150, color='#E31E24', edgecolors='#FFFFFF',
+                     linewidth=1, zorder=9, ax=ax, label='Attacking', alpha=0.75)
 
-    # Plot defending team (orange)
+    # Plot defending team
     if defending_players:
         defending_x = [p[0] for p in defending_players]
         defending_y = [p[1] for p in defending_players]
         pitch.scatter(defending_x, defending_y,
-                     s=250, color='#ff6b35', edgecolors='white',
-                     linewidth=2.5, zorder=9, ax=ax, label='Defending', alpha=0.9)
+                     s=150, color='#0047AB', edgecolors='#FFFFFF',
+                     linewidth=1, zorder=9, ax=ax, label='Defending', alpha=0.75)
 
     # Add legend
-    ax.legend(loc='upper left', fontsize=12, frameon=True, fancybox=True,
-             shadow=True, framealpha=0.9)
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Attacking Player',
+               markerfacecolor='#E31E24', markeredgecolor='#FFFFFF', markersize=8,
+               markeredgewidth=0.5, linestyle='None', alpha=0.75),
+        Line2D([0], [0], marker='o', color='w', label='Defending Player',
+               markerfacecolor='#0047AB', markeredgecolor='#FFFFFF', markersize=8,
+               markeredgewidth=0.5, linestyle='None', alpha=0.75),
+        Line2D([0], [0], marker='*', color='w', label='Corner Kick',
+               markerfacecolor='red', markeredgecolor='black', markersize=12,
+               markeredgewidth=2, linestyle='None')
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', fontsize=12, frameon=True,
+             fancybox=True, shadow=True, framealpha=0.9)
 
     # Set title
     title = f"{team}\n{minute}:{second:02d} | {len(attacking_players)} ATK vs {len(defending_players)} DEF"

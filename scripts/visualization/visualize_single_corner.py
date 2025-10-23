@@ -64,25 +64,23 @@ corner_loc = [corner_data['location_x'], corner_data['location_y']]
 # Determine corner side for labeling
 corner_side = "Bottom" if corner_data['location_y'] < 40 else "Top"
 
-# Plot ATTACKING players (Bright Red - broadcast style with transparency)
+# Plot attacking players
 if attacking_positions:
     attacking_x = [p[0] for p in attacking_positions]
     attacking_y = [p[1] for p in attacking_positions]
 
-    # Main player markers - transparent for overlap visibility
     pitch.scatter(attacking_x, attacking_y,
-                 s=500, color='#E31E24', edgecolors='#000000',
-                 linewidth=3.5, zorder=9, ax=ax, label='Attacking', alpha=0.7)
+                 s=150, color='#E31E24', edgecolors='#FFFFFF',
+                 linewidth=1, zorder=9, ax=ax, label='Attacking', alpha=0.75)
 
-# Plot DEFENDING players (Royal Blue - broadcast style with transparency)
+# Plot defending players
 if defending_positions:
     defending_x = [p[0] for p in defending_positions]
     defending_y = [p[1] for p in defending_positions]
 
-    # Main player markers - transparent for overlap visibility
     pitch.scatter(defending_x, defending_y,
-                 s=500, color='#0047AB', edgecolors='#000000',
-                 linewidth=3.5, zorder=9, ax=ax, label='Defending', alpha=0.7)
+                 s=150, color='#0047AB', edgecolors='#FFFFFF',
+                 linewidth=1, zorder=9, ax=ax, label='Defending', alpha=0.75)
 
 # Plot corner trajectory with heat spot and dotted line
 if pd.notna(corner_data['end_x']) and pd.notna(corner_data['end_y']):
@@ -104,17 +102,17 @@ if pd.notna(corner_data['end_x']) and pd.notna(corner_data['end_y']):
                color='#ffffff', linestyle=':', linewidth=3, zorder=7, ax=ax,
                alpha=0.8)
 
-# Create simple legend
+# Create legend
 from matplotlib.lines import Line2D
 legend_elements = [
-    Line2D([0], [0], marker='o', color='w', label='Attacking',
-           markerfacecolor='#E31E24', markeredgecolor='#000000', markersize=12,
-           markeredgewidth=2, linestyle='None', alpha=0.7),
-    Line2D([0], [0], marker='o', color='w', label='Defending',
-           markerfacecolor='#0047AB', markeredgecolor='#000000', markersize=12,
-           markeredgewidth=2, linestyle='None', alpha=0.7),
+    Line2D([0], [0], marker='o', color='w', label='Attacking Player',
+           markerfacecolor='#E31E24', markeredgecolor='#FFFFFF', markersize=8,
+           markeredgewidth=0.5, linestyle='None', alpha=0.75),
+    Line2D([0], [0], marker='o', color='w', label='Defending Player',
+           markerfacecolor='#0047AB', markeredgecolor='#FFFFFF', markersize=8,
+           markeredgewidth=0.5, linestyle='None', alpha=0.75),
     Line2D([0], [0], marker='o', color='w', label='Ball Landing',
-           markerfacecolor='#FFD700', markeredgecolor='none', markersize=10,
+           markerfacecolor='#FFD700', markeredgecolor='none', markersize=8,
            markeredgewidth=0, linestyle='None', alpha=0.4)
 ]
 
