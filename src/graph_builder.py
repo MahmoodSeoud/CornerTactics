@@ -88,6 +88,9 @@ class CornerGraph:
         player_ids: List of player IDs corresponding to nodes
         teams: List of team labels ('attacking'/'defending')
         outcome_label: Corner outcome (goal/shot/clearance/etc.)
+        receiver_player_id: StatsBomb player ID of receiver (TacticAI)
+        receiver_player_name: Name of receiver player
+        receiver_node_index: Node index (0-21) of receiver in graph
     """
     corner_id: str
     node_features: np.ndarray
@@ -98,6 +101,9 @@ class CornerGraph:
     teams: List[str]
     outcome_label: Optional[str] = None
     goal_scored: bool = False
+    receiver_player_id: Optional[int] = None
+    receiver_player_name: Optional[str] = None
+    receiver_node_index: Optional[int] = None
 
     @property
     def num_nodes(self) -> int:
@@ -121,6 +127,9 @@ class CornerGraph:
             'teams': self.teams,
             'outcome_label': self.outcome_label,
             'goal_scored': self.goal_scored,
+            'receiver_player_id': self.receiver_player_id,
+            'receiver_player_name': self.receiver_player_name,
+            'receiver_node_index': self.receiver_node_index,
             'num_nodes': self.num_nodes,
             'num_edges': self.num_edges
         }
