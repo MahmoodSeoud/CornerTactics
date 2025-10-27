@@ -33,19 +33,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def load_statsbomb_events() -> pd.DataFrame:
-    """Load StatsBomb event data with corners."""
-    events_path = Path("data/raw/statsbomb/corners_360_with_outcomes.csv")
+def load_statsbomb_corners() -> pd.DataFrame:
+    """Load StatsBomb corners with outcome data."""
+    corners_path = Path("data/raw/statsbomb/corners_360_with_outcomes.csv")
 
-    if not events_path.exists():
-        logger.error(f"StatsBomb events file not found: {events_path}")
-        raise FileNotFoundError(f"Expected file: {events_path}")
+    if not corners_path.exists():
+        logger.error(f"StatsBomb corners file not found: {corners_path}")
+        raise FileNotFoundError(f"Expected file: {corners_path}")
 
-    logger.info(f"Loading StatsBomb events from {events_path}")
-    events_df = pd.read_csv(events_path)
-    logger.info(f"Loaded {len(events_df)} events")
+    logger.info(f"Loading StatsBomb corners from {corners_path}")
+    corners_df = pd.read_csv(corners_path)
+    logger.info(f"Loaded {len(corners_df)} corners")
 
-    return events_df
+    return corners_df
 
 
 def load_existing_graphs(graph_path: Path) -> List[CornerGraph]:
@@ -61,21 +61,35 @@ def load_existing_graphs(graph_path: Path) -> List[CornerGraph]:
 
 def add_receiver_labels_to_graphs(
     graphs: List[CornerGraph],
-    events_df: pd.DataFrame
+    corners_df: pd.DataFrame
 ) -> tuple[List[CornerGraph], Dict]:
     """
-    Add receiver labels to corner graphs.
+    Add receiver labels to corner graphs using outcome data.
 
     Args:
         graphs: List of CornerGraph objects
-        events_df: StatsBomb events DataFrame
+        corners_df: StatsBomb corners DataFrame with outcome_player column
 
     Returns:
         Tuple of (updated_graphs, statistics)
     """
-    labeler = ReceiverLabeler()
-    updated_graphs = []
+    # Create lookup dictionary: corner_id -> receiver info
+    corner_lookup = {}
+    for _, row in corners_df.iterrows():
+        corner_id = row['corner_id']
+        same_team = row['same_team']
+        outcome_player = row['outcome_player']
 
+        # Only use outcome_player if it's the attacking team (same_team=True)
+        # This is the "receiver" - first attacking player to touch the ball
+        if same_team and pd.notna(outcome_player):
+            corner_lookup[corner_id] = outcome_player
+        else:
+            corner_lookup[corner_id] = None
+
+    logger.info(f"Built lookup for {len(corner_lookup)} corners")
+
+    updated_graphs = []
     stats = {
         'total_graphs': len(graphs),
         'with_receiver': 0,
@@ -86,42 +100,30 @@ def add_receiver_labels_to_graphs(
     logger.info("Adding receiver labels to graphs...")
 
     for graph in tqdm(graphs, desc="Processing graphs"):
-        # Extract corner_id - format varies, need to handle different formats
+        # Extract base corner_id (might have temporal suffix like "_t0")
         corner_id = graph.corner_id
+        base_corner_id = corner_id.split('_t')[0]  # Remove temporal suffix if present
 
-        # Try to find corresponding events
-        # The corner_id might be in format "match_X_corner_Y" or just an event ID
-        receiver_id, receiver_name = labeler.find_receiver(events_df, corner_id)
+        # Look up receiver
+        receiver_name = corner_lookup.get(base_corner_id, None)
 
-        # Create updated graph with receiver metadata
-        # Note: We need to add receiver_player_id and receiver_node_index to metadata
-        graph_dict = graph.to_dict()
-
-        if receiver_id is not None:
-            # Find which node index corresponds to this player
-            receiver_node_idx = None
-            if hasattr(graph, 'player_ids') and graph.player_ids:
-                try:
-                    # player_ids should map node index to player ID
-                    receiver_node_idx = graph.player_ids.index(str(receiver_id))
-                except (ValueError, AttributeError):
-                    # Player not in freeze frame (could be a player who entered late)
-                    pass
-
-            graph_dict['receiver_player_id'] = receiver_id
-            graph_dict['receiver_player_name'] = receiver_name
-            graph_dict['receiver_node_index'] = receiver_node_idx
+        # Update graph with receiver info
+        if receiver_name is not None:
+            # Note: We don't have player IDs in this CSV, so we can't map to node index
+            # This would require loading full StatsBomb event data
+            graph.receiver_player_id = None  # Not available in CSV
+            graph.receiver_player_name = receiver_name
+            graph.receiver_node_index = None  # Would need player ID to map this
 
             stats['with_receiver'] += 1
         else:
-            graph_dict['receiver_player_id'] = None
-            graph_dict['receiver_player_name'] = None
-            graph_dict['receiver_node_index'] = None
+            graph.receiver_player_id = None
+            graph.receiver_player_name = None
+            graph.receiver_node_index = None
 
             stats['without_receiver'] += 1
 
-        # Reconstruct CornerGraph (we'll need to update the dataclass first)
-        updated_graphs.append(graph)  # Placeholder - will fix after updating dataclass
+        updated_graphs.append(graph)
 
     stats['coverage_pct'] = (stats['with_receiver'] / stats['total_graphs']) * 100
 
@@ -137,11 +139,11 @@ def main():
     output_graph_path = Path("data/graphs/adjacency_team/combined_temporal_graphs_with_receiver.pkl")
 
     # Load data
-    events_df = load_statsbomb_events()
+    corners_df = load_statsbomb_corners()
     graphs = load_existing_graphs(input_graph_path)
 
     # Add receiver labels
-    updated_graphs, stats = add_receiver_labels_to_graphs(graphs, events_df)
+    updated_graphs, stats = add_receiver_labels_to_graphs(graphs, corners_df)
 
     # Save updated graphs
     logger.info(f"Saving updated graphs to {output_graph_path}")
