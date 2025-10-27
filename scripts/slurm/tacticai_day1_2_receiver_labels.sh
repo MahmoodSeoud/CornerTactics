@@ -16,6 +16,9 @@ conda activate robo
 cd /home/mseo/CornerTactics
 export PYTHONPATH="${PYTHONPATH}:/home/mseo/CornerTactics"
 
+# Fix libstdc++ compatibility issue
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
 echo "=== TacticAI Day 1-2: Receiver Label Extraction ==="
 echo "Start time: $(date)"
 echo "Node: $(hostname)"
