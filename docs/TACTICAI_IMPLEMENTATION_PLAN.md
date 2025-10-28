@@ -57,18 +57,18 @@
 ---
 
 ### Day 5-6: Baseline Models
-- [ ] Create `src/models/baselines.py`
-  - [ ] Implement `RandomReceiverBaseline`
-    - [ ] `predict()`: Return random softmax over 22 players
-    - [ ] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
-  - [ ] Implement `MLPReceiverBaseline`
-    - [ ] Flatten all player positions: `[batch, 22*14=308]`
-    - [ ] MLP: 308 → 256 → 128 → 22
-    - [ ] Dropout 0.3, ReLU activations
-- [ ] Create `scripts/training/train_baseline.py`
-  - [ ] Train MLP for 10k steps
-  - [ ] Compute top-1, top-3, top-5 accuracy
-  - [ ] Save results: `results/baseline_mlp.json`
+- [x] Create `src/models/baselines.py`
+  - [x] Implement `RandomReceiverBaseline`
+    - [x] `predict()`: Return random softmax over 22 players
+    - [x] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
+  - [x] Implement `MLPReceiverBaseline`
+    - [x] Flatten all player positions: `[batch, 22*14=308]`
+    - [x] MLP: 308 → 256 → 128 → 22
+    - [x] Dropout 0.3, ReLU activations
+- [x] Create `scripts/training/train_baseline.py`
+  - [x] Train MLP for 10k steps
+  - [x] Compute top-1, top-3, top-5 accuracy
+  - [x] Save results: `results/baseline_mlp.json`
 
 **Success Criteria**:
 - ✅ Random baseline: top-1=4.5%, top-3=13.6% (sanity check)
@@ -78,11 +78,11 @@
 ---
 
 ### Day 7: Checkpoint & Decision Point
-- [ ] Review baseline results
-- [ ] Document findings in `docs/BASELINE_RESULTS.md`
-- [ ] Decision:
-  - [ ] **If MLP top-3 > 45%**: ✅ Proceed to Phase 2 (GATv2)
-  - [ ] **If MLP top-3 < 40%**: ❌ Debug data quality (check receiver label extraction)
+- [x] Review baseline results
+- [x] Document findings in `docs/BASELINE_RESULTS.md`
+- [x] Decision:
+  - [x] **If MLP top-3 > 45%**: ✅ Proceed to Phase 2 (GATv2)
+  - [x] **If MLP top-3 < 40%**: ❌ Debug data quality (check receiver label extraction)
 
 **Deliverables**:
 - ✅ `scripts/preprocessing/add_receiver_labels.py`
