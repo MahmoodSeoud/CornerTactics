@@ -21,7 +21,8 @@ from typing import Dict, List, Optional, Tuple
 from sklearn.metrics import (
     roc_auc_score, accuracy_score, precision_score,
     recall_score, f1_score, confusion_matrix,
-    classification_report
+    classification_report, average_precision_score,
+    precision_recall_curve
 )
 import warnings
 from tqdm import tqdm
@@ -139,14 +140,17 @@ class MetricsComputer:
             'f1': f1_score(labels, preds, zero_division=0)
         }
 
-        # AUC if probabilities available
+        # AUC and Average Precision if probabilities available
         if self.all_probs:
             probs = np.array(self.all_probs)
             try:
                 metrics['auc_roc'] = roc_auc_score(labels, probs)
+                # Average Precision (AP) - key metric for imbalanced data
+                metrics['avg_precision'] = average_precision_score(labels, probs)
             except ValueError:
                 # Can happen if only one class in batch
                 metrics['auc_roc'] = 0.0
+                metrics['avg_precision'] = 0.0
 
         # Confusion matrix
         tn, fp, fn, tp = confusion_matrix(labels, preds).ravel()
@@ -186,8 +190,9 @@ def train_epoch(model: nn.Module, loader, optimizer,
         batch = batch.to(device)
         optimizer.zero_grad()
 
-        # Forward pass
-        out = model(batch.x, batch.edge_index, batch.batch)
+        # Forward pass (with edge features if available)
+        edge_attr = getattr(batch, 'edge_attr', None)
+        out = model(batch.x, batch.edge_index, batch.batch, edge_attr=edge_attr)
         loss = criterion(out.squeeze(), batch.y.squeeze())
 
         # Backward pass
@@ -233,8 +238,9 @@ def validate_epoch(model: nn.Module, loader, criterion,
     for batch in progress_bar:
         batch = batch.to(device)
 
-        # Forward pass
-        out = model(batch.x, batch.edge_index, batch.batch)
+        # Forward pass (with edge features if available)
+        edge_attr = getattr(batch, 'edge_attr', None)
+        out = model(batch.x, batch.edge_index, batch.batch, edge_attr=edge_attr)
         loss = criterion(out.squeeze(), batch.y.squeeze())
 
         # Track metrics
@@ -308,11 +314,12 @@ def print_metrics(metrics: Dict[str, float], prefix: str = ""):
     else:
         print("\nMetrics:")
 
-    # Main metrics
-    main_metrics = ['loss', 'accuracy', 'auc_roc', 'precision', 'recall', 'f1']
+    # Main metrics (Average Precision is KEY for imbalanced data)
+    main_metrics = ['loss', 'accuracy', 'auc_roc', 'avg_precision', 'precision', 'recall', 'f1']
     for metric in main_metrics:
         if metric in metrics:
-            print(f"  {metric:12s}: {metrics[metric]:.4f}")
+            label = "AP" if metric == 'avg_precision' else metric
+            print(f"  {label:12s}: {metrics[metric]:.4f}")
 
     # Confusion matrix if available
     if 'true_positives' in metrics:

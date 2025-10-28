@@ -59,8 +59,10 @@ def parse_args():
 
     # Model arguments
     parser.add_argument('--model', type=str, default='gcn',
-                       choices=['gcn', 'gat'],
-                       help='Model type (GCN or GAT)')
+                       choices=['gcn', 'gcn_edge', 'gat'],
+                       help='Model type (GCN, GCN with edge features, or GAT)')
+    parser.add_argument('--use-edge-features', action='store_true', default=False,
+                       help='Use 6-dim edge features (distance, velocity, angle)')
     parser.add_argument('--hidden-dim1', type=int, default=64,
                        help='First hidden dimension')
     parser.add_argument('--hidden-dim2', type=int, default=128,
@@ -164,16 +166,22 @@ def main():
     )
 
     # Create model
-    print(f"\nCreating {args.model.upper()} model...")
+    use_edges = args.use_edge_features or args.model == 'gcn_edge'
+    model_name = args.model.upper() + (" (with edge features)" if use_edges else "")
+    print(f"\nCreating {model_name} model...")
     model = create_model(
         model_type=args.model,
+        use_edge_features=use_edges,
         hidden_dim1=args.hidden_dim1,
         hidden_dim2=args.hidden_dim2,
         hidden_dim3=args.hidden_dim3,
         dropout_rate=args.dropout
     )
     model = model.to(device)
-    print(f"Model has {count_parameters(model):,} trainable parameters")
+    num_params = count_parameters(model)
+    print(f"Model has {num_params:,} trainable parameters")
+    if use_edges:
+        print("✓ Using 6-dimensional edge features (distance, velocity, angle)")
 
     # Setup optimizer
     optimizer = optim.Adam(
@@ -264,6 +272,8 @@ def main():
         writer.add_scalar('Loss/val', val_metrics['loss'], epoch)
         writer.add_scalar('AUC/train', train_metrics.get('auc_roc', 0), epoch)
         writer.add_scalar('AUC/val', val_metrics.get('auc_roc', 0), epoch)
+        writer.add_scalar('AP/train', train_metrics.get('avg_precision', 0), epoch)
+        writer.add_scalar('AP/val', val_metrics.get('avg_precision', 0), epoch)
         writer.add_scalar('Accuracy/train', train_metrics['accuracy'], epoch)
         writer.add_scalar('Accuracy/val', val_metrics['accuracy'], epoch)
 
@@ -279,13 +289,17 @@ def main():
             if key in val_metrics:
                 training_history[f'val_{short_key}'].append(val_metrics[key])
 
-        # Save best model
+        # Save best model (use Average Precision for imbalanced data)
+        val_ap = val_metrics.get('avg_precision', 0)
         val_auc = val_metrics.get('auc_roc', 0)
-        if val_auc > best_val_auc:
-            best_val_auc = val_auc
+        # Use AP as primary metric if available, fall back to AUC
+        val_score = val_ap if val_ap > 0 else val_auc
+        if val_score > best_val_auc:
+            best_val_auc = val_score
             best_model_path = experiment_dir / 'best_model.pth'
             save_checkpoint(model, optimizer, epoch, val_metrics, best_model_path)
-            print(f"New best model! AUC: {best_val_auc:.4f}")
+            metric_name = "AP" if val_ap > 0 else "AUC"
+            print(f"New best model! {metric_name}: {best_val_auc:.4f}")
 
         # Save latest checkpoint
         latest_path = experiment_dir / 'latest_checkpoint.pth'
@@ -298,8 +312,8 @@ def main():
         }
         torch.save(checkpoint_dict, latest_path)
 
-        # Early stopping
-        if early_stopping(val_auc):
+        # Early stopping (use same metric as model selection)
+        if early_stopping(val_score):
             print(f"\nEarly stopping triggered at epoch {epoch+1}")
             break
 
@@ -353,9 +367,11 @@ def main():
     print("Training Complete!")
     print("=" * 60)
     print(f"Experiment: {experiment_name}")
-    print(f"Best Val AUC: {best_val_auc:.4f}")
+    print(f"Best Val Score: {best_val_auc:.4f}")
+    print(f"Test AP: {test_metrics.get('avg_precision', 0):.4f}")
     print(f"Test AUC: {test_metrics.get('auc_roc', 0):.4f}")
     print(f"Test Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"Test F1: {test_metrics.get('f1', 0):.4f}")
     print(f"Models saved in: {experiment_dir}")
 
 

@@ -86,6 +86,7 @@ class CornerGraph:
         edge_features: (N_edges, 6) array of edge features
         edge_index: (2, N_edges) array of edge connectivity (i, j pairs)
         player_ids: List of player IDs corresponding to nodes
+        player_names: List of player names corresponding to nodes (FIXED for Day 1-2)
         teams: List of team labels ('attacking'/'defending')
         outcome_label: Corner outcome (goal/shot/clearance/etc.)
         receiver_player_id: StatsBomb player ID of receiver (TacticAI)
@@ -98,6 +99,7 @@ class CornerGraph:
     edge_features: np.ndarray
     edge_index: np.ndarray
     player_ids: List[str]
+    player_names: List[str]  # ADDED: Player names for receiver mapping
     teams: List[str]
     outcome_label: Optional[str] = None
     goal_scored: bool = False
@@ -124,6 +126,7 @@ class CornerGraph:
             'edge_features': self.edge_features,
             'edge_index': self.edge_index,
             'player_ids': self.player_ids,
+            'player_names': self.player_names,
             'teams': self.teams,
             'outcome_label': self.outcome_label,
             'goal_scored': self.goal_scored,

@@ -18,7 +18,7 @@ Date: October 2024
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool, global_max_pool
+from torch_geometric.nn import GCNConv, GATConv, NNConv, global_mean_pool, global_max_pool
 from torch_geometric.data import Data, Batch
 from typing import Tuple, Optional, Dict
 
@@ -194,23 +194,147 @@ class CornerGNNWithAttention(CornerGNN):
                              heads=1, concat=False, dropout=0.3)
 
 
-def create_model(model_type: str = "gcn", **kwargs) -> CornerGNN:
+class CornerGNNWithEdgeFeatures(CornerGNN):
+    """
+    Enhanced GNN that uses 6-dimensional edge features for improved tactical understanding.
+
+    Edge features include:
+    - Distance between players (normalized)
+    - Relative velocity (vx, vy, magnitude)
+    - Angle between players (sin, cos)
+
+    Uses NNConv (Neural Network Convolution) which learns edge-specific transformations.
+    """
+
+    def __init__(self, *args, edge_dim: int = 6, **kwargs):
+        """
+        Initialize GNN with edge feature support.
+
+        Args:
+            edge_dim: Dimension of edge features (default: 6)
+            *args, **kwargs: Arguments passed to parent class
+        """
+        # Initialize parent WITHOUT edge features flag
+        # We need to override the layers anyway
+        kwargs_copy = kwargs.copy()
+        kwargs_copy.pop('use_edge_features', None)
+        super().__init__(*args, **kwargs_copy)
+
+        self.edge_dim = edge_dim
+        self.use_edge_features = True
+
+        # Get dimensions from parent initialization
+        input_dim = args[0] if args else kwargs.get('input_dim', 14)
+        hidden_dim1 = args[1] if len(args) > 1 else kwargs.get('hidden_dim1', 64)
+        hidden_dim2 = args[2] if len(args) > 2 else kwargs.get('hidden_dim2', 128)
+        hidden_dim3 = args[3] if len(args) > 3 else kwargs.get('hidden_dim3', 64)
+
+        # Replace GCN layers with NNConv that supports edge features
+        # NNConv: learns a neural network for each edge type
+
+        # Edge network for first layer: maps edge features to weight matrix
+        edge_nn1 = nn.Sequential(
+            nn.Linear(edge_dim, hidden_dim1 * input_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim1 * input_dim, hidden_dim1 * input_dim)
+        )
+        self.conv1 = NNConv(input_dim, hidden_dim1, edge_nn1, aggr='mean')
+
+        # Edge network for second layer
+        edge_nn2 = nn.Sequential(
+            nn.Linear(edge_dim, hidden_dim2 * hidden_dim1),
+            nn.ReLU(),
+            nn.Linear(hidden_dim2 * hidden_dim1, hidden_dim2 * hidden_dim1)
+        )
+        self.conv2 = NNConv(hidden_dim1, hidden_dim2, edge_nn2, aggr='mean')
+
+        # Edge network for third layer
+        edge_nn3 = nn.Sequential(
+            nn.Linear(edge_dim, hidden_dim3 * hidden_dim2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim3 * hidden_dim2, hidden_dim3 * hidden_dim2)
+        )
+        self.conv3 = NNConv(hidden_dim2, hidden_dim3, edge_nn3, aggr='mean')
+
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor,
+                batch: Optional[torch.Tensor] = None,
+                edge_attr: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Forward pass with edge features.
+
+        Args:
+            x: Node features [num_nodes, input_dim]
+            edge_index: Graph connectivity [2, num_edges]
+            batch: Batch assignment vector [num_nodes]
+            edge_attr: Edge features [num_edges, edge_dim] (REQUIRED for this model)
+
+        Returns:
+            Output predictions [batch_size, output_dim]
+        """
+        if edge_attr is None:
+            raise ValueError("CornerGNNWithEdgeFeatures requires edge_attr to be provided")
+
+        # Graph convolution layers with edge features
+        x = self.conv1(x, edge_index, edge_attr)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv2(x, edge_index, edge_attr)
+        x = self.bn2(x)
+        x = F.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv3(x, edge_index, edge_attr)
+        x = self.bn3(x)
+        x = F.relu(x)
+
+        # Global pooling: concatenate mean and max pooling
+        if batch is None:
+            batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        x_mean = global_mean_pool(x, batch)
+        x_max = global_max_pool(x, batch)
+        x = torch.cat([x_mean, x_max], dim=1)
+
+        # Fully connected layers
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc_dropout(x)
+
+        x = self.fc2(x)
+        x = F.relu(x)
+
+        # Output layer
+        x = self.fc3(x)
+
+        return x
+
+
+def create_model(model_type: str = "gcn", use_edge_features: bool = False, **kwargs) -> CornerGNN:
     """
     Factory function to create different GNN model variants.
 
     Args:
-        model_type: Type of model ("gcn" or "gat")
+        model_type: Type of model ("gcn", "gat", or "gcn_edge")
+        use_edge_features: If True and model_type="gcn", use CornerGNNWithEdgeFeatures
         **kwargs: Model hyperparameters
 
     Returns:
         Instantiated model
     """
     if model_type == "gcn":
-        return CornerGNN(**kwargs)
+        if use_edge_features:
+            return CornerGNNWithEdgeFeatures(**kwargs)
+        else:
+            return CornerGNN(**kwargs)
+    elif model_type == "gcn_edge":
+        # Explicit edge-aware GCN model
+        return CornerGNNWithEdgeFeatures(**kwargs)
     elif model_type == "gat":
         return CornerGNNWithAttention(**kwargs)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Unknown model type: {model_type}. Choose from: gcn, gcn_edge, gat")
 
 
 def count_parameters(model: nn.Module) -> int:

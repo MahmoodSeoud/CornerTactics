@@ -158,6 +158,38 @@ for idx, match in tqdm(matches_df.iterrows(), total=len(matches_df), desc="Proce
                 attacking = corner_frames[corner_frames['teammate'] == True]
                 defending = corner_frames[corner_frames['teammate'] == False]
 
+                # Extract receiver information from pass recipient
+                receiver_name = None
+                receiver_id = None
+                receiver_location_x = None
+                receiver_location_y = None
+
+                if 'pass_recipient' in corner and pd.notna(corner['pass_recipient']):
+                    receiver_name = corner['pass_recipient']
+
+                    # Try to find Ball Receipt event for this receiver
+                    try:
+                        # Find Ball Receipt events for this player
+                        ball_receipts = events_df[
+                            (events_df['type'] == 'Ball Receipt*') &
+                            (events_df['player'] == receiver_name)
+                        ]
+
+                        # Filter to Ball Receipts related to this specific corner
+                        corner_id = corner['id']
+                        if len(ball_receipts) > 0 and 'related_events' in events_df.columns:
+                            related_receipts = ball_receipts[ball_receipts['related_events'].apply(
+                                lambda x: corner_id in x if isinstance(x, list) else False
+                            )]
+
+                            if len(related_receipts) > 0:
+                                receipt = related_receipts.iloc[0]
+                                if 'location' in receipt and isinstance(receipt['location'], list) and len(receipt['location']) >= 2:
+                                    receiver_location_x = receipt['location'][0]
+                                    receiver_location_y = receipt['location'][1]
+                    except:
+                        pass  # If we can't find Ball Receipt, leave as None
+
                 corners_list.append({
                     'match_id': match_id,
                     'competition': match['competition_name'],
@@ -179,6 +211,9 @@ for idx, match in tqdm(matches_df.iterrows(), total=len(matches_df), desc="Proce
                     'total_visible_players': len(corner_frames),
                     'attacking_positions': json.dumps(attacking['location'].tolist()),
                     'defending_positions': json.dumps(defending['location'].tolist()),
+                    'receiver_name': receiver_name,
+                    'receiver_location_x': receiver_location_x,
+                    'receiver_location_y': receiver_location_y,
                 })
 
         matches_with_360 += 1

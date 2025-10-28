@@ -544,8 +544,18 @@ The `docs/` directory contains comprehensive project documentation:
 - Test AUC: 0.271 (severe overfitting)
 - Only 14 goals (1.3%) - extreme class imbalance
 
+**CRITICAL FIX - Data Leakage (October 26, 2024)**:
+- ✅ Fixed train/val/test split to prevent temporal frame leakage
+- **Issue**: Previous splits randomly assigned temporal frames, allowing model to see same corner at different times across train/test
+- **Fix**: Now splits by base corner ID (1,435 unique corners) instead of graphs (7,369 frames)
+- **Impact**: All temporal frames from a corner now stay together in same split
+- **Verification**: Zero overlap between splits confirmed (see `DATA_LEAKAGE_FIX_NOTES.md`)
+- **File Modified**: `src/data_loader.py::get_split_indices()`
+- **Test Script**: `scripts/test_split_fix.py`
+
 **Next Immediate Tasks**:
-1. Update data loader to use augmented dataset
-2. Re-train with "dangerous situation" target (shot OR goal)
-3. Evaluate on test set with 17% positive class
-4. Compare against baseline (0.27 test AUC)
+1. ✅ Fix data leakage in train/val/test split
+2. ⏳ Re-train with fixed splits (expect AUC 0.70-0.80, not inflated 0.95)
+3. ⏳ Update data loader to use augmented dataset
+4. ⏳ Re-train with "dangerous situation" target (shot OR goal)
+5. ⏳ Evaluate on test set with 17% positive class
