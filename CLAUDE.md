@@ -559,3 +559,4 @@ The `docs/` directory contains comprehensive project documentation:
 3. ⏳ Update data loader to use augmented dataset
 4. ⏳ Re-train with "dangerous situation" target (shot OR goal)
 5. ⏳ Evaluate on test set with 17% positive class
+- When running cosure to always run it via slurm

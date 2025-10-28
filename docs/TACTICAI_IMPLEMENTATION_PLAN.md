@@ -36,18 +36,18 @@
 ---
 
 ### Day 3-4: Data Loader Extension
-- [ ] Create `src/data/receiver_data_loader.py`
-  - [ ] Implement `ReceiverCornerDataset` (extends `CornerDataset`)
-  - [ ] Mask velocity features: `x[:, 4:6] = 0.0` (acknowledge missing data)
-  - [ ] Add `receiver_label` field: `torch.LongTensor([receiver_idx])` (0-21)
-  - [ ] Add `shot_label` field: `torch.FloatTensor([1.0 if dangerous else 0.0])`
-  - [ ] Skip corners without valid receiver labels
-- [ ] Create helper function: `load_receiver_dataset()`
-- [ ] Unit test: Load batch, verify shapes
-  - [ ] `batch.x`: `[num_nodes, 14]` with velocities = 0
-  - [ ] `batch.receiver_label`: `[batch_size]` (0-21)
-  - [ ] `batch.shot_label`: `[batch_size, 1]`
-- [ ] Verify split integrity: No corner ID leakage across train/val/test
+- [x] Create `src/data/receiver_data_loader.py`
+  - [x] Implement `ReceiverCornerDataset` (extends `CornerDataset`)
+  - [x] Mask velocity features: `x[:, 4:6] = 0.0` (acknowledge missing data)
+  - [x] Add `receiver_label` field: `torch.LongTensor([receiver_idx])` (0-21)
+  - [x] Add `shot_label` field: `torch.FloatTensor([1.0 if dangerous else 0.0])`
+  - [x] Skip corners without valid receiver labels
+- [x] Create helper function: `load_receiver_dataset()`
+- [x] Unit test: Load batch, verify shapes
+  - [x] `batch.x`: `[num_nodes, 14]` with velocities = 0
+  - [x] `batch.receiver_label`: `[batch_size]` (0-21)
+  - [x] `batch.shot_label`: `[batch_size, 1]`
+- [x] Verify split integrity: No corner ID leakage across train/val/test
 
 **Success Criteria**:
 - ✅ Data loader successfully loads ~900 corners
