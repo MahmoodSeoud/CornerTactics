@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=test_receiver_loader
+#SBATCH --job-name=test_split_integrity
 #SBATCH --partition=dgpu
 #SBATCH --account=researchers
-#SBATCH --output=logs/test_receiver_loader_%j.out
-#SBATCH --error=logs/test_receiver_loader_%j.err
-#SBATCH --time=00:30:00
-#SBATCH --mem=8G
-#SBATCH --cpus-per-task=4
+#SBATCH --output=logs/test_split_integrity_%j.out
+#SBATCH --error=logs/test_split_integrity_%j.err
+#SBATCH --time=00:15:00
+#SBATCH --mem=4G
+#SBATCH --cpus-per-task=2
 
 # Activate conda environment
 source /opt/itu/easybuild/software/Anaconda3/2024.02-1/etc/profile.d/conda.sh
@@ -17,14 +17,14 @@ cd /home/mseo/CornerTactics
 export PYTHONPATH="${PYTHONPATH}:/home/mseo/CornerTactics"
 
 echo "======================================================================"
-echo "Testing Receiver Corner Dataset Loader"
+echo "Testing Train/Val/Test Split Integrity"
 echo "======================================================================"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Started at: $(date)"
 echo ""
 
-# Run unit tests
-python src/data/receiver_data_loader.py
+# Run integrity test
+python scripts/test_receiver_split_integrity.py
 
 echo ""
 echo "Completed at: $(date)"

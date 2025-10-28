@@ -81,7 +81,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific data files (large datasets)
-data*
+/data/
 downloads/
 raw_data/
 soccernet_data/
