@@ -95,24 +95,33 @@
 
 ## Phase 2: GATv2 with D2 Equivariance (Week 2, Days 8-14)
 
-### Day 8-9: D2 Augmentation Implementation
-- [ ] Create `src/data/augmentation.py`
-  - [ ] Implement `D2Augmentation` class
-    - [ ] `apply_transform(x, transform_type)`: h-flip, v-flip, both-flip
-      - [ ] H-flip: `x[:, 0] = 120 - x[:, 0]`, `x[:, 4] = -x[:, 4]` (flip vx)
-      - [ ] V-flip: `x[:, 1] = 80 - x[:, 1]`, `x[:, 5] = -x[:, 5]` (flip vy)
-      - [ ] Both-flip: Apply both transformations
-    - [ ] `get_all_views(x, edge_index)`: Generate 4 D2 views
-- [ ] Unit tests: `tests/test_augmentation.py`
-  - [ ] Test: Apply h-flip twice = identity
-  - [ ] Test: Edge structure unchanged across transforms
-- [ ] Visual test: Plot all 4 views of a corner kick (use mplsoccer)
-  - [ ] Save to `data/results/d2_augmentation_demo.png`
+### Day 8-9: D2 Augmentation Implementation ✅ COMPLETE
+- [x] Create `src/data/augmentation.py`
+  - [x] Implement `D2Augmentation` class
+    - [x] `apply_transform(x, transform_type)`: h-flip, v-flip, both-flip
+      - [x] H-flip: `x[:, 0] = 120 - x[:, 0]`, `x[:, 4] = -x[:, 4]` (flip vx)
+      - [x] V-flip: `x[:, 1] = 80 - x[:, 1]`, `x[:, 5] = -x[:, 5]` (flip vy)
+      - [x] Both-flip: Apply both transformations
+    - [x] `get_all_views(x, edge_index)`: Generate 4 D2 views
+- [x] Unit tests: `tests/test_augmentation.py`
+  - [x] Test: Apply h-flip twice = identity
+  - [x] Test: Edge structure unchanged across transforms
+- [x] Visual test: Plot all 4 views of a corner kick (use mplsoccer)
+  - [x] Save to `data/results/d2_augmentation_demo.png`
 
 **Success Criteria**:
 - ✅ All 4 D2 transforms implemented correctly
-- ✅ Unit tests pass
+- ✅ Unit tests pass (17/17 passing)
 - ✅ Visual inspection: 4 views look geometrically correct
+
+**Implementation Notes (Completed Oct 29, 2025)**:
+- Implemented algebraic angle transformations with [-π, π] normalization for perfect involution
+- Preserves edge structure across all transformations
+- Velocity angles transformed via: h_flip: θ → π - θ, v_flip: θ → -θ
+- 17 comprehensive unit tests covering all transformations and properties
+- Visual demo script: `scripts/visualization/visualize_d2_augmentation.py`
+- Branch: `feature/tacticai-d2-augmentation`
+- Files: `src/data/augmentation.py`, `tests/test_augmentation.py`, `scripts/visualization/visualize_d2_augmentation.py`
 
 ---
 
