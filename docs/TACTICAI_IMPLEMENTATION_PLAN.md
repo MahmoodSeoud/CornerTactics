@@ -126,23 +126,23 @@
 ---
 
 ### Day 10-11: GATv2 Encoder Implementation
-- [ ] Create `src/models/gat_encoder.py`
-  - [ ] Implement `GATv2Encoder` (no D2 yet)
-    - [ ] Layer 1: `GATv2Conv(14, hidden_dim, heads=num_heads, dropout=0.4)`
-    - [ ] Layer 2: `GATv2Conv(hidden_dim*heads, hidden_dim, heads=num_heads, dropout=0.4)`
-    - [ ] Layer 3: `GATv2Conv(hidden_dim*heads, hidden_dim, heads=1, concat=False, dropout=0.4)`
-    - [ ] Batch normalization after each layer
-    - [ ] ELU activations (TacticAI uses ELU, not ReLU)
-  - [ ] Implement `D2GATv2` (with D2 frame averaging)
-    - [ ] Generate 4 D2 views using `D2Augmentation`
-    - [ ] Encode each view through `GATv2Encoder`
-    - [ ] Average node embeddings across views: `torch.stack(views).mean(dim=0)`
-    - [ ] Global mean pool: `global_mean_pool(avg_node_emb, batch)`
-    - [ ] Return both graph and node embeddings
-- [ ] Unit test: Forward pass with dummy data
-  - [ ] Input: `[batch=4, nodes=88, features=14]`
-  - [ ] Output graph_emb: `[batch=4, hidden_dim]`
-  - [ ] Output node_emb: `[nodes=88, hidden_dim]`
+- [x] Create `src/models/gat_encoder.py`
+  - [x] Implement `GATv2Encoder` (no D2 yet)
+    - [x] Layer 1: `GATv2Conv(14, hidden_dim, heads=num_heads, dropout=0.4)`
+    - [x] Layer 2: `GATv2Conv(hidden_dim*heads, hidden_dim, heads=num_heads, dropout=0.4)`
+    - [x] Layer 3: `GATv2Conv(hidden_dim*heads, hidden_dim, heads=1, concat=False, dropout=0.4)`
+    - [x] Batch normalization after each layer
+    - [x] ELU activations (TacticAI uses ELU, not ReLU)
+  - [x] Implement `D2GATv2` (with D2 frame averaging)
+    - [x] Generate 4 D2 views using `D2Augmentation`
+    - [x] Encode each view through `GATv2Encoder`
+    - [x] Average node embeddings across views: `torch.stack(views).mean(dim=0)`
+    - [x] Global mean pool: `global_mean_pool(avg_node_emb, batch)`
+    - [x] Return both graph and node embeddings
+- [x] Unit test: Forward pass with dummy data
+  - [x] Input: `[batch=4, nodes=88, features=14]`
+  - [x] Output graph_emb: `[batch=4, hidden_dim]`
+  - [x] Output node_emb: `[nodes=88, hidden_dim]`
 
 **Architecture Specifications**:
 ```
@@ -155,6 +155,14 @@ Rationale: Reduced capacity (15% of TacticAI's data), wider features (compensate
 - ✅ Model forward pass succeeds
 - ✅ Parameter count: 25-35k (50-70% of TacticAI)
 - ✅ D2 frame averaging produces sensible embeddings
+
+**Implementation Notes (Completed Oct 29, 2024)**:
+- GATv2Encoder: 3 layers, 4 heads, 24-dim hidden, ~27k params
+- D2GATv2: Frame averaging over 4 D2 views (identity, h-flip, v-flip, both-flip)
+- Bug fix (Oct 29): Corrected D2Augmentation API call in forward pass
+- All 9 unit tests passing (4 GATv2Encoder + 5 D2GATv2)
+- Branch: `bugfix/d2gatv2-augmentation-api`
+- Files: `src/models/gat_encoder.py`, `tests/test_gat_encoder.py`
 
 ---
 
