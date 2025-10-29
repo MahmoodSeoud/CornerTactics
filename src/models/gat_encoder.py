@@ -205,10 +205,12 @@ class D2GATv2(nn.Module):
         """
         Forward pass through D2GATv2 encoder with frame averaging.
 
+        Generates 4 D2-transformed views (identity, h-flip, v-flip, both-flip),
+        encodes each through the GATv2 encoder, and averages node embeddings
+        across views for geometric invariance.
+
         Args:
             x: Node features [num_nodes, in_channels]
-               Expected format: [x_pos, y_pos, ..., vx, vy, ...]
-               Positions at columns 0-1, velocities at columns 4-5
             edge_index: Edge indices [2, num_edges]
             batch: Batch vector [num_nodes] indicating graph membership
 
@@ -216,9 +218,6 @@ class D2GATv2(nn.Module):
             graph_emb: Graph-level embeddings [batch_size, hidden_dim]
             node_emb: Averaged node-level embeddings [num_nodes, hidden_dim]
         """
-        batch_size = batch.max().item() + 1
-        num_nodes = x.size(0)
-
         # Generate 4 D2 views of the full feature tensor
         views = self.augmenter.get_all_views(x, edge_index)
 
