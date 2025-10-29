@@ -219,23 +219,13 @@ class D2GATv2(nn.Module):
         batch_size = batch.max().item() + 1
         num_nodes = x.size(0)
 
-        # Extract positions and velocities from features
-        # Assume: columns 0-1 are positions, columns 4-5 are velocities
-        positions = x[:, :2]  # [num_nodes, 2]
-        velocities = x[:, 4:6]  # [num_nodes, 2]
-
-        # Generate 4 D2 views
-        views = self.augmenter.get_all_views(positions, velocities, edge_index)
+        # Generate 4 D2 views of the full feature tensor
+        views = self.augmenter.get_all_views(x, edge_index)
 
         # Encode each view and collect node embeddings
         node_embeddings_list = []
 
-        for pos_view, vel_view, edge_view in views:
-            # Reconstruct feature tensor with transformed positions and velocities
-            x_view = x.clone()
-            x_view[:, :2] = pos_view  # Update positions
-            x_view[:, 4:6] = vel_view  # Update velocities
-
+        for x_view, edge_view in views:
             # Encode this view
             _, node_emb_view = self.encoder(x_view, edge_view, batch)
 
