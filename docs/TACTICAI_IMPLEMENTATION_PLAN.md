@@ -57,23 +57,36 @@
 ---
 
 ### Day 5-6: Baseline Models
-- [x] Create `src/models/baselines.py`
-  - [x] Implement `RandomReceiverBaseline`
-    - [x] `predict()`: Return random softmax over 22 players
-    - [x] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
-  - [x] Implement `MLPReceiverBaseline`
-    - [x] Flatten all player positions: `[batch, 22*14=308]`
-    - [x] MLP: 308 → 256 → 128 → 22
-    - [x] Dropout 0.3, ReLU activations
-- [x] Create `scripts/training/train_baseline.py`
-  - [x] Train MLP for 10k steps
-  - [x] Compute top-1, top-3, top-5 accuracy
-  - [x] Save results: `results/baseline_mlp.json`
+- [ ] Create `src/models/baselines.py`
+  - [ ] Implement `RandomReceiverBaseline`
+    - [ ] `predict()`: Return random softmax over 22 players
+    - [ ] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
+  - [ ] Implement `XGBoostReceiverBaseline` (engineered features)
+    - [ ] Extract hand-crafted features per player (dimension: 22 × ~15 features):
+      - [ ] **Spatial**: distance to ball, distance to goal, x-position, y-position
+      - [ ] **Relative**: closest opponent distance, teammates within 5m radius
+      - [ ] **Zonal**: binary flags (in 6-yard box? in penalty area? near/far post?)
+      - [ ] **Team context**: average team x-position, defensive line compactness
+      - [ ] **Player role**: is_goalkeeper, is_corner_taker (binary flags)
+    - [ ] Flatten to `[22 × 15 = 330 features]` per corner
+    - [ ] XGBoost classifier: `max_depth=6, n_estimators=500, learning_rate=0.05`
+    - [ ] Use `sklearn.model_selection.GridSearchCV` for hyperparameter tuning
+  - [ ] Implement `MLPReceiverBaseline`
+    - [ ] Flatten all player positions: `[batch, 22*14=308]`
+    - [ ] MLP: 308 → 256 → 128 → 22
+    - [ ] Dropout 0.3, ReLU activations
+- [ ] Create `scripts/training/train_baseline.py`
+  - [ ] Train XGBoost: 500 trees, 5-fold CV
+  - [ ] Train MLP: 10k steps
+  - [ ] Compute top-1, top-3, top-5 accuracy for both
+  - [ ] Save results: `results/baseline_xgboost.json`, `results/baseline_mlp.json`
 
 **Success Criteria**:
 - ✅ Random baseline: top-1=4.5%, top-3=13.6% (sanity check)
-- ✅ MLP baseline: top-1 > 20%, top-3 > 45%
+- ✅ XGBoost baseline: top-1 > 25%, top-3 > 42%
+- ✅ MLP baseline: top-1 > 22%, top-3 > 45%
 - ❌ **If MLP top-3 < 40%**: STOP and debug data pipeline (receiver labels may be incorrect)
+- 📊 **Expected**: MLP slightly outperforms XGBoost (graph structure helps even without explicit modeling)
 
 ---
 
@@ -87,7 +100,8 @@
 **Deliverables**:
 - ✅ `scripts/preprocessing/add_receiver_labels.py`
 - ✅ `src/data/receiver_data_loader.py`
-- ✅ `src/models/baselines.py`
+- ✅ `src/models/baselines.py` (Random, XGBoost, MLP)
+- ✅ `results/baseline_xgboost.json`
 - ✅ `results/baseline_mlp.json`
 - ✅ `docs/BASELINE_RESULTS.md`
 
@@ -481,6 +495,7 @@ Shot AUROC: 0.78 ± 0.02
 | Model | Top-1 | Top-3 | Top-5 | Params | Features |
 |-------|-------|-------|-------|--------|----------|
 | Random | 4.5% | 13.6% | 22.7% | 0 | - |
+| XGBoost Baseline | 25% ± 2% | 42% ± 2% | 60% ± 3% | N/A | Engineered |
 | MLP Baseline | 22% ± 1% | 46% ± 2% | 64% ± 2% | 50k | Flatten |
 | GCN | 27% ± 2% | 52% ± 2% | 70% ± 2% | 25k | Graph |
 | GAT (no D2) | 29% ± 1% | 57% ± 2% | 75% ± 2% | 28k | Attention |
@@ -489,6 +504,7 @@ Shot AUROC: 0.78 ± 0.02
 | TacticAI (reference) | ~38% | 78% | ~88% | ~50k | + Velocities |
 
 **Gap**: 10-15% lower than TacticAI (expected due to missing velocities)
+**Key insight**: XGBoost → MLP (+4% top-3) shows neural networks help. MLP → GATv2+D2 (+18% top-3) shows graph structure is critical.
 
 ---
 
