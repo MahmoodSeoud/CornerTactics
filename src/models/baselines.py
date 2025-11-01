@@ -254,17 +254,34 @@ class XGBoostReceiverBaseline:
         X_train = []
         y_train = []
 
-        for x, label in zip(x_list, labels):
-            # Extract per-player features
-            player_features = self.extract_features(x)  # [22, num_features]
+        # Determine max number of features needed (for padding)
+        max_features = 0
+        all_player_features = []
 
-            # Flatten to single feature vector [22 * num_features]
+        for x in x_list:
+            player_features = self.extract_features(x)  # [num_players, num_features_per_player]
+            all_player_features.append(player_features)
+            max_features = max(max_features, player_features.flatten().shape[0])
+
+        # Pad and flatten all features
+        for player_features, label in zip(all_player_features, labels):
+            # Flatten to single feature vector
             flat_features = player_features.flatten()
+
+            # Pad to max_features if needed
+            if flat_features.shape[0] < max_features:
+                padded = np.zeros(max_features)
+                padded[:flat_features.shape[0]] = flat_features
+                flat_features = padded
+
             X_train.append(flat_features)
             y_train.append(label)
 
         X_train = np.array(X_train)
         y_train = np.array(y_train)
+
+        # Store max_features for prediction
+        self.max_features = max_features
 
         # Train XGBoost
         self.model = self.xgb.XGBClassifier(
@@ -303,14 +320,22 @@ class XGBoostReceiverBaseline:
 
             # Extract features
             player_features = self.extract_features(graph_x)  # [num_players, num_features]
-            flat_features = player_features.flatten().reshape(1, -1)  # [1, num_players * num_features]
+            flat_features = player_features.flatten()
+
+            # Pad to max_features if needed
+            if flat_features.shape[0] < self.max_features:
+                padded = np.zeros(self.max_features)
+                padded[:flat_features.shape[0]] = flat_features
+                flat_features = padded
+
+            flat_features = flat_features.reshape(1, -1)  # [1, max_features]
 
             # Predict
-            probs = self.model.predict_proba(flat_features)  # [1, 22]
+            probs = self.model.predict_proba(flat_features)  # [1, num_classes]
             all_probs.append(probs[0])
 
         # Stack and convert to tensor
-        all_probs = np.array(all_probs)  # [batch_size, 22]
+        all_probs = np.array(all_probs)  # [batch_size, num_classes]
         return torch.FloatTensor(all_probs)
 
 
