@@ -358,14 +358,14 @@ class XGBoostReceiverBaseline:
     def train_shot(self, x_list: List[torch.Tensor], batch_list: List[torch.Tensor],
                    shot_labels: List[int]):
         """
-        Train XGBoost classifier for shot prediction.
+        Train XGBoost classifier for shot prediction with enhanced features.
 
         Args:
             x_list: List of node features [num_players, 14] for each corner
             batch_list: List of batch tensors (for compatibility)
             shot_labels: List of shot labels (0 or 1) for each corner
         """
-        # Extract graph-level features
+        # Extract enhanced graph-level features
         X_train = []
 
         for x in x_list:
@@ -378,21 +378,51 @@ class XGBoostReceiverBaseline:
             feat_min = player_features.min(axis=0)
             feat_std = player_features.std(axis=0)
 
+            # Add shot-specific features from raw data
+            raw_features = x.numpy() if torch.is_tensor(x) else x
+
+            # Count players in different zones
+            in_box = np.sum(raw_features[:, 13])  # in_penalty_box flag
+            attacking_third = np.sum(raw_features[:, 0] > 80)  # x > 80 (attacking third)
+
+            # Distance statistics (important for shots)
+            distances_to_goal = raw_features[:, 2]  # distance_to_goal
+            min_dist_to_goal = distances_to_goal.min()
+            mean_dist_to_goal = distances_to_goal.mean()
+
+            # Team balance
+            team_flags = raw_features[:, 12]  # team_flag
+            num_attackers = np.sum(team_flags == 1)
+            num_defenders = np.sum(team_flags == 0)
+            attacker_defender_ratio = num_attackers / max(num_defenders, 1)
+
+            # Density around goal area
+            goal_area_players = np.sum((raw_features[:, 0] > 100) &
+                                       (raw_features[:, 1] > 25) &
+                                       (raw_features[:, 1] < 55))
+
             # Concatenate all statistics
-            graph_features = np.concatenate([feat_mean, feat_max, feat_min, feat_std])
+            graph_features = np.concatenate([
+                feat_mean, feat_max, feat_min, feat_std,
+                [in_box, attacking_third, min_dist_to_goal, mean_dist_to_goal,
+                 num_attackers, num_defenders, attacker_defender_ratio, goal_area_players]
+            ])
             X_train.append(graph_features)
 
         X_train = np.array(X_train)
         y_train = np.array(shot_labels)
 
-        # Train XGBoost for binary classification
+        # Train XGBoost with balanced parameters
         self.shot_model = self.xgb.XGBClassifier(
-            max_depth=self.max_depth,
-            n_estimators=self.n_estimators,
-            learning_rate=self.learning_rate,
+            max_depth=4,  # Reduce depth to prevent overfitting
+            n_estimators=300,
+            learning_rate=0.1,
             random_state=self.random_state,
             objective='binary:logistic',
             eval_metric='logloss',
+            scale_pos_weight=2.5,  # Handle class imbalance (27.7% positive)
+            subsample=0.8,
+            colsample_bytree=0.8,
             verbosity=0
         )
 
@@ -420,13 +450,33 @@ class XGBoostReceiverBaseline:
             mask = (batch == i)
             graph_x = x[mask]
 
-            # Extract and aggregate features
+            # Extract and aggregate features (same as training)
             player_features = self.extract_features(graph_x)
             feat_mean = player_features.mean(axis=0)
             feat_max = player_features.max(axis=0)
             feat_min = player_features.min(axis=0)
             feat_std = player_features.std(axis=0)
-            graph_features = np.concatenate([feat_mean, feat_max, feat_min, feat_std])
+
+            # Add shot-specific features
+            raw_features = graph_x.numpy() if torch.is_tensor(graph_x) else graph_x
+            in_box = np.sum(raw_features[:, 13])
+            attacking_third = np.sum(raw_features[:, 0] > 80)
+            distances_to_goal = raw_features[:, 2]
+            min_dist_to_goal = distances_to_goal.min()
+            mean_dist_to_goal = distances_to_goal.mean()
+            team_flags = raw_features[:, 12]
+            num_attackers = np.sum(team_flags == 1)
+            num_defenders = np.sum(team_flags == 0)
+            attacker_defender_ratio = num_attackers / max(num_defenders, 1)
+            goal_area_players = np.sum((raw_features[:, 0] > 100) &
+                                       (raw_features[:, 1] > 25) &
+                                       (raw_features[:, 1] < 55))
+
+            graph_features = np.concatenate([
+                feat_mean, feat_max, feat_min, feat_std,
+                [in_box, attacking_third, min_dist_to_goal, mean_dist_to_goal,
+                 num_attackers, num_defenders, attacker_defender_ratio, goal_area_players]
+            ])
             graph_features = graph_features.reshape(1, -1)
 
             # Predict probability of positive class (shot=1)
@@ -766,9 +816,11 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
                        weight_decay: float = 1e-4,
                        device: str = 'cuda',
                        eval_every: int = 500,
-                       verbose: bool = True) -> Dict:
+                       verbose: bool = True,
+                       dual_task: bool = True,
+                       shot_weight: float = 1.0) -> Dict:
     """
-    Train MLP baseline for specified number of steps.
+    Train MLP baseline for specified number of steps with dual-task learning.
 
     Args:
         model: MLPReceiverBaseline model
@@ -780,6 +832,8 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
         device: Device to train on
         eval_every: Evaluate every N steps
         verbose: Print progress
+        dual_task: Whether to train both receiver and shot prediction
+        shot_weight: Weight for shot loss in combined loss (default 1.0)
 
     Returns:
         Training history dictionary
@@ -787,13 +841,18 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    criterion = nn.CrossEntropyLoss()
+    receiver_criterion = nn.CrossEntropyLoss()
+    shot_criterion = nn.BCELoss()
 
     history = {
         'train_loss': [],
+        'train_receiver_loss': [],
+        'train_shot_loss': [],
         'val_top1': [],
         'val_top3': [],
         'val_top5': [],
+        'val_shot_f1': [],
+        'val_shot_auroc': [],
         'steps': []
     }
 
@@ -804,6 +863,8 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
     if verbose:
         print(f"\nTraining MLP baseline for {num_steps} steps...")
         print(f"Learning rate: {lr}, Weight decay: {weight_decay}")
+        if dual_task:
+            print(f"Dual-task training enabled (shot_weight={shot_weight})")
         print(f"Evaluating every {eval_every} steps\n")
 
     # Training loop
@@ -822,13 +883,23 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
         model.train()
         optimizer.zero_grad()
 
+        # Receiver prediction
         logits = model(batch.x, batch.batch)
-        targets = batch.receiver_label.squeeze()
+        receiver_targets = batch.receiver_label.squeeze()
+        receiver_loss = receiver_criterion(logits, receiver_targets)
 
-        loss = criterion(logits, targets)
+        # Shot prediction (if dual-task)
+        total_loss = receiver_loss
+        shot_loss = torch.tensor(0.0, device=device)
+
+        if dual_task:
+            shot_probs = model.predict_shot(batch.x, batch.batch)
+            shot_targets = batch.shot_label.float().unsqueeze(1)
+            shot_loss = shot_criterion(shot_probs, shot_targets)
+            total_loss = receiver_loss + shot_weight * shot_loss
 
         # Backward pass
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
 
         step += 1
@@ -837,18 +908,48 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
         if step % eval_every == 0 or step == num_steps:
             val_metrics = evaluate_baseline(model, val_loader, device)
 
-            history['train_loss'].append(loss.item())
+            history['train_loss'].append(total_loss.item())
+            history['train_receiver_loss'].append(receiver_loss.item())
+            history['train_shot_loss'].append(shot_loss.item())
             history['val_top1'].append(val_metrics['top1_accuracy'])
             history['val_top3'].append(val_metrics['top3_accuracy'])
             history['val_top5'].append(val_metrics['top5_accuracy'])
             history['steps'].append(step)
 
+            # Evaluate shot prediction if dual-task
+            if dual_task:
+                from sklearn.metrics import f1_score, roc_auc_score
+                all_shot_preds = []
+                all_shot_labels = []
+
+                model.eval()
+                with torch.no_grad():
+                    for val_batch in val_loader:
+                        val_batch = val_batch.to(device)
+                        shot_probs = model.predict_shot(val_batch.x, val_batch.batch)
+                        all_shot_preds.extend(shot_probs.cpu().numpy().flatten())
+                        all_shot_labels.extend(val_batch.shot_label.cpu().numpy())
+
+                shot_preds_binary = (np.array(all_shot_preds) > 0.5).astype(int)
+                val_shot_f1 = f1_score(all_shot_labels, shot_preds_binary)
+                val_shot_auroc = roc_auc_score(all_shot_labels, all_shot_preds)
+
+                history['val_shot_f1'].append(val_shot_f1)
+                history['val_shot_auroc'].append(val_shot_auroc)
+
             if verbose:
-                print(f"Step {step:5d}/{num_steps} | "
-                      f"Loss: {loss.item():.4f} | "
-                      f"Val Top-1: {val_metrics['top1_accuracy']*100:.1f}% | "
-                      f"Val Top-3: {val_metrics['top3_accuracy']*100:.1f}% | "
-                      f"Val Top-5: {val_metrics['top5_accuracy']*100:.1f}%")
+                if dual_task:
+                    print(f"Step {step:5d}/{num_steps} | "
+                          f"Loss: {total_loss.item():.4f} (R:{receiver_loss.item():.3f}, S:{shot_loss.item():.3f}) | "
+                          f"Val Top-3: {val_metrics['top3_accuracy']*100:.1f}% | "
+                          f"Shot F1: {val_shot_f1:.3f} | "
+                          f"Shot AUROC: {val_shot_auroc:.3f}")
+                else:
+                    print(f"Step {step:5d}/{num_steps} | "
+                          f"Loss: {total_loss.item():.4f} | "
+                          f"Val Top-1: {val_metrics['top1_accuracy']*100:.1f}% | "
+                          f"Val Top-3: {val_metrics['top3_accuracy']*100:.1f}% | "
+                          f"Val Top-5: {val_metrics['top5_accuracy']*100:.1f}%")
 
             # Save best model
             if val_metrics['top3_accuracy'] > best_val_top3:

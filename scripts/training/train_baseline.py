@@ -108,6 +108,7 @@ def train_and_evaluate_xgboost(train_loader, val_loader, test_loader, device='cp
     train_x_list = []
     train_batch_list = []
     train_labels = []
+    shot_labels = []
 
     for batch in train_loader:
         batch_size = batch.batch.max().item() + 1
@@ -119,39 +120,57 @@ def train_and_evaluate_xgboost(train_loader, val_loader, test_loader, device='cp
             train_x_list.append(graph_x)
             train_batch_list.append(batch_tensor)
             train_labels.append(batch.receiver_label[i].item())
+            shot_labels.append(batch.shot_label[i].item())
 
     print(f"Collected {len(train_labels)} training corners")
 
     # Train XGBoost
     print("\nTraining XGBoost (500 trees, max_depth=6, lr=0.05)...")
+    print("Training receiver prediction...")
     model.train(train_x_list, train_batch_list, train_labels)
+    print("Training shot prediction...")
+    model.train_shot(train_x_list, train_batch_list, shot_labels)
     print("✅ Training complete!")
 
     # Evaluate on validation set
     print("\nEvaluating on validation set...")
-    val_metrics = evaluate_baseline(model, val_loader, device=device)
+    val_receiver_metrics = evaluate_baseline(model, val_loader, device=device)
+    val_shot_metrics = evaluate_shot_prediction(model, val_loader, device=device)
 
-    print(f"\nXGBoost Validation Results:")
-    print(f"  Top-1: {val_metrics['top1_accuracy']*100:.2f}%")
-    print(f"  Top-3: {val_metrics['top3_accuracy']*100:.2f}%")
-    print(f"  Top-5: {val_metrics['top5_accuracy']*100:.2f}%")
-    print(f"  Loss:  {val_metrics['loss']:.4f}")
+    print(f"\nXGBoost Validation Results (Receiver):")
+    print(f"  Top-1: {val_receiver_metrics['top1_accuracy']*100:.2f}%")
+    print(f"  Top-3: {val_receiver_metrics['top3_accuracy']*100:.2f}%")
+    print(f"  Top-5: {val_receiver_metrics['top5_accuracy']*100:.2f}%")
+    print(f"  Loss:  {val_receiver_metrics['loss']:.4f}")
+
+    print(f"\nXGBoost Validation Results (Shot):")
+    print(f"  Accuracy: {val_shot_metrics['accuracy']*100:.2f}%")
+    print(f"  F1 Score: {val_shot_metrics['f1_score']:.4f}")
+    print(f"  AUROC: {val_shot_metrics['auroc']:.4f}")
+    print(f"  AUPRC: {val_shot_metrics['auprc']:.4f}")
 
     # Evaluate on test set
     print("\nEvaluating on test set...")
-    test_metrics = evaluate_baseline(model, test_loader, device=device)
+    test_receiver_metrics = evaluate_baseline(model, test_loader, device=device)
+    test_shot_metrics = evaluate_shot_prediction(model, test_loader, device=device)
 
-    print(f"\nXGBoost Test Results:")
-    print(f"  Top-1: {test_metrics['top1_accuracy']*100:.2f}%")
-    print(f"  Top-3: {test_metrics['top3_accuracy']*100:.2f}%")
-    print(f"  Top-5: {test_metrics['top5_accuracy']*100:.2f}%")
-    print(f"  Loss:  {test_metrics['loss']:.4f}")
+    print(f"\nXGBoost Test Results (Receiver):")
+    print(f"  Top-1: {test_receiver_metrics['top1_accuracy']*100:.2f}%")
+    print(f"  Top-3: {test_receiver_metrics['top3_accuracy']*100:.2f}%")
+    print(f"  Top-5: {test_receiver_metrics['top5_accuracy']*100:.2f}%")
+    print(f"  Loss:  {test_receiver_metrics['loss']:.4f}")
+
+    print(f"\nXGBoost Test Results (Shot):")
+    print(f"  Accuracy: {test_shot_metrics['accuracy']*100:.2f}%")
+    print(f"  F1 Score: {test_shot_metrics['f1_score']:.4f}")
+    print(f"  AUROC: {test_shot_metrics['auroc']:.4f}")
+    print(f"  AUPRC: {test_shot_metrics['auprc']:.4f}")
 
     # Success criteria check
-    if test_metrics['top3_accuracy'] >= 0.42:
+    if test_receiver_metrics['top3_accuracy'] >= 0.42:
         print("\n✅ XGBoost baseline meets success criteria (top-3 > 42%)!")
     else:
-        print(f"\n⚠️  XGBoost baseline below target (top-3 = {test_metrics['top3_accuracy']*100:.1f}% < 42%)")
+        print(f"\n⚠️  XGBoost baseline below target (top-3 = {test_receiver_metrics['top3_accuracy']*100:.1f}% < 42%)")
 
     return {
         'model': 'XGBoost',
@@ -160,14 +179,30 @@ def train_and_evaluate_xgboost(train_loader, val_loader, test_loader, device='cp
             'n_estimators': 500,
             'learning_rate': 0.05
         },
-        'val_top1_accuracy': float(val_metrics['top1_accuracy']),
-        'val_top3_accuracy': float(val_metrics['top3_accuracy']),
-        'val_top5_accuracy': float(val_metrics['top5_accuracy']),
-        'val_loss': float(val_metrics['loss']),
-        'test_top1_accuracy': float(test_metrics['top1_accuracy']),
-        'test_top3_accuracy': float(test_metrics['top3_accuracy']),
-        'test_top5_accuracy': float(test_metrics['top5_accuracy']),
-        'test_loss': float(test_metrics['loss'])
+        'receiver': {
+            'val_top1_accuracy': float(val_receiver_metrics['top1_accuracy']),
+            'val_top3_accuracy': float(val_receiver_metrics['top3_accuracy']),
+            'val_top5_accuracy': float(val_receiver_metrics['top5_accuracy']),
+            'val_loss': float(val_receiver_metrics['loss']),
+            'test_top1_accuracy': float(test_receiver_metrics['top1_accuracy']),
+            'test_top3_accuracy': float(test_receiver_metrics['top3_accuracy']),
+            'test_top5_accuracy': float(test_receiver_metrics['top5_accuracy']),
+            'test_loss': float(test_receiver_metrics['loss'])
+        },
+        'shot': {
+            'val_accuracy': float(val_shot_metrics['accuracy']),
+            'val_f1_score': float(val_shot_metrics['f1_score']),
+            'val_precision': float(val_shot_metrics['precision']),
+            'val_recall': float(val_shot_metrics['recall']),
+            'val_auroc': float(val_shot_metrics['auroc']),
+            'val_auprc': float(val_shot_metrics['auprc']),
+            'test_accuracy': float(test_shot_metrics['accuracy']),
+            'test_f1_score': float(test_shot_metrics['f1_score']),
+            'test_precision': float(test_shot_metrics['precision']),
+            'test_recall': float(test_shot_metrics['recall']),
+            'test_auroc': float(test_shot_metrics['auroc']),
+            'test_auprc': float(test_shot_metrics['auprc'])
+        }
     }
 
 
@@ -193,8 +228,8 @@ def train_and_evaluate_mlp(train_loader, val_loader, test_loader, device='cuda')
     print(f"  Parameters: {num_params:,}")
     print(f"  Dropout: 0.3")
 
-    # Train MLP
-    print(f"\nTraining MLP for 10,000 steps...")
+    # Train MLP with dual-task learning
+    print(f"\nTraining MLP for 10,000 steps with dual-task learning...")
     history = train_mlp_baseline(
         model=model,
         train_loader=train_loader,
@@ -204,29 +239,38 @@ def train_and_evaluate_mlp(train_loader, val_loader, test_loader, device='cuda')
         weight_decay=1e-4,
         device=device,
         eval_every=1000,
-        verbose=True
+        verbose=True,
+        dual_task=True,  # Enable dual-task training
+        shot_weight=1.0  # Equal weight for both tasks
     )
 
     print("\n✅ Training complete!")
 
     # Evaluate on test set
     print("\nEvaluating on test set...")
-    test_metrics = evaluate_baseline(model, test_loader, device=device)
+    test_receiver_metrics = evaluate_baseline(model, test_loader, device=device)
+    test_shot_metrics = evaluate_shot_prediction(model, test_loader, device=device)
 
-    print(f"\nMLP Test Results:")
-    print(f"  Top-1: {test_metrics['top1_accuracy']*100:.2f}%")
-    print(f"  Top-3: {test_metrics['top3_accuracy']*100:.2f}%")
-    print(f"  Top-5: {test_metrics['top5_accuracy']*100:.2f}%")
-    print(f"  Loss:  {test_metrics['loss']:.4f}")
+    print(f"\nMLP Test Results (Receiver):")
+    print(f"  Top-1: {test_receiver_metrics['top1_accuracy']*100:.2f}%")
+    print(f"  Top-3: {test_receiver_metrics['top3_accuracy']*100:.2f}%")
+    print(f"  Top-5: {test_receiver_metrics['top5_accuracy']*100:.2f}%")
+    print(f"  Loss:  {test_receiver_metrics['loss']:.4f}")
+
+    print(f"\nMLP Test Results (Shot):")
+    print(f"  Accuracy: {test_shot_metrics['accuracy']*100:.2f}%")
+    print(f"  F1 Score: {test_shot_metrics['f1_score']:.4f}")
+    print(f"  AUROC: {test_shot_metrics['auroc']:.4f}")
+    print(f"  AUPRC: {test_shot_metrics['auprc']:.4f}")
 
     # Critical success criteria check
-    if test_metrics['top3_accuracy'] < 0.40:
+    if test_receiver_metrics['top3_accuracy'] < 0.40:
         print("\n❌ CRITICAL: MLP top-3 < 40% - DEBUG DATA PIPELINE!")
         print("This indicates a potential issue with receiver labels or data quality.")
-    elif test_metrics['top3_accuracy'] >= 0.45:
+    elif test_receiver_metrics['top3_accuracy'] >= 0.45:
         print("\n✅ MLP baseline meets success criteria (top-3 > 45%)!")
     else:
-        print(f"\n⚠️  MLP baseline marginal (40% < top-3 = {test_metrics['top3_accuracy']*100:.1f}% < 45%)")
+        print(f"\n⚠️  MLP baseline marginal (40% < top-3 = {test_receiver_metrics['top3_accuracy']*100:.1f}% < 45%)")
 
     return {
         'model': 'MLP',
@@ -243,13 +287,23 @@ def train_and_evaluate_mlp(train_loader, val_loader, test_loader, device='cuda')
             'weight_decay': 1e-4,
             'best_val_top3': float(history['best_val_top3'])
         },
-        'val_top1_accuracy': float(history['val_top1'][-1]),
-        'val_top3_accuracy': float(history['val_top3'][-1]),
-        'val_top5_accuracy': float(history['val_top5'][-1]),
-        'test_top1_accuracy': float(test_metrics['top1_accuracy']),
-        'test_top3_accuracy': float(test_metrics['top3_accuracy']),
-        'test_top5_accuracy': float(test_metrics['top5_accuracy']),
-        'test_loss': float(test_metrics['loss'])
+        'receiver': {
+            'val_top1_accuracy': float(history['val_top1'][-1]),
+            'val_top3_accuracy': float(history['val_top3'][-1]),
+            'val_top5_accuracy': float(history['val_top5'][-1]),
+            'test_top1_accuracy': float(test_receiver_metrics['top1_accuracy']),
+            'test_top3_accuracy': float(test_receiver_metrics['top3_accuracy']),
+            'test_top5_accuracy': float(test_receiver_metrics['top5_accuracy']),
+            'test_loss': float(test_receiver_metrics['loss'])
+        },
+        'shot': {
+            'test_accuracy': float(test_shot_metrics['accuracy']),
+            'test_f1_score': float(test_shot_metrics['f1_score']),
+            'test_precision': float(test_shot_metrics['precision']),
+            'test_recall': float(test_shot_metrics['recall']),
+            'test_auroc': float(test_shot_metrics['auroc']),
+            'test_auprc': float(test_shot_metrics['auprc'])
+        }
     }
 
 
@@ -323,17 +377,41 @@ def main():
     print("\n" + "="*80)
     print("SUMMARY")
     print("="*80)
-    print(f"\nModel Comparison (Test Set):")
+
+    # Receiver Prediction Results
+    print(f"\nReceiver Prediction (Test Set):")
     print(f"{'Model':<15} {'Top-1':>8} {'Top-3':>8} {'Top-5':>8}")
     print("-" * 45)
 
     for baseline in results['baselines']:
         model_name = baseline['model']
-        top1 = baseline['test_top1_accuracy'] if 'test_top1_accuracy' in baseline else baseline['top1_accuracy']
-        top3 = baseline['test_top3_accuracy'] if 'test_top3_accuracy' in baseline else baseline['top3_accuracy']
-        top5 = baseline['test_top5_accuracy'] if 'test_top5_accuracy' in baseline else baseline['top5_accuracy']
+        # Handle both receiver-nested and flat structures
+        if 'receiver' in baseline:
+            # XGBoost and MLP use nested structure
+            receiver = baseline['receiver']
+            top1 = receiver.get('test_top1_accuracy', receiver.get('top1_accuracy', 0))
+            top3 = receiver.get('test_top3_accuracy', receiver.get('top3_accuracy', 0))
+            top5 = receiver.get('test_top5_accuracy', receiver.get('top5_accuracy', 0))
+        else:
+            # Random baseline uses flat structure
+            top1 = baseline.get('top1_accuracy', 0)
+            top3 = baseline.get('top3_accuracy', 0)
+            top5 = baseline.get('top5_accuracy', 0)
 
         print(f"{model_name:<15} {top1*100:>7.2f}% {top3*100:>7.2f}% {top5*100:>7.2f}%")
+
+    # Shot Prediction Results
+    print(f"\nShot Prediction (Test Set):")
+    print(f"{'Model':<15} {'F1':>8} {'AUROC':>8} {'AUPRC':>8}")
+    print("-" * 45)
+
+    for baseline in results['baselines']:
+        model_name = baseline['model']
+        if 'shot' in baseline:
+            f1 = baseline['shot']['test_f1_score']
+            auroc = baseline['shot']['test_auroc']
+            auprc = baseline['shot']['test_auprc']
+            print(f"{model_name:<15} {f1:>8.4f} {auroc:>8.4f} {auprc:>8.4f}")
 
     print(f"\n✅ Results saved to: {results_file}")
     print("\n" + "="*80)
@@ -341,7 +419,7 @@ def main():
     print("="*80)
 
     # Final decision point
-    mlp_top3 = mlp_results['test_top3_accuracy']
+    mlp_top3 = mlp_results['receiver']['test_top3_accuracy']
     if mlp_top3 >= 0.45:
         print("\n✅ SUCCESS: Proceed to Phase 2 (GATv2 with D2)")
         print(f"MLP top-3 accuracy: {mlp_top3*100:.1f}% > 45%")
