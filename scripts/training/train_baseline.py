@@ -32,6 +32,7 @@ from src.models.baselines import (
     XGBoostReceiverBaseline,
     MLPReceiverBaseline,
     evaluate_baseline,
+    evaluate_shot_prediction,
     train_mlp_baseline
 )
 from src.data.receiver_data_loader import load_receiver_dataset
@@ -44,28 +45,48 @@ def evaluate_random_baseline(data_loader, device='cpu'):
     print("="*80)
 
     model = RandomReceiverBaseline(num_players=22)
-    metrics = evaluate_baseline(model, data_loader, device=device)
 
-    print(f"\nRandom Baseline Results:")
-    print(f"  Top-1: {metrics['top1_accuracy']*100:.2f}%")
-    print(f"  Top-3: {metrics['top3_accuracy']*100:.2f}%")
-    print(f"  Top-5: {metrics['top5_accuracy']*100:.2f}%")
-    print(f"  Loss:  {metrics['loss']:.4f}")
+    # Evaluate receiver prediction
+    receiver_metrics = evaluate_baseline(model, data_loader, device=device)
+
+    # Evaluate shot prediction
+    shot_metrics = evaluate_shot_prediction(model, data_loader, device=device)
+
+    print(f"\nRandom Baseline Results (Receiver):")
+    print(f"  Top-1: {receiver_metrics['top1_accuracy']*100:.2f}%")
+    print(f"  Top-3: {receiver_metrics['top3_accuracy']*100:.2f}%")
+    print(f"  Top-5: {receiver_metrics['top5_accuracy']*100:.2f}%")
+
+    print(f"\nRandom Baseline Results (Shot):")
+    print(f"  Accuracy: {shot_metrics['accuracy']*100:.2f}%")
+    print(f"  F1 Score: {shot_metrics['f1_score']:.4f}")
+    print(f"  AUROC: {shot_metrics['auroc']:.4f}")
+    print(f"  AUPRC: {shot_metrics['auprc']:.4f}")
 
     # Sanity check (relaxed bounds for variable number of players)
-    assert 3.0 < metrics['top1_accuracy']*100 < 10.0, \
-        f"Random top-1 should be 3-10%, got {metrics['top1_accuracy']*100:.1f}%"
-    assert 10.0 < metrics['top3_accuracy']*100 < 20.0, \
-        f"Random top-3 should be 10-20%, got {metrics['top3_accuracy']*100:.1f}%"
+    assert 3.0 < receiver_metrics['top1_accuracy']*100 < 10.0, \
+        f"Random top-1 should be 3-10%, got {receiver_metrics['top1_accuracy']*100:.1f}%"
+    assert 10.0 < receiver_metrics['top3_accuracy']*100 < 20.0, \
+        f"Random top-3 should be 10-20%, got {receiver_metrics['top3_accuracy']*100:.1f}%"
 
     print("\n✅ Random baseline sanity check passed!")
 
     return {
         'model': 'Random',
-        'top1_accuracy': float(metrics['top1_accuracy']),
-        'top3_accuracy': float(metrics['top3_accuracy']),
-        'top5_accuracy': float(metrics['top5_accuracy']),
-        'loss': float(metrics['loss'])
+        'receiver': {
+            'top1_accuracy': float(receiver_metrics['top1_accuracy']),
+            'top3_accuracy': float(receiver_metrics['top3_accuracy']),
+            'top5_accuracy': float(receiver_metrics['top5_accuracy']),
+            'loss': float(receiver_metrics['loss'])
+        },
+        'shot': {
+            'accuracy': float(shot_metrics['accuracy']),
+            'f1_score': float(shot_metrics['f1_score']),
+            'precision': float(shot_metrics['precision']),
+            'recall': float(shot_metrics['recall']),
+            'auroc': float(shot_metrics['auroc']),
+            'auprc': float(shot_metrics['auprc'])
+        }
     }
 
 
