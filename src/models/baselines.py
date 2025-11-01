@@ -475,15 +475,18 @@ def evaluate_baseline(model: nn.Module,
     - Cross-entropy loss
 
     Args:
-        model: Baseline model (Random or MLP)
+        model: Baseline model (Random, XGBoost, or MLP)
         data_loader: PyTorch Geometric DataLoader
         device: Device to run on
 
     Returns:
         Dictionary with metrics
     """
-    model.eval()
-    model.to(device)
+    # Set eval mode and move to device (only for PyTorch models)
+    if hasattr(model, 'eval'):
+        model.eval()
+    if hasattr(model, 'to'):
+        model.to(device)
 
     total = 0
     top1_correct = 0
