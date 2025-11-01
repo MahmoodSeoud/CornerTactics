@@ -498,13 +498,17 @@ def evaluate_baseline(model: nn.Module,
 
     with torch.no_grad():
         for batch in data_loader:
-            batch = batch.to(device)
+            if hasattr(model, 'to'):
+                batch = batch.to(device)
 
-            # Forward pass
-            logits = model(batch.x, batch.batch)
-
-            # Get predictions
-            probs = F.softmax(logits, dim=1)
+            # Forward pass (handle both PyTorch and non-PyTorch models)
+            if hasattr(model, 'forward'):
+                # PyTorch model (has forward method)
+                logits = model(batch.x, batch.batch)
+                probs = F.softmax(logits, dim=1)
+            else:
+                # Non-PyTorch model (like XGBoost) - use predict method directly
+                probs = model.predict(batch.x, batch.batch)
 
             # Top-k predictions
             _, top5_pred = torch.topk(probs, k=5, dim=1)
@@ -532,9 +536,15 @@ def evaluate_baseline(model: nn.Module,
                 if target in top5:
                     top5_correct += 1
 
-            # Compute loss
-            loss = criterion(logits, targets)
-            total_loss += loss.item() * batch_size
+            # Compute loss (only for PyTorch models with logits)
+            if hasattr(model, 'forward'):
+                loss = criterion(logits, targets)
+                total_loss += loss.item() * batch_size
+            else:
+                # For non-PyTorch models, compute loss from probabilities
+                log_probs = torch.log(probs + 1e-10)  # Add epsilon to avoid log(0)
+                loss = -log_probs[range(batch_size), targets].mean()
+                total_loss += loss.item() * batch_size
 
     # Compute final metrics
     metrics = {
