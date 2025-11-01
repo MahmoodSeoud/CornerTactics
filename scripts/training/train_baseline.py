@@ -52,11 +52,11 @@ def evaluate_random_baseline(data_loader, device='cpu'):
     print(f"  Top-5: {metrics['top5_accuracy']*100:.2f}%")
     print(f"  Loss:  {metrics['loss']:.4f}")
 
-    # Sanity check
-    assert 3.0 < metrics['top1_accuracy']*100 < 6.0, \
-        f"Random top-1 should be ~4.5%, got {metrics['top1_accuracy']*100:.1f}%"
-    assert 11.0 < metrics['top3_accuracy']*100 < 16.0, \
-        f"Random top-3 should be ~13.6%, got {metrics['top3_accuracy']*100:.1f}%"
+    # Sanity check (relaxed bounds for variable number of players)
+    assert 3.0 < metrics['top1_accuracy']*100 < 10.0, \
+        f"Random top-1 should be 3-10%, got {metrics['top1_accuracy']*100:.1f}%"
+    assert 10.0 < metrics['top3_accuracy']*100 < 20.0, \
+        f"Random top-3 should be 10-20%, got {metrics['top3_accuracy']*100:.1f}%"
 
     print("\n✅ Random baseline sanity check passed!")
 
