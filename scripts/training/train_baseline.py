@@ -240,7 +240,7 @@ def main():
     print("="*80)
 
     # Configuration
-    graph_path = "data/graphs/adjacency_team/combined_temporal_graphs_with_receiver.pkl"
+    graph_path = "data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl"
     batch_size = 128
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
