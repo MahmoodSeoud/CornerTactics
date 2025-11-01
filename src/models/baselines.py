@@ -77,6 +77,22 @@ class RandomReceiverBaseline(nn.Module):
         logits = self.forward(x, batch)
         return F.softmax(logits, dim=1)
 
+    def predict_shot(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Generate random shot predictions.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Random shot probabilities [batch_size, 1]
+        """
+        batch_size = batch.max().item() + 1
+        # Random probabilities between 0 and 1
+        shot_probs = torch.rand(batch_size, 1, device=x.device)
+        return shot_probs
+
 
 class XGBoostReceiverBaseline:
     """
@@ -119,7 +135,8 @@ class XGBoostReceiverBaseline:
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.random_state = random_state
-        self.model = None
+        self.model = None  # Receiver prediction model
+        self.shot_model = None  # Shot prediction model
 
         # StatsBomb pitch dimensions
         self.pitch_length = 120.0
@@ -338,6 +355,86 @@ class XGBoostReceiverBaseline:
         all_probs = np.array(all_probs)  # [batch_size, num_classes]
         return torch.FloatTensor(all_probs)
 
+    def train_shot(self, x_list: List[torch.Tensor], batch_list: List[torch.Tensor],
+                   shot_labels: List[int]):
+        """
+        Train XGBoost classifier for shot prediction.
+
+        Args:
+            x_list: List of node features [num_players, 14] for each corner
+            batch_list: List of batch tensors (for compatibility)
+            shot_labels: List of shot labels (0 or 1) for each corner
+        """
+        # Extract graph-level features
+        X_train = []
+
+        for x in x_list:
+            # Extract per-player features
+            player_features = self.extract_features(x)  # [num_players, num_features_per_player]
+
+            # Aggregate to graph-level features (mean, max, min, std)
+            feat_mean = player_features.mean(axis=0)
+            feat_max = player_features.max(axis=0)
+            feat_min = player_features.min(axis=0)
+            feat_std = player_features.std(axis=0)
+
+            # Concatenate all statistics
+            graph_features = np.concatenate([feat_mean, feat_max, feat_min, feat_std])
+            X_train.append(graph_features)
+
+        X_train = np.array(X_train)
+        y_train = np.array(shot_labels)
+
+        # Train XGBoost for binary classification
+        self.shot_model = self.xgb.XGBClassifier(
+            max_depth=self.max_depth,
+            n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+            objective='binary:logistic',
+            eval_metric='logloss',
+            verbosity=0
+        )
+
+        self.shot_model.fit(X_train, y_train)
+
+    def predict_shot(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Predict shot probabilities.
+
+        Args:
+            x: Node features [num_nodes, 14]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Shot probabilities [batch_size, 1]
+        """
+        if self.shot_model is None:
+            raise RuntimeError("Shot model not trained! Call train_shot() first.")
+
+        batch_size = batch.max().item() + 1
+        all_probs = []
+
+        # Process each graph in batch
+        for i in range(batch_size):
+            mask = (batch == i)
+            graph_x = x[mask]
+
+            # Extract and aggregate features
+            player_features = self.extract_features(graph_x)
+            feat_mean = player_features.mean(axis=0)
+            feat_max = player_features.max(axis=0)
+            feat_min = player_features.min(axis=0)
+            feat_std = player_features.std(axis=0)
+            graph_features = np.concatenate([feat_mean, feat_max, feat_min, feat_std])
+            graph_features = graph_features.reshape(1, -1)
+
+            # Predict probability of positive class (shot=1)
+            prob = self.shot_model.predict_proba(graph_features)[0, 1]
+            all_probs.append([prob])
+
+        return torch.FloatTensor(all_probs)  # [batch_size, 1]
+
 
 class MLPReceiverBaseline(nn.Module):
     """
@@ -375,10 +472,15 @@ class MLPReceiverBaseline(nn.Module):
         self.num_players = num_players
         self.input_dim = num_players * num_features  # 22 × 14 = 308
 
-        # Three-layer MLP
+        # Shared layers
         self.fc1 = nn.Linear(self.input_dim, hidden_dim1)
         self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
-        self.fc3 = nn.Linear(hidden_dim2, num_players)
+
+        # Receiver prediction head
+        self.fc3_receiver = nn.Linear(hidden_dim2, num_players)
+
+        # Shot prediction head
+        self.fc3_shot = nn.Linear(hidden_dim2, 1)
 
         self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
@@ -406,7 +508,8 @@ class MLPReceiverBaseline(nn.Module):
         h2 = self.relu(self.fc2(h1))
         h2 = self.dropout(h2)
 
-        logits = self.fc3(h2)
+        # Receiver prediction head
+        logits = self.fc3_receiver(h2)
 
         return logits
 
@@ -460,6 +563,35 @@ class MLPReceiverBaseline(nn.Module):
         """
         logits = self.forward(x, batch)
         return F.softmax(logits, dim=1)
+
+    def predict_shot(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Predict shot probabilities using dual-head architecture.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Shot probabilities [batch_size, 1]
+        """
+        batch_size = batch.max().item() + 1
+
+        # Flatten input
+        flattened = self._flatten_batch(x, batch, batch_size)
+
+        # Shared layers
+        h1 = self.relu(self.fc1(flattened))
+        h1 = self.dropout(h1)
+
+        h2 = self.relu(self.fc2(h1))
+        h2 = self.dropout(h2)
+
+        # Shot prediction head
+        shot_logits = self.fc3_shot(h2)
+        shot_probs = torch.sigmoid(shot_logits)
+
+        return shot_probs  # [batch_size, 1]
 
 
 def evaluate_baseline(model: nn.Module,
@@ -552,6 +684,75 @@ def evaluate_baseline(model: nn.Module,
         'top3_accuracy': top3_correct / total,
         'top5_accuracy': top5_correct / total,
         'loss': total_loss / total
+    }
+
+    return metrics
+
+
+def evaluate_shot_prediction(model, data_loader, device: str = 'cuda',
+                             threshold: float = 0.5) -> Dict[str, float]:
+    """
+    Evaluate shot prediction performance.
+
+    Computes:
+    - F1 score, Precision, Recall
+    - AUROC (Area Under ROC Curve)
+    - AUPRC (Area Under Precision-Recall Curve)
+    - Accuracy
+
+    Args:
+        model: Baseline model with predict_shot() method
+        data_loader: PyTorch Geometric DataLoader
+        device: Device to run on
+        threshold: Classification threshold (default 0.5)
+
+    Returns:
+        Dictionary with shot prediction metrics
+    """
+    from sklearn.metrics import (
+        f1_score, precision_score, recall_score,
+        roc_auc_score, average_precision_score, accuracy_score
+    )
+
+    # Set eval mode (only for PyTorch models)
+    if hasattr(model, 'eval'):
+        model.eval()
+    if hasattr(model, 'to'):
+        model.to(device)
+
+    all_probs = []
+    all_labels = []
+
+    with torch.no_grad():
+        for batch in data_loader:
+            if hasattr(model, 'to'):
+                batch = batch.to(device)
+
+            # Predict shot probabilities
+            shot_probs = model.predict_shot(batch.x, batch.batch)  # [batch_size, 1]
+
+            # Get ground truth
+            shot_labels = batch.shot_label  # [batch_size, 1]
+
+            all_probs.extend(shot_probs.cpu().numpy().flatten())
+            all_labels.extend(shot_labels.cpu().numpy().flatten())
+
+    all_probs = np.array(all_probs)
+    all_labels = np.array(all_labels).astype(int)
+
+    # Binary predictions
+    all_preds = (all_probs >= threshold).astype(int)
+
+    # Compute metrics
+    metrics = {
+        'accuracy': accuracy_score(all_labels, all_preds),
+        'f1_score': f1_score(all_labels, all_preds, zero_division=0),
+        'precision': precision_score(all_labels, all_preds, zero_division=0),
+        'recall': recall_score(all_labels, all_preds, zero_division=0),
+        'auroc': roc_auc_score(all_labels, all_probs),
+        'auprc': average_precision_score(all_labels, all_probs),
+        'positive_rate': all_labels.mean(),  # % of positive samples
+        'threshold': threshold
     }
 
     return metrics
