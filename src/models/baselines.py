@@ -4,11 +4,13 @@ Baseline Models for TacticAI-Style Receiver Prediction
 
 Implements Day 5-6: Baseline Models
 - RandomReceiverBaseline: Random softmax over 22 players (sanity check)
+- XGBoostReceiverBaseline: Engineered features with XGBoost classifier
 - MLPReceiverBaseline: Flatten all player positions → MLP → 22 classes
 
 Based on TacticAI Implementation Plan:
 - Random baseline: top-1=4.5%, top-3=13.6%, top-5=22.7%
-- MLP baseline: Expected top-1 > 20%, top-3 > 45%
+- XGBoost baseline: Expected top-1 > 25%, top-3 > 42%
+- MLP baseline: Expected top-1 > 22%, top-3 > 45%
 - If MLP top-3 < 40%: STOP and debug data pipeline
 
 Author: mseo
@@ -18,7 +20,7 @@ Date: October 2024
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 import numpy as np
 
 
@@ -74,6 +76,242 @@ class RandomReceiverBaseline(nn.Module):
         """
         logits = self.forward(x, batch)
         return F.softmax(logits, dim=1)
+
+
+class XGBoostReceiverBaseline:
+    """
+    XGBoost receiver prediction baseline with engineered features.
+
+    Extracts hand-crafted spatial and contextual features for each player:
+    - Spatial: x, y, distance to goal, distance to ball
+    - Relative: closest opponent distance, teammates within 5m
+    - Zonal: binary flags (in 6-yard box, in penalty area, near/far post)
+    - Team context: average team x-position, defensive line compactness
+    - Player role: is_goalkeeper, is_corner_taker
+
+    Features per player: ~15 dimensions
+    Total features per corner: 22 players × 15 = ~330 features
+
+    Expected performance (TacticAI plan):
+    - Top-1: > 25%
+    - Top-3: > 42%
+    - Top-5: > 60%
+    """
+
+    def __init__(self, max_depth: int = 6, n_estimators: int = 500,
+                 learning_rate: float = 0.05, random_state: int = 42):
+        """
+        Initialize XGBoost baseline.
+
+        Args:
+            max_depth: Maximum tree depth
+            n_estimators: Number of boosting rounds
+            learning_rate: Learning rate (eta)
+            random_state: Random seed
+        """
+        try:
+            import xgboost as xgb
+            self.xgb = xgb
+        except ImportError:
+            raise ImportError("XGBoost not installed. Run: pip install xgboost")
+
+        self.max_depth = max_depth
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.random_state = random_state
+        self.model = None
+
+        # StatsBomb pitch dimensions
+        self.pitch_length = 120.0
+        self.pitch_width = 80.0
+        self.goal_x = 120.0
+        self.goal_y_center = 40.0
+
+        # Zonal boundaries
+        self.six_yard_box = {'x_min': 114.0, 'y_min': 30.0, 'y_max': 50.0}
+        self.penalty_area = {'x_min': 102.0, 'y_min': 18.0, 'y_max': 62.0}
+
+    def extract_features(self, x: torch.Tensor) -> np.ndarray:
+        """
+        Extract hand-crafted features for each player.
+
+        Args:
+            x: Node features [num_players, 14]
+               Columns: [x, y, dist_goal, dist_ball, vx, vy, v_mag, v_angle,
+                        angle_goal, angle_ball, team, in_penalty, num_near, density]
+
+        Returns:
+            Engineered features [num_players, num_features]
+        """
+        x_np = x.detach().cpu().numpy()
+        num_players = x_np.shape[0]
+        features_list = []
+
+        # Extract base features
+        pos_x = x_np[:, 0]  # x position
+        pos_y = x_np[:, 1]  # y position
+        dist_goal = x_np[:, 2]  # distance to goal
+        dist_ball = x_np[:, 3]  # distance to ball landing
+        team_flag = x_np[:, 10]  # 1 = attacking, 0 = defending
+
+        for i in range(num_players):
+            player_features = []
+
+            # === SPATIAL FEATURES (4) ===
+            player_features.append(pos_x[i])
+            player_features.append(pos_y[i])
+            player_features.append(dist_goal[i])
+            player_features.append(dist_ball[i])
+
+            # === ZONAL FEATURES (3) ===
+            # In 6-yard box?
+            in_six_yard = (
+                pos_x[i] >= self.six_yard_box['x_min'] and
+                self.six_yard_box['y_min'] <= pos_y[i] <= self.six_yard_box['y_max']
+            )
+            player_features.append(float(in_six_yard))
+
+            # In penalty area?
+            in_penalty = (
+                pos_x[i] >= self.penalty_area['x_min'] and
+                self.penalty_area['y_min'] <= pos_y[i] <= self.penalty_area['y_max']
+            )
+            player_features.append(float(in_penalty))
+
+            # Near post (y < 35) or far post (y > 45)?
+            near_post = float(pos_y[i] < 35.0)
+            far_post = float(pos_y[i] > 45.0)
+            player_features.append(near_post)
+            player_features.append(far_post)
+
+            # === RELATIVE FEATURES (2) ===
+            # Closest opponent distance
+            is_attacking = (team_flag[i] == 1.0)
+            opponent_mask = (team_flag != team_flag[i])
+            if opponent_mask.sum() > 0:
+                opponent_positions = np.stack([pos_x[opponent_mask], pos_y[opponent_mask]], axis=1)
+                player_pos = np.array([pos_x[i], pos_y[i]])
+                distances = np.linalg.norm(opponent_positions - player_pos, axis=1)
+                closest_opponent_dist = distances.min()
+            else:
+                closest_opponent_dist = 999.0  # No opponents
+            player_features.append(closest_opponent_dist)
+
+            # Teammates within 5m radius
+            teammate_mask = (team_flag == team_flag[i]) & (np.arange(num_players) != i)
+            if teammate_mask.sum() > 0:
+                teammate_positions = np.stack([pos_x[teammate_mask], pos_y[teammate_mask]], axis=1)
+                player_pos = np.array([pos_x[i], pos_y[i]])
+                distances = np.linalg.norm(teammate_positions - player_pos, axis=1)
+                teammates_within_5m = (distances < 5.0).sum()
+            else:
+                teammates_within_5m = 0
+            player_features.append(float(teammates_within_5m))
+
+            # === TEAM CONTEXT FEATURES (2) ===
+            # Average team x-position (attacking push)
+            team_mask = (team_flag == team_flag[i])
+            avg_team_x = pos_x[team_mask].mean()
+            player_features.append(avg_team_x)
+
+            # Defensive line compactness (std of y-positions for defending team)
+            if is_attacking:
+                defending_mask = (team_flag == 0.0)
+            else:
+                defending_mask = (team_flag == 1.0)
+            if defending_mask.sum() > 1:
+                defensive_y_std = pos_y[defending_mask].std()
+            else:
+                defensive_y_std = 0.0
+            player_features.append(defensive_y_std)
+
+            # === PLAYER ROLE FEATURES (2) ===
+            # Is goalkeeper? (approximation: x < 20 for defending team)
+            is_goalkeeper = float((not is_attacking) and pos_x[i] < 20.0)
+            player_features.append(is_goalkeeper)
+
+            # Is corner taker? (approximation: closest to corner flag)
+            corner_x, corner_y = 120.0, 0.0  # or 80.0 depending on corner side
+            dist_to_corner = np.sqrt((pos_x[i] - corner_x)**2 + (pos_y[i] - corner_y)**2)
+            is_corner_taker = float(dist_to_corner < 2.0 and is_attacking)
+            player_features.append(is_corner_taker)
+
+            features_list.append(player_features)
+
+        return np.array(features_list)  # [num_players, num_features]
+
+    def train(self, x_list: List[torch.Tensor], batch_list: List[torch.Tensor],
+              labels: List[int]):
+        """
+        Train XGBoost classifier.
+
+        Args:
+            x_list: List of node features [num_players, 14] for each corner
+            batch_list: List of batch tensors (for compatibility, not used here)
+            labels: List of receiver indices (0-21) for each corner
+        """
+        # Extract features for all graphs
+        X_train = []
+        y_train = []
+
+        for x, label in zip(x_list, labels):
+            # Extract per-player features
+            player_features = self.extract_features(x)  # [22, num_features]
+
+            # Flatten to single feature vector [22 * num_features]
+            flat_features = player_features.flatten()
+            X_train.append(flat_features)
+            y_train.append(label)
+
+        X_train = np.array(X_train)
+        y_train = np.array(y_train)
+
+        # Train XGBoost
+        self.model = self.xgb.XGBClassifier(
+            max_depth=self.max_depth,
+            n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+            objective='multi:softprob',
+            eval_metric='mlogloss',
+            verbosity=0
+        )
+
+        self.model.fit(X_train, y_train)
+
+    def predict(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Predict receiver probabilities.
+
+        Args:
+            x: Node features [num_nodes, 14]
+            batch: Batch vector [num_nodes] indicating graph membership
+
+        Returns:
+            Softmax probabilities [batch_size, 22]
+        """
+        if self.model is None:
+            raise RuntimeError("Model not trained! Call train() first.")
+
+        batch_size = batch.max().item() + 1
+        all_probs = []
+
+        # Process each graph in batch
+        for i in range(batch_size):
+            mask = (batch == i)
+            graph_x = x[mask]  # [num_players, 14]
+
+            # Extract features
+            player_features = self.extract_features(graph_x)  # [num_players, num_features]
+            flat_features = player_features.flatten().reshape(1, -1)  # [1, num_players * num_features]
+
+            # Predict
+            probs = self.model.predict_proba(flat_features)  # [1, 22]
+            all_probs.append(probs[0])
+
+        # Stack and convert to tensor
+        all_probs = np.array(all_probs)  # [batch_size, 22]
+        return torch.FloatTensor(all_probs)
 
 
 class MLPReceiverBaseline(nn.Module):
