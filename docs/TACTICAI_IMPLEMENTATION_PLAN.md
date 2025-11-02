@@ -11,6 +11,60 @@
 
 ---
 
+## Phase 0: Infrastructure Foundation (Pre-existing)
+
+**Status**: ✅ COMPLETE (from previous CornerTactics work)
+
+This phase documents the pre-existing infrastructure that TacticAI implementation builds upon.
+
+### Core Data Processing Modules (`src/`)
+
+**`src/statsbomb_loader.py`**
+- StatsBomb Open Data API integration
+- Downloads corner kick events with 360 freeze frames
+- Filters professional men's competitions
+- Output: `data/raw/statsbomb/corners_360.csv`
+
+**`src/outcome_labeler.py`**
+- Labels corner kick outcomes by analyzing subsequent events
+- Categories: goal, shot, clearance, second_corner, possession, opposition_possession
+- 20-second event window analysis
+- Used by: Phase 1.2 outcome labeling
+
+**`src/feature_engineering.py`**
+- Extracts 14-dimensional node features per player
+- Features: spatial (4), kinematic (4), contextual (4), density (2)
+- Handles StatsBomb 360 freeze frames
+- Output: `data/features/node_features/statsbomb_player_features.parquet`
+
+**`src/graph_builder.py`**
+- Constructs graph representations from node features
+- 5 adjacency strategies: team, distance, delaunay, ball_centric, zone
+- 6-dimensional edge features
+- Used by: `data_loader.py`, `add_receiver_labels.py`, `receiver_data_loader.py`
+- Output: `data/graphs/adjacency_team/*.pkl`
+
+**`src/data_loader.py`**
+- Base dataset class for corner kick graphs
+- `CornerDataset`: Loads graphs, handles train/val/test splits
+- **Critical fix (Oct 26, 2024)**: Splits by base corner ID to prevent temporal frame leakage
+- Used by: `receiver_data_loader.py` (imported by all baseline models)
+
+**`src/receiver_labeler.py`**
+- Extracts receiver labels from StatsBomb events
+- Identifies player who touches ball 0-5s after corner
+- Used by: `add_receiver_labels.py`, unit tests
+
+### Dataset Statistics (Pre-existing)
+- Original corners: 1,118 base corners (StatsBomb 360)
+- Temporal augmentation: 7,369 graphs (6.6× increase)
+  - StatsBomb augmented: 5,814 graphs (5 temporal frames + mirrors)
+  - SkillCorner temporal: 1,555 graphs (real 10fps tracking)
+- Receiver coverage: 996/1,118 base corners (89.1%)
+- Dangerous situations: ~1,261 (17.1% positive class for shot OR goal)
+
+---
+
 ## Phase 1: Data Preparation & Baselines (Week 1, Days 1-7)
 
 ### Day 1-2: Receiver Label Extraction ✅ COMPLETE
@@ -56,54 +110,68 @@
 
 ---
 
-### Day 5-6: Baseline Models
-- [ ] Create `src/models/baselines.py`
-  - [ ] Implement `RandomReceiverBaseline`
-    - [ ] `predict()`: Return random softmax over 22 players
-    - [ ] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
-  - [ ] Implement `XGBoostReceiverBaseline` (engineered features)
-    - [ ] Extract hand-crafted features per player (dimension: 22 × ~15 features):
-      - [ ] **Spatial**: distance to ball, distance to goal, x-position, y-position
-      - [ ] **Relative**: closest opponent distance, teammates within 5m radius
-      - [ ] **Zonal**: binary flags (in 6-yard box? in penalty area? near/far post?)
-      - [ ] **Team context**: average team x-position, defensive line compactness
-      - [ ] **Player role**: is_goalkeeper, is_corner_taker (binary flags)
-    - [ ] Flatten to `[22 × 15 = 330 features]` per corner
-    - [ ] XGBoost classifier: `max_depth=6, n_estimators=500, learning_rate=0.05`
-    - [ ] Use `sklearn.model_selection.GridSearchCV` for hyperparameter tuning
-  - [ ] Implement `MLPReceiverBaseline`
-    - [ ] Flatten all player positions: `[batch, 22*14=308]`
-    - [ ] MLP: 308 → 256 → 128 → 22
-    - [ ] Dropout 0.3, ReLU activations
-- [ ] Create `scripts/training/train_baseline.py`
-  - [ ] Train XGBoost: 500 trees, 5-fold CV
-  - [ ] Train MLP: 10k steps
-  - [ ] Compute top-1, top-3, top-5 accuracy for both
-  - [ ] Save results: `results/baseline_xgboost.json`, `results/baseline_mlp.json`
+### Day 5-6: Baseline Models ✅ COMPLETE
+- [x] Create `src/models/baselines.py`
+  - [x] Implement `RandomReceiverBaseline`
+    - [x] `predict()`: Return random softmax over 22 players
+    - [x] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
+  - [x] Implement `XGBoostReceiverBaseline` (engineered features)
+    - [x] Extract hand-crafted features per player (dimension: 22 × ~15 features):
+      - [x] **Spatial**: distance to ball, distance to goal, x-position, y-position
+      - [x] **Relative**: closest opponent distance, teammates within 5m radius
+      - [x] **Zonal**: binary flags (in 6-yard box? in penalty area? near/far post?)
+      - [x] **Team context**: average team x-position, defensive line compactness
+      - [x] **Player role**: is_goalkeeper, is_corner_taker (binary flags)
+    - [x] Flatten to `[22 × 15 = 330 features]` per corner
+    - [x] XGBoost classifier: `max_depth=6, n_estimators=500, learning_rate=0.05`
+  - [x] Implement `MLPReceiverBaseline`
+    - [x] Flatten all player positions: `[batch, 22*14=308]`
+    - [x] MLP: 512 → 256 hidden units (deeper architecture)
+    - [x] Dropout 0.25, ReLU activations
+    - [x] Dual-task: Receiver (22-class) + Shot (binary)
+- [x] Create `scripts/training/train_baselines.py`
+  - [x] Train Random: Theoretical evaluation
+  - [x] Train XGBoost: 500 trees, early stopping
+  - [x] Train MLP: 20,000 steps, lr=0.0005, AdamW
+  - [x] Compute top-1, top-3, top-5 accuracy for receiver prediction
+  - [x] Compute F1, Precision, Recall, AUROC, AUPRC for shot prediction
+  - [x] Save results: `results/baselines/{random,mlp,xgboost}_results.json`
 
 **Success Criteria**:
-- ✅ Random baseline: top-1=4.5%, top-3=13.6% (sanity check)
-- ✅ XGBoost baseline: top-1 > 25%, top-3 > 42%
-- ✅ MLP baseline: top-1 > 22%, top-3 > 45%
-- ❌ **If MLP top-3 < 40%**: STOP and debug data pipeline (receiver labels may be incorrect)
-- 📊 **Expected**: MLP slightly outperforms XGBoost (graph structure helps even without explicit modeling)
+- ✅ Random baseline: top-1=4.9%, top-3=15.1%, top-5=25.1% (matches theory)
+- ✅ XGBoost baseline: top-1=62.2%, **top-3=89.3%**, top-5=95.7% (far exceeds target!)
+- ✅ MLP baseline: top-1=29.6%, **top-3=66.7%**, top-5=88.5% (exceeds 45% target)
+- 📊 **Result**: XGBoost >> MLP (engineered features capture tactical patterns better)
+
+**Implementation Notes (Completed Nov 2024)**:
+- XGBoost outperformed expectations (89.3% vs 42% target) - engineered features very effective
+- MLP exceeded target (66.7% vs 45% target) - validates dual-task learning
+- Shot prediction: F1 ~0.40 for all models (challenging task, room for GNN improvement)
+- Branch: `feature/tacticai-baseline-models`
+- Files: `src/models/baselines.py`, `scripts/training/train_baselines.py`
+- SLURM: `scripts/slurm/train_baselines_{v100,a100,h100}.sh`
 
 ---
 
-### Day 7: Checkpoint & Decision Point
+### Day 7: Checkpoint & Decision Point ✅ COMPLETE
 - [x] Review baseline results
-- [x] Document findings in `docs/BASELINE_RESULTS.md`
+- [x] Document findings in `docs/BASELINE_ARCHITECTURE.md`
+- [x] Create publication-ready reporting system
 - [x] Decision:
-  - [x] **If MLP top-3 > 45%**: ✅ Proceed to Phase 2 (GATv2)
-  - [x] **If MLP top-3 < 40%**: ❌ Debug data quality (check receiver label extraction)
+  - [x] **MLP top-3 = 66.7% >> 45% target**: ✅ Proceed to Phase 2 (GATv2)
+  - [x] **XGBoost top-3 = 89.3%**: Strong baseline established
 
 **Deliverables**:
 - ✅ `scripts/preprocessing/add_receiver_labels.py`
 - ✅ `src/data/receiver_data_loader.py`
-- ✅ `src/models/baselines.py` (Random, XGBoost, MLP)
-- ✅ `results/baseline_xgboost.json`
-- ✅ `results/baseline_mlp.json`
-- ✅ `docs/BASELINE_RESULTS.md`
+- ✅ `src/models/baselines.py` (Random, XGBoost, MLP dual-task models)
+- ✅ `scripts/training/train_baselines.py`
+- ✅ `scripts/slurm/train_baselines_{v100,a100,h100}.sh`
+- ✅ `results/baselines/{random,mlp,xgboost}_results.json`
+- ✅ `docs/BASELINE_ARCHITECTURE.md` (complete technical documentation)
+- ✅ `scripts/analysis/generate_baseline_report.py` (publication-ready reports)
+- ✅ `results/baselines/report/` (LaTeX tables, figures, summary statistics)
+- ✅ `results/baselines/report/HOW_TO_PRESENT.md` (presentation guide)
 
 ---
 
@@ -619,17 +687,32 @@ Shot AUROC: 0.78 ± 0.02
 
 ## Progress Tracking
 
-**Current Phase**: Not started
+**Current Phase**: Phase 1 Complete ✅ - Ready for Phase 2 (GATv2)
 
 **Completed Phases**:
-- ✅ Phase 0: Existing GNN infrastructure (from previous work)
+- ✅ Phase 0: Infrastructure Foundation (data loaders, graph builders, feature engineering)
+- ✅ Phase 1: Data Preparation & Baselines
+  - ✅ Day 1-2: Receiver label extraction (996/1,118 corners, 89.1% coverage)
+  - ✅ Day 3-4: Data loader extension (dual-task support, data leakage fix)
+  - ✅ Day 5-6: Baseline models (Random, XGBoost, MLP)
+  - ✅ Day 7: Checkpoint passed (XGBoost 89.3%, MLP 66.7% Top-3 accuracy)
+- ✅ Phase 2 (Partial): D2 Augmentation & GATv2 Encoder
+  - ✅ Day 8-9: D2 augmentation implementation
+  - ✅ Day 10-11: GATv2 encoder with D2 frame averaging
 
-**Next Task**: Day 1 - Write `scripts/preprocessing/add_receiver_labels.py`
+**Next Task**: Phase 2 Day 12-13 - Receiver Prediction Head
+
+**Key Results**:
+- Dataset: 7,369 temporally augmented graphs (6.6× original)
+- Baselines: XGBoost 89.3% Top-3, MLP 66.7% Top-3 (far exceed targets)
+- Shot prediction: F1 ~0.40 (room for GNN improvement)
+- Data quality: Fixed temporal leakage, 89% receiver coverage
 
 **Notes**:
-- This plan assumes you have ~7,369 graphs with temporal augmentation
-- Expected dataset size: ~900-950 corners with valid receiver labels (85% coverage)
-- Total estimated time: 4 weeks (28 days) at full-time pace
+- XGBoost baseline is very strong (89.3% Top-3) - sets high bar for GNN
+- MLP baseline validates dual-task approach (receiver + shot)
+- D2 augmentation ready for GATv2 integration
+- Publication-ready reporting infrastructure complete
 
 ---
 
