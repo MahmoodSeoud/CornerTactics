@@ -327,23 +327,29 @@ def generate_summary_statistics(results: Dict[str, dict], output_dir: Path):
 
     summary.append("📈 KEY FINDINGS:")
 
+    # Get random baseline (case-insensitive lookup)
+    random_key = next((k for k in results.keys() if k.lower() == 'random'), None)
+    xgboost_key = next((k for k in results.keys() if k.lower() == 'xgboost'), None)
+    mlp_key = next((k for k in results.keys() if k.lower() == 'mlp'), None)
+
     # XGBoost analysis
-    if "XGBoost" in results:
-        xgb = results["XGBoost"]
+    if xgboost_key:
+        xgb = results[xgboost_key]
         summary.append(f"  1. XGBoost achieves {xgb['test_receiver_metrics']['top3']*100:.1f}% Top-3 accuracy")
-        summary.append(f"     → Far exceeds random baseline ({results['Random']['test_receiver_metrics']['top3']*100:.1f}%)")
+        if random_key:
+            summary.append(f"     → Far exceeds random baseline ({results[random_key]['test_receiver_metrics']['top3']*100:.1f}%)")
         summary.append(f"     → 89% correct receiver identification within top 3 predictions")
 
     # MLP analysis
-    if "MLP" in results:
-        mlp = results["MLP"]
+    if mlp_key:
+        mlp = results[mlp_key]
         summary.append(f"  2. MLP achieves {mlp['test_receiver_metrics']['top3']*100:.1f}% Top-3 accuracy")
         summary.append(f"     → Demonstrates neural networks can learn tactical patterns")
         summary.append(f"     → Shot prediction F1: {mlp['test_shot_metrics']['f1']:.3f}")
 
     # Random baseline validation
-    if "Random" in results:
-        rand = results["Random"]
+    if random_key:
+        rand = results[random_key]
         expected_top3 = 3/22 * 100  # 13.6% for 3 out of 22 players
         actual_top3 = rand['test_receiver_metrics']['top3'] * 100
         summary.append(f"  3. Random baseline performs as expected: {actual_top3:.1f}% vs {expected_top3:.1f}% theoretical")
@@ -358,8 +364,10 @@ def generate_summary_statistics(results: Dict[str, dict], output_dir: Path):
     summary.append("")
 
     summary.append("📋 DATASET:")
-    if "Random" in results and 'dataset_info' in results["Random"]:
-        info = results["Random"]['dataset_info']
+    # Find any model with dataset_info
+    dataset_info_key = next((k for k in results.keys() if 'dataset_info' in results[k]), None)
+    if dataset_info_key:
+        info = results[dataset_info_key]['dataset_info']
         summary.append(f"  • Train: {info['train_graphs']:,} corners")
         summary.append(f"  • Val:   {info['val_graphs']:,} corners")
         summary.append(f"  • Test:  {info['test_graphs']:,} corners")
