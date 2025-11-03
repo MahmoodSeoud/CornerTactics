@@ -308,6 +308,7 @@ class XGBoostReceiverBaseline:
             random_state=self.random_state,
             objective='multi:softprob',
             eval_metric='mlogloss',
+            num_class=22,  # 22 possible receiver positions (0-21)
             verbosity=0
         )
 
