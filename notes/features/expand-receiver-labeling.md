@@ -62,26 +62,31 @@ ALL StatsBomb events (not just Ball Receipt) have `location` field!
 - [x] Update all existing tests
 - [x] All tests passing
 
-### Phase 2: Update Receiver Labeling Script (NEXT)
-- [ ] Create new script to re-label using event streams
-- [ ] For each corner:
-  - Load StatsBomb events for that match
-  - Use ReceiverLabeler.find_receiver() to get (player_id, name, location)
-  - Match location to closest freeze frame position (ANY team)
-  - Store receiver_node_index in graph
-- [ ] Write tests for the new labeling logic
-- [ ] Run on sample data first
+### Phase 2: Update Receiver Labeling Script ✅ COMPLETE
+- [x] Create new script `add_receiver_labels_v2.py`
+- [x] Implement `extract_receiver_from_events()` function
+- [x] Implement `match_location_to_node()` function
+- [x] Implement `add_receiver_labels_from_events()` main function
+- [x] Write comprehensive tests (all passing)
+- [x] Create SLURM script
 
-### Phase 3: Full Dataset Re-labeling
-- [ ] Run on full dataset via SLURM
-- [ ] Verify coverage increases from 60% → 85%+
-- [ ] Check that clearances now have receiver labels
-- [ ] Validate distribution of attacking vs. defending receivers
+### Phase 3: Full Dataset Re-labeling ⚠️ PARTIAL SUCCESS
+- [x] Create SLURM job script
+- [x] Submit job (Job ID: 30905, running on cn14)
+- [x] Monitor execution (completed in ~2.5 minutes)
+- [x] Fixed time window bug: increased from 5s → 15s
+- [x] Results with 15s window: **67.7% coverage** (3,937/5,814)
+  - Attacking receivers: 3,025 (76.8%)
+  - Defending receivers: 912 (23.2%) ← **NEW CAPTURES!**
+  - Comparison to old: gained 445 more receivers (3,937 vs old 3,492)
+- [ ] ⚠️ Still below 85% target (need investigation)
+- [ ] ⚠️ Avg distance to match: 32.61m (should be <5m) - position matching issue?
 
-### Phase 4: Integration
-- [ ] Verify data loader still works
+### Phase 4: Integration (PENDING)
+- [ ] Verify data loader still works with v2 labels
 - [ ] Re-train baselines with expanded dataset
-- [ ] Compare results
+- [ ] Compare results: old (3,492 corners) vs new (5,000+ corners)
+- [ ] Create pull request
 
 ## Key Files
 - `src/receiver_labeler.py` - Core receiver finding logic (already works!)

@@ -119,11 +119,12 @@ def extract_receiver_from_events(
     else:
         events_df = events_cache[match_id]
 
-    # Use ReceiverLabeler to find receiver
+    # Use ReceiverLabeler to find receiver (with longer time window)
     labeler = ReceiverLabeler()
     player_id, player_name, location = labeler.find_receiver(
         events_df,
-        corner_event_id=corner_id
+        corner_event_id=corner_id,
+        max_time_diff=15.0  # Increase from 5s to 15s to capture more corners
     )
 
     if player_id is None:
