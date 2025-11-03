@@ -45,7 +45,7 @@ def test_find_receiver_from_events():
     ])
 
     labeler = ReceiverLabeler()
-    receiver_id, receiver_name = labeler.find_receiver(events, corner_event_id='1')
+    receiver_id, receiver_name, location = labeler.find_receiver(events, corner_event_id='1')
 
     assert receiver_id == 2000, "Should identify Striker as receiver"
     assert receiver_name == 'Striker', "Should return receiver name"
@@ -83,7 +83,7 @@ def test_find_receiver_within_time_window():
     ])
 
     labeler = ReceiverLabeler()
-    receiver_id, receiver_name = labeler.find_receiver(events, corner_event_id='1', max_time_diff=5.0)
+    receiver_id, receiver_name, location = labeler.find_receiver(events, corner_event_id='1', max_time_diff=5.0)
 
     assert receiver_id is None, "Should return None for events outside 5 second window"
 
@@ -131,7 +131,7 @@ def test_receiver_excludes_corner_taker():
     ])
 
     labeler = ReceiverLabeler()
-    receiver_id, receiver_name = labeler.find_receiver(events, corner_event_id='1')
+    receiver_id, receiver_name, location = labeler.find_receiver(events, corner_event_id='1')
 
     # Should skip corner taker and find Striker as receiver
     assert receiver_id == 2000, "Should skip corner taker and identify next player"
@@ -172,7 +172,7 @@ def test_receiver_valid_event_types():
         ])
 
         labeler = ReceiverLabeler()
-        receiver_id, receiver_name = labeler.find_receiver(events, corner_event_id='1')
+        receiver_id, receiver_name, location = labeler.find_receiver(events, corner_event_id='1')
 
         assert receiver_id == 2000, f"Event type '{event_type}' should be valid for receiver"
 
@@ -197,6 +197,6 @@ def test_receiver_no_subsequent_events():
     ])
 
     labeler = ReceiverLabeler()
-    receiver_id, receiver_name = labeler.find_receiver(events, corner_event_id='1')
+    receiver_id, receiver_name, location = labeler.find_receiver(events, corner_event_id='1')
 
     assert receiver_id is None, "Should return None when no subsequent events"

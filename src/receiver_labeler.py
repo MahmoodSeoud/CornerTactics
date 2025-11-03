@@ -40,7 +40,7 @@ class ReceiverLabeler:
         events_df: pd.DataFrame,
         corner_event_id: str,
         max_time_diff: float = 5.0
-    ) -> Tuple[Optional[int], Optional[str]]:
+    ) -> Tuple[Optional[int], Optional[str], Optional[list]]:
         """
         Find the receiver of a corner kick.
 
@@ -50,13 +50,15 @@ class ReceiverLabeler:
             max_time_diff: Maximum seconds after corner to look for receiver (default: 5.0)
 
         Returns:
-            Tuple of (receiver_player_id, receiver_player_name) or (None, None) if not found
+            Tuple of (receiver_player_id, receiver_player_name, receiver_location)
+            or (None, None, None) if not found.
+            receiver_location is [x, y] or None if event has no location.
         """
         # Find the corner event
         corner_mask = events_df['id'] == corner_event_id
         if not corner_mask.any():
             logger.warning(f"Corner event {corner_event_id} not found in events")
-            return None, None
+            return None, None, None
 
         corner_idx = events_df[corner_mask].index[0]
         corner_event = events_df.loc[corner_idx]
@@ -94,10 +96,16 @@ class ReceiverLabeler:
 
             # Found the receiver!
             if player_id is not None:
-                return int(player_id), player_name
+                # Extract location from event
+                location = event.get('location')
+                # Convert to list if it's not None and is array-like
+                if location is not None and hasattr(location, '__iter__'):
+                    location = list(location)
+
+                return int(player_id), player_name, location
 
         # No receiver found within time window
-        return None, None
+        return None, None, None
 
     def _is_valid_receiver_event(self, event_type: str) -> bool:
         """Check if event type counts as receiving the ball."""
