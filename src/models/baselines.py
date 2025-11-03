@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Dict, List
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
 
 
 class RandomReceiverBaseline(nn.Module):
@@ -137,6 +138,7 @@ class XGBoostReceiverBaseline:
         self.random_state = random_state
         self.model = None  # Receiver prediction model
         self.shot_model = None  # Shot prediction model
+        self.label_encoder = LabelEncoder()  # For sparse receiver labels
 
         # StatsBomb pitch dimensions
         self.pitch_length = 120.0
@@ -300,6 +302,11 @@ class XGBoostReceiverBaseline:
         # Store max_features for prediction
         self.max_features = max_features
 
+        # Encode sparse receiver labels to consecutive integers
+        # E.g., [0,1,2,...,12,14,16] -> [0,1,2,...,12,13,14]
+        y_train_encoded = self.label_encoder.fit_transform(y_train)
+        n_classes = len(self.label_encoder.classes_)
+
         # Train XGBoost
         self.model = self.xgb.XGBClassifier(
             max_depth=self.max_depth,
@@ -308,11 +315,11 @@ class XGBoostReceiverBaseline:
             random_state=self.random_state,
             objective='multi:softprob',
             eval_metric='mlogloss',
-            num_class=22,  # 22 possible receiver positions (0-21)
+            num_class=n_classes,  # Number of unique receiver positions
             verbosity=0
         )
 
-        self.model.fit(X_train, y_train)
+        self.model.fit(X_train, y_train_encoded)
 
     def predict(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
         """
@@ -348,12 +355,18 @@ class XGBoostReceiverBaseline:
 
             flat_features = flat_features.reshape(1, -1)  # [1, max_features]
 
-            # Predict
-            probs = self.model.predict_proba(flat_features)  # [1, num_classes]
-            all_probs.append(probs[0])
+            # Predict (returns probabilities for encoded classes)
+            probs_encoded = self.model.predict_proba(flat_features)  # [1, n_encoded_classes]
+
+            # Map back to original label space (0-21)
+            probs_full = np.zeros(22)
+            for encoded_idx, original_label in enumerate(self.label_encoder.classes_):
+                probs_full[original_label] = probs_encoded[0, encoded_idx]
+
+            all_probs.append(probs_full)
 
         # Stack and convert to tensor
-        all_probs = np.array(all_probs)  # [batch_size, num_classes]
+        all_probs = np.array(all_probs)  # [batch_size, 22]
         return torch.FloatTensor(all_probs)
 
     def train_shot(self, x_list: List[torch.Tensor], batch_list: List[torch.Tensor],
