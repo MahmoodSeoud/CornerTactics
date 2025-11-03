@@ -55,21 +55,33 @@ ALL StatsBomb events (not just Ball Receipt) have `location` field!
 
 ## Implementation Plan
 
-### Phase 1: Test Infrastructure
-- [ ] Write test for ReceiverLabeler with clearance events
-- [ ] Write test for matching player_id to node index
+### Phase 1: Test Infrastructure ✅ COMPLETE
+- [x] Write test for ReceiverLabeler with clearance events
+- [x] Write test for ReceiverLabeler returning location
+- [x] Update ReceiverLabeler to return (player_id, player_name, location)
+- [x] Update all existing tests
+- [x] All tests passing
 
-### Phase 2: Update Receiver Labeling Script
-- [ ] Modify `add_receiver_labels.py` to use event stream
-- [ ] Load StatsBomb events for each match
-- [ ] Use ReceiverLabeler.find_receiver() for all corners
-- [ ] Match player_id → node_index using graph.player_ids
+### Phase 2: Update Receiver Labeling Script (NEXT)
+- [ ] Create new script to re-label using event streams
+- [ ] For each corner:
+  - Load StatsBomb events for that match
+  - Use ReceiverLabeler.find_receiver() to get (player_id, name, location)
+  - Match location to closest freeze frame position (ANY team)
+  - Store receiver_node_index in graph
+- [ ] Write tests for the new labeling logic
+- [ ] Run on sample data first
 
-### Phase 3: Validation
-- [ ] Run on full dataset
-- [ ] Verify coverage increases to 85%+
+### Phase 3: Full Dataset Re-labeling
+- [ ] Run on full dataset via SLURM
+- [ ] Verify coverage increases from 60% → 85%+
 - [ ] Check that clearances now have receiver labels
-- [ ] Validate that receiver predictions still work
+- [ ] Validate distribution of attacking vs. defending receivers
+
+### Phase 4: Integration
+- [ ] Verify data loader still works
+- [ ] Re-train baselines with expanded dataset
+- [ ] Compare results
 
 ## Key Files
 - `src/receiver_labeler.py` - Core receiver finding logic (already works!)
