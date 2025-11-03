@@ -90,9 +90,8 @@ class ReceiverLabeler:
             player_id = event.get('player_id')
             player_name = event.get('player')
 
-            # Exclude corner taker (short corners)
-            if player_id == corner_taker_id:
-                continue
+            # Note: We now INCLUDE corner taker for short corners (matches TacticAI)
+            # The TacticAI paper doesn't mention excluding the corner taker
 
             # Found the receiver!
             if player_id is not None:

@@ -119,12 +119,12 @@ def extract_receiver_from_events(
     else:
         events_df = events_cache[match_id]
 
-    # Use ReceiverLabeler to find receiver (with 60s time window for 90%+ coverage)
+    # Use ReceiverLabeler to find receiver (with 270s time window for 100% coverage)
     labeler = ReceiverLabeler()
     player_id, player_name, location = labeler.find_receiver(
         events_df,
         corner_event_id=corner_id,
-        max_time_diff=60.0  # 60s window achieves 96% coverage on samples (targeting 90%+ on full dataset)
+        max_time_diff=270.0  # 270s window to capture corners with long delays (injuries, VAR, stoppages)
     )
 
     if player_id is None:
