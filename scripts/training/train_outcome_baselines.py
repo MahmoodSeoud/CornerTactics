@@ -44,7 +44,7 @@ def print_dataset_statistics(dataset, train_loader, val_loader, test_loader):
 
     # Outcome class distribution
     all_outcomes = [data.outcome_class_label.item() for data in dataset.data_list]
-    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class (Goal+Shot merged)
+    class_names = ['Shot', 'Clearance', 'Possession']  # 3-class (Goal+Shot merged)
 
     print("\nOutcome class distribution:")
     for class_id, class_name in enumerate(class_names):
@@ -83,14 +83,14 @@ def train_random_baseline(test_loader, device='cpu'):
     print(f"  Weighted F1:     {metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class
+    class_names = ['Shot', 'Clearance', 'Possession']  # 3-class
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(metrics['confusion_matrix'])
-    print("  Predicted:  Danger  Clear  Poss")
+    print("  Predicted:  Shot  Clear  Poss")
     for i, actual in enumerate(class_names):
         row_str = "  " + actual[:6].ljust(10) + ": "
         row_str += "  ".join(f"{conf_matrix[i, j]:5d}" for j in range(3))
@@ -153,14 +153,14 @@ def train_xgboost_baseline(train_loader, val_loader, test_loader, device='cpu'):
     print(f"  Weighted F1:     {test_metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Dangerous', 'Clearance', 'Possession']
+    class_names = ['Shot', 'Clearance', 'Possession']
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {test_metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(test_metrics['confusion_matrix'])
-    print("  Predicted:  Danger  Clear  Poss")
+    print("  Predicted:  Shot  Clear  Poss")
     for i, actual in enumerate(class_names):
         row_str = "  " + actual[:5].ljust(9) + ": "
         row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(3))
@@ -186,7 +186,7 @@ def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num
         hidden_dim1=512,
         hidden_dim2=256,
         hidden_dim3=128,
-        num_classes=3,  # 3-class: Dangerous, Clearance, Possession
+        num_classes=3,  # 3-class: Shot, Clearance, Possession
         dropout=0.25
     )
 
@@ -222,14 +222,14 @@ def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num
     print(f"  Weighted F1:     {test_metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Dangerous', 'Clearance', 'Possession']
+    class_names = ['Shot', 'Clearance', 'Possession']
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {test_metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(test_metrics['confusion_matrix'])
-    print("  Predicted:  Danger  Clear  Poss")
+    print("  Predicted:  Shot  Clear  Poss")
     for i, actual in enumerate(class_names):
         row_str = "  " + actual[:5].ljust(9) + ": "
         row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(3))
@@ -350,14 +350,14 @@ def main():
     print("SUMMARY (3-CLASS: DANGEROUS/CLEARANCE/POSSESSION)")
     print("=" * 80)
     print(f"\nModel Performance (Test Set):")
-    print(f"{'Model':<15} {'Accuracy':<12} {'Macro F1':<12} {'Danger F1':<12} {'Clear F1':<12}")
+    print(f"{'Model':<15} {'Accuracy':<12} {'Macro F1':<12} {'Shot F1':<12} {'Clear F1':<12}")
     print("-" * 67)
 
     for model_name, metrics in results.items():
         print(f"{model_name.capitalize():<15} "
               f"{metrics['accuracy']*100:>6.1f}%      "
               f"{metrics['macro_f1']:>6.3f}       "
-              f"{metrics.get('dangerous_f1', 0.0):>6.3f}       "
+              f"{metrics.get('shot_f1', 0.0):>6.3f}       "
               f"{metrics.get('clearance_f1', 0.0):>6.3f}")
 
     print("\n" + "=" * 80)

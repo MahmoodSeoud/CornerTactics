@@ -134,7 +134,7 @@ class OutcomeLabeler:
             pitch_width: Pitch width (default: 80 for StatsBomb)
 
         Returns:
-            xThreat delta (positive = more dangerous)
+            xThreat delta (positive = more shot)
         """
         if not corner_location or not outcome_location:
             return 0.0
@@ -150,7 +150,7 @@ class OutcomeLabeler:
             corner_dist = np.sqrt((goal_x - corner_x)**2 + (goal_y - corner_y)**2)
             outcome_dist = np.sqrt((goal_x - outcome_x)**2 + (goal_y - outcome_y)**2)
 
-            # Positive value = moved closer to goal (more dangerous)
+            # Positive value = moved closer to goal (more shot)
             return corner_dist - outcome_dist
         except:
             return 0.0

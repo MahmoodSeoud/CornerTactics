@@ -988,7 +988,7 @@ class RandomOutcomeBaseline(nn.Module):
     Random outcome prediction baseline for multi-class classification.
 
     Predicts uniform random probabilities over 3 outcome classes:
-    - 0: Dangerous (Goal + Shot) (~18.2%)
+    - 0: Shot (Goal + Shot) (~18.2%)
     - 1: Clearance (~52.0%)
     - 2: Possession (~29.9%)
 
@@ -1073,7 +1073,7 @@ class XGBoostOutcomeBaseline:
         self.learning_rate = learning_rate
         self.random_state = random_state
         self.model = None
-        self.num_classes = 3  # Dangerous, Clearance, Possession
+        self.num_classes = 3  # Shot, Clearance, Possession
 
         # StatsBomb pitch dimensions
         self.pitch_length = 120.0
@@ -1436,7 +1436,7 @@ def evaluate_outcome_baseline(model, data_loader, device: str = 'cuda') -> Dict[
 
     # Per-class F1 scores
     per_class_f1 = f1_score(all_labels, all_preds, average=None, zero_division=0)
-    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class
+    class_names = ['Shot', 'Clearance', 'Possession']  # 3-class
     for i, name in enumerate(class_names):
         metrics[f'{name.lower()}_f1'] = per_class_f1[i] if i < len(per_class_f1) else 0.0
 
@@ -1508,8 +1508,8 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
         'train_loss': [],
         'val_accuracy': [],
         'val_macro_f1': [],
-        'val_goal_f1': [],
-        'val_shot_f1': [],
+        'val_shot_f1': [],  # Changed from goal_f1
+        'val_clearance_f1': [],  # Changed from shot_f1
         'steps': []
     }
 
@@ -1561,8 +1561,8 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
             history['train_loss'].append(loss.item())
             history['val_accuracy'].append(val_metrics['accuracy'])
             history['val_macro_f1'].append(val_metrics['macro_f1'])
-            history['val_goal_f1'].append(val_metrics['goal_f1'])
             history['val_shot_f1'].append(val_metrics['shot_f1'])
+            history['val_clearance_f1'].append(val_metrics['clearance_f1'])
             history['steps'].append(step)
 
             current_lr = scheduler.get_last_lr()[0]
@@ -1573,8 +1573,8 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
                       f"LR: {current_lr:.6f} | "
                       f"Acc: {val_metrics['accuracy']*100:.1f}% | "
                       f"Macro F1: {val_metrics['macro_f1']:.3f} | "
-                      f"Goal F1: {val_metrics['goal_f1']:.3f} | "
-                      f"Shot F1: {val_metrics['shot_f1']:.3f}")
+                      f"Danger F1: {val_metrics['shot_f1']:.3f} | "
+                      f"Clear F1: {val_metrics['clearance_f1']:.3f}")
 
             # Save best model and check early stopping
             if val_metrics['macro_f1'] > best_val_macro_f1:

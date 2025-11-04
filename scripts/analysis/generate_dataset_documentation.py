@@ -83,25 +83,25 @@ print("="*80)
 
 # Get outcomes
 outcomes = Counter()
-dangerous_situations = 0
+shot_situations = 0
 
 for g in graphs:
     if hasattr(g, 'outcome'):
         outcomes[g.outcome] += 1
-        # Dangerous situation = shot OR goal
+        # Shot situation = shot OR goal
         if g.outcome in ['shot', 'goal']:
-            dangerous_situations += 1
+            shot_situations += 1
 
 stats['outcome_distribution']['outcomes'] = dict(outcomes)
-stats['outcome_distribution']['dangerous_situations'] = dangerous_situations
-stats['outcome_distribution']['dangerous_pct'] = (dangerous_situations / len(graphs)) * 100
+stats['outcome_distribution']['shot_situations'] = shot_situations
+stats['outcome_distribution']['shot_pct'] = (shot_situations / len(graphs)) * 100
 
 print("Outcome breakdown:")
 for outcome, count in outcomes.most_common():
     pct = (count / len(graphs)) * 100
     print(f"  {outcome:20} {count:>5} ({pct:>5.1f}%)")
 
-print(f"\nDangerous situations (shot OR goal): {dangerous_situations:,} ({stats['outcome_distribution']['dangerous_pct']:.1f}%)")
+print(f"\nShot situations (shot OR goal): {shot_situations:,} ({stats['outcome_distribution']['shot_pct']:.1f}%)")
 
 print("\n" + "="*80)
 print("4. TEMPORAL AUGMENTATION")
