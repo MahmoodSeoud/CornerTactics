@@ -1457,7 +1457,8 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
                      device: str = 'cuda',
                      eval_every: int = 500,
                      verbose: bool = True,
-                     use_class_weights: bool = True) -> Dict:
+                     use_class_weights: bool = True,
+                     early_stopping_patience: int = 5000) -> Dict:
     """
     Train MLP outcome baseline for multi-class classification.
 
@@ -1472,6 +1473,7 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
         eval_every: Evaluate every N steps
         verbose: Print progress
         use_class_weights: Whether to use class weights for imbalanced data
+        early_stopping_patience: Stop if no improvement for N steps
 
     Returns:
         Training history dictionary
@@ -1479,18 +1481,25 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    # Compute class weights if needed
+    # Learning rate scheduler (cosine annealing)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_steps, eta_min=lr/10
+    )
+
+    # Compute class weights if needed (using SQRT to reduce extremes)
     if use_class_weights:
         all_labels = []
         for batch in train_loader:
             all_labels.extend(batch.outcome_class_label.numpy())
 
         from sklearn.utils.class_weight import compute_class_weight
-        class_weights = compute_class_weight(
+        class_weights_raw = compute_class_weight(
             'balanced',
             classes=np.unique(all_labels),
             y=all_labels
         )
+        # Use SQRT to reduce extreme weights (Goal class was 33.88!)
+        class_weights = np.sqrt(class_weights_raw)
         class_weights = torch.FloatTensor(class_weights).to(device)
         criterion = nn.CrossEntropyLoss(weight=class_weights)
     else:
@@ -1508,12 +1517,15 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
     step = 0
     best_val_macro_f1 = 0.0
     best_model_state = None
+    steps_without_improvement = 0
 
     if verbose:
         print(f"\nTraining MLP outcome baseline for {num_steps} steps...")
         print(f"Learning rate: {lr}, Weight decay: {weight_decay}")
+        print(f"Early stopping patience: {early_stopping_patience} steps")
         if use_class_weights:
-            print(f"Using class weights: {class_weights.cpu().numpy()}")
+            print(f"Using SQRT class weights: {class_weights.cpu().numpy()}")
+            print(f"  (Raw weights were: {class_weights_raw})")
         print(f"Evaluating every {eval_every} steps\n")
 
     train_iter = iter(train_loader)
@@ -1537,7 +1549,9 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
 
         # Backward pass
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Gradient clipping
         optimizer.step()
+        scheduler.step()  # Update learning rate
 
         step += 1
 
@@ -1552,28 +1566,46 @@ def train_mlp_outcome(model: MLPOutcomeBaseline,
             history['val_shot_f1'].append(val_metrics['shot_f1'])
             history['steps'].append(step)
 
+            current_lr = scheduler.get_last_lr()[0]
+
             if verbose:
                 print(f"Step {step:5d}/{num_steps} | "
                       f"Loss: {loss.item():.4f} | "
+                      f"LR: {current_lr:.6f} | "
                       f"Acc: {val_metrics['accuracy']*100:.1f}% | "
                       f"Macro F1: {val_metrics['macro_f1']:.3f} | "
                       f"Goal F1: {val_metrics['goal_f1']:.3f} | "
                       f"Shot F1: {val_metrics['shot_f1']:.3f}")
 
-            # Save best model
+            # Save best model and check early stopping
             if val_metrics['macro_f1'] > best_val_macro_f1:
                 best_val_macro_f1 = val_metrics['macro_f1']
                 best_model_state = model.state_dict().copy()
+                steps_without_improvement = 0
+                if verbose:
+                    print(f"  → New best Macro F1: {best_val_macro_f1:.3f}")
+            else:
+                steps_without_improvement += eval_every
+
+            # Early stopping
+            if steps_without_improvement >= early_stopping_patience:
+                if verbose:
+                    print(f"\n⚠️  Early stopping triggered (no improvement for {early_stopping_patience} steps)")
+                break
 
     # Restore best model
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
     history['best_val_macro_f1'] = best_val_macro_f1
+    history['stopped_early'] = (step < num_steps)
+    history['final_step'] = step
 
     if verbose:
         print(f"\nTraining complete!")
         print(f"Best Val Macro F1: {best_val_macro_f1:.3f}")
+        if history['stopped_early']:
+            print(f"Stopped early at step {step}/{num_steps}")
 
     return history
 
