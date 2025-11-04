@@ -31,15 +31,26 @@ from src.data_loader import CornerDataset
 from src.graph_builder import CornerGraph
 
 
+# Outcome class mapping for multi-class classification
+OUTCOME_CLASS_MAPPING = {
+    "Goal": 0,          # ~1.3% (rare)
+    "Shot": 1,          # ~16.9% (minority)
+    "Clearance": 2,     # ~52.0% (common)
+    "Possession": 3,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
+    "Loss": 3           # Merged into Possession
+}
+
+
 class ReceiverCornerDataset(CornerDataset):
     """
-    Extended dataset for TacticAI-style receiver prediction.
+    Extended dataset for TacticAI-style receiver prediction and outcome classification.
 
     Extends CornerDataset to:
     1. Mask velocity features (vx, vy = 0)
     2. Add receiver_label (0-21 node index)
     3. Add shot_label (1.0 if shot/goal, 0.0 otherwise)
-    4. Filter out corners without receiver labels
+    4. Add outcome_class_label (0=Goal, 1=Shot, 2=Clearance, 3=Possession)
+    5. Filter out corners without receiver labels
     """
 
     def __init__(self, graph_path: str, mask_velocities: bool = True):
@@ -80,10 +91,10 @@ class ReceiverCornerDataset(CornerDataset):
     def _convert_to_pyg_data_with_receiver(self) -> List[Data]:
         """
         Convert CornerGraph objects to PyTorch Geometric Data objects
-        with receiver and shot labels.
+        with receiver, shot, and outcome class labels.
 
         Returns:
-            List of PyG Data objects with receiver_label and shot_label
+            List of PyG Data objects with receiver_label, shot_label, and outcome_class_label
         """
         data_list = []
 
@@ -110,13 +121,18 @@ class ReceiverCornerDataset(CornerDataset):
             is_dangerous = (graph.outcome_label == "Shot") or graph.goal_scored
             shot_label = torch.FloatTensor([1.0 if is_dangerous else 0.0])
 
+            # OUTCOME CLASS LABEL: Multi-class (0=Goal, 1=Shot, 2=Clearance, 3=Possession)
+            outcome_class = OUTCOME_CLASS_MAPPING.get(graph.outcome_label, 3)  # Default to Possession
+            outcome_class_label = torch.LongTensor([outcome_class])
+
             # Create PyG Data object
             data = Data(
                 x=x,
                 edge_index=edge_index,
                 edge_attr=edge_attr,
-                receiver_label=receiver_label,  # NEW: Receiver node index
-                shot_label=shot_label,          # NEW: Shot prediction label
+                receiver_label=receiver_label,         # Receiver node index
+                shot_label=shot_label,                 # Shot prediction label
+                outcome_class_label=outcome_class_label,  # NEW: Multi-class outcome label
                 corner_id=graph.corner_id,
                 num_nodes=x.size(0)
             )
