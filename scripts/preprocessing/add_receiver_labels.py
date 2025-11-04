@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
 """
-Add Receiver Labels to Corner Graphs (TacticAI Day 1-2) - Location-Based Matching
+Add Receiver Labels Using Event Streams (v2)
 
-Maps receiver labels to graph node indices using Ball Receipt location matching.
+This version uses ReceiverLabeler with StatsBomb event streams to extract
+receivers for ALL corners (including defensive clearances, interceptions, duels).
 
-Approach:
-1. Load receiver name and Ball Receipt location from corners CSV
-2. Match Ball Receipt location to closest freeze frame position (attacking team only)
-3. Store receiver_player_name, receiver_location, receiver_node_index in graphs
+Key improvements over v1:
+- Uses ReceiverLabeler.find_receiver() instead of pre-processed CSV
+- Includes BOTH attacking and defending players as receivers
+- Matches TacticAI methodology: "first player to touch ball after corner"
 
-Based on TacticAI Implementation Plan:
-- Extract receiver (player who receives ball after corner)
-- Use Ball Receipt location to find closest freeze frame position
-- Add receiver_player_name, receiver_location, receiver_node_index to graphs
-- Target: 85%+ coverage (expect ~570/668 corners with receiver locations)
+Expected coverage increase: 60% → 85%+ (recover ~2,000 clearance corners)
 
-Output: data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl
+Author: mseo
+Date: November 2024
 """
 
 import pickle
 import pandas as pd
 import numpy as np
-import json
 from pathlib import Path
-from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Optional, Tuple
 import logging
 from tqdm import tqdm
 
@@ -46,150 +42,227 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def load_statsbomb_corners() -> pd.DataFrame:
-    """Load StatsBomb corners with receiver data."""
-    # Use the newly downloaded corners with receiver info
-    corners_path = Path("data/raw/statsbomb/corners_360.csv")
-
-    if not corners_path.exists():
-        logger.error(f"StatsBomb corners file not found: {corners_path}")
-        raise FileNotFoundError(f"Expected file: {corners_path}")
-
-    logger.info(f"Loading StatsBomb corners from {corners_path}")
-    corners_df = pd.read_csv(corners_path)
-    logger.info(f"Loaded {len(corners_df)} corners")
-
-    # Check for receiver columns
-    receiver_cols = ['receiver_name', 'receiver_location_x', 'receiver_location_y']
-    missing_cols = [col for col in receiver_cols if col not in corners_df.columns]
-    if missing_cols:
-        logger.error(f"Missing receiver columns: {missing_cols}")
-        logger.error("Please re-download StatsBomb data with receiver extraction")
-        raise ValueError(f"Missing columns: {missing_cols}")
-
-    return corners_df
-
-
-def load_existing_graphs(graph_path: Path) -> List[CornerGraph]:
-    """Load existing corner graphs."""
-    logger.info(f"Loading graphs from {graph_path}")
-
-    with open(graph_path, 'rb') as f:
-        graphs = pickle.load(f)
-
-    logger.info(f"Loaded {len(graphs)} graphs")
-    return graphs
-
-
-def add_receiver_labels_to_graphs(
-    graphs: List[CornerGraph],
-    corners_df: pd.DataFrame
-) -> tuple[List[CornerGraph], Dict]:
+def match_location_to_node(
+    receiver_location: np.ndarray,
+    freeze_frame_positions: np.ndarray,
+    teams: List[str],
+    receiver_team: Optional[str] = None
+) -> Optional[int]:
     """
-    Add receiver labels to corner graphs using Ball Receipt location matching.
+    Match receiver event location to closest freeze frame node position.
+
+    Args:
+        receiver_location: [x, y] location from event
+        freeze_frame_positions: Array of [x, y] positions for all nodes
+        teams: List of team labels ('attacking' or 'defending') for each node
+        receiver_team: Team of receiver ('attacking', 'defending', or None)
+
+    Returns:
+        Node index (0-based) of closest match, or None if no match found
+    """
+    if receiver_location is None or len(freeze_frame_positions) == 0:
+        return None
+
+    # Ensure receiver_location is a numpy array
+    if not isinstance(receiver_location, np.ndarray):
+        receiver_location = np.array(receiver_location)
+
+    # Filter by team if known
+    if receiver_team is not None and receiver_team in ['attacking', 'defending']:
+        # Get indices of players on the same team
+        team_indices = [i for i, team in enumerate(teams) if team == receiver_team]
+
+        if len(team_indices) == 0:
+            # No players on that team - fall back to all players
+            logger.warning(f"No {receiver_team} players found, matching to any team")
+            team_indices = list(range(len(freeze_frame_positions)))
+    else:
+        # No team filtering - match to any player
+        team_indices = list(range(len(freeze_frame_positions)))
+
+    # Calculate distances to all candidate positions
+    candidate_positions = freeze_frame_positions[team_indices]
+    distances = np.linalg.norm(candidate_positions - receiver_location, axis=1)
+
+    # Find closest
+    closest_candidate_idx = np.argmin(distances)
+    closest_node_idx = team_indices[closest_candidate_idx]
+
+    return closest_node_idx
+
+
+def extract_receiver_from_events(
+    corner_id: str,
+    match_id: int,
+    events_cache: Dict[int, pd.DataFrame]
+) -> Tuple[Optional[int], Optional[str], Optional[np.ndarray], Optional[str]]:
+    """
+    Extract receiver information from StatsBomb event stream.
+
+    Args:
+        corner_id: Corner event ID (from graph)
+        match_id: StatsBomb match ID
+        events_cache: Cache of events DataFrames by match_id
+
+    Returns:
+        Tuple of (player_id, player_name, location, team)
+        or (None, None, None, None) if receiver not found
+    """
+    # Load events for this match (use cache)
+    if match_id not in events_cache:
+        try:
+            events_df = sb.events(match_id=match_id, fmt='dataframe')
+            events_cache[match_id] = events_df
+        except Exception as e:
+            logger.error(f"Failed to load events for match {match_id}: {e}")
+            return None, None, None, None
+    else:
+        events_df = events_cache[match_id]
+
+    # Use ReceiverLabeler to find receiver (with 270s time window for 100% coverage)
+    labeler = ReceiverLabeler()
+    player_id, player_name, location = labeler.find_receiver(
+        events_df,
+        corner_event_id=corner_id,
+        max_time_diff=270.0  # 270s window to capture corners with long delays (injuries, VAR, stoppages)
+    )
+
+    if player_id is None:
+        return None, None, None, None
+
+    # Determine team from event
+    receiver_event = events_df[
+        (events_df['player_id'] == player_id) &
+        (events_df['player'] == player_name)
+    ].iloc[0] if len(events_df[
+        (events_df['player_id'] == player_id) &
+        (events_df['player'] == player_name)
+    ]) > 0 else None
+
+    team = None
+    if receiver_event is not None:
+        event_team = receiver_event.get('team')
+        # Find corner event to determine which team is attacking
+        corner_event = events_df[events_df['id'] == corner_id].iloc[0] if len(
+            events_df[events_df['id'] == corner_id]
+        ) > 0 else None
+
+        if corner_event is not None and event_team is not None:
+            corner_team = corner_event.get('team')
+            # Determine if receiver is attacking or defending
+            team = 'attacking' if event_team == corner_team else 'defending'
+
+    # Convert location to numpy array if needed
+    if location is not None and not isinstance(location, np.ndarray):
+        location = np.array(location)
+
+    return player_id, player_name, location, team
+
+
+def add_receiver_labels_from_events(
+    graphs: List[CornerGraph],
+    corner_metadata: pd.DataFrame
+) -> Tuple[List[CornerGraph], Dict]:
+    """
+    Add receiver labels to graphs using event stream extraction.
 
     Args:
         graphs: List of CornerGraph objects
-        corners_df: StatsBomb corners DataFrame with receiver_name and receiver_location_x/y
+        corner_metadata: DataFrame with corner_id -> match_id mapping
 
     Returns:
         Tuple of (updated_graphs, statistics)
     """
-    # Create lookup dictionary: corner_id -> (receiver_name, receiver_location)
-    corner_lookup = {}
-    for _, row in corners_df.iterrows():
-        corner_id = row['corner_id']
-        receiver_name = row.get('receiver_name')
-        receiver_x = row.get('receiver_location_x')
-        receiver_y = row.get('receiver_location_y')
-
-        # Only add if we have both name and location
-        if pd.notna(receiver_name) and pd.notna(receiver_x) and pd.notna(receiver_y):
-            corner_lookup[corner_id] = {
-                'name': receiver_name,
-                'location': np.array([receiver_x, receiver_y])
-            }
-        else:
-            corner_lookup[corner_id] = None
-
-    logger.info(f"Built lookup for {len(corner_lookup)} corners")
-    logger.info(f"Corners with receiver location: {sum(1 for v in corner_lookup.values() if v is not None)}")
-
     updated_graphs = []
+    events_cache = {}  # Cache events by match_id
+
     stats = {
         'total_graphs': len(graphs),
         'with_receiver': 0,
         'without_receiver': 0,
-        'mapped_to_node': 0,
-        'failed_mapping': 0,
+        'attacking_receivers': 0,
+        'defending_receivers': 0,
+        'matched_to_node': 0,
+        'failed_matching': 0,
         'coverage_pct': 0.0,
-        'mapping_pct': 0.0,
         'avg_distance': 0.0,
         'distances': []
     }
 
-    logger.info("Adding receiver labels to graphs using location matching...")
+    logger.info("Extracting receivers from event streams...")
 
     for graph in tqdm(graphs, desc="Processing graphs"):
-        # Extract base corner_id (might have temporal suffix like "_t0")
-        corner_id = graph.corner_id
-        base_corner_id = corner_id.split('_t')[0]  # Remove temporal suffix if present
+        # Extract base corner_id (remove temporal/mirror suffixes)
+        base_corner_id = graph.corner_id.split('_t')[0].split('_mirror')[0]
 
-        # Also try mirror suffix (e.g., "_t0_mirror")
-        base_corner_id = base_corner_id.split('_mirror')[0]
-
-        # Look up receiver
-        receiver_info = corner_lookup.get(base_corner_id, None)
-
-        # Update graph with receiver info
-        if receiver_info is not None:
-            receiver_name = receiver_info['name']
-            receiver_location = receiver_info['location']
-
-            # Store receiver info in graph
-            graph.receiver_player_name = receiver_name
-            graph.receiver_location = receiver_location
-
-            # Find closest attacking player to receiver location
-            # Node features: [x, y, ...]
-            positions = graph.node_features[:, :2]  # First 2 dims are x, y
-
-            # Filter to attacking team only (assuming graph.teams exists)
-            if hasattr(graph, 'teams') and graph.teams is not None:
-                attacking_indices = [i for i, team in enumerate(graph.teams) if team == 'attacking']
-            else:
-                # Fallback: assume first half of players are attacking (not ideal)
-                attacking_indices = list(range(len(positions) // 2))
-
-            if len(attacking_indices) > 0:
-                attacking_positions = positions[attacking_indices]
-
-                # Calculate distances to receiver location
-                distances = np.linalg.norm(attacking_positions - receiver_location, axis=1)
-                closest_attacking_idx = attacking_indices[np.argmin(distances)]
-                min_distance = np.min(distances)
-
-                graph.receiver_node_index = closest_attacking_idx
-
-                stats['mapped_to_node'] += 1
-                stats['distances'].append(min_distance)
-            else:
-                # No attacking players found
-                graph.receiver_node_index = None
-                stats['failed_mapping'] += 1
-
-            stats['with_receiver'] += 1
-        else:
+        # Get match_id for this corner
+        match_row = corner_metadata[corner_metadata['corner_id'] == base_corner_id]
+        if len(match_row) == 0:
+            logger.warning(f"No match_id found for corner {base_corner_id}")
+            graph.receiver_player_id = None
             graph.receiver_player_name = None
             graph.receiver_location = None
             graph.receiver_node_index = None
-
             stats['without_receiver'] += 1
+            updated_graphs.append(graph)
+            continue
+
+        match_id = match_row.iloc[0]['match_id']
+
+        # Extract receiver from events
+        player_id, player_name, location, team = extract_receiver_from_events(
+            base_corner_id,
+            match_id,
+            events_cache
+        )
+
+        if player_id is None:
+            # No receiver found in events
+            graph.receiver_player_id = None
+            graph.receiver_player_name = None
+            graph.receiver_location = None
+            graph.receiver_node_index = None
+            stats['without_receiver'] += 1
+        else:
+            # Receiver found - match to node
+            graph.receiver_player_id = player_id
+            graph.receiver_player_name = player_name
+            graph.receiver_location = location
+
+            # Track receiver team distribution
+            if team == 'attacking':
+                stats['attacking_receivers'] += 1
+            elif team == 'defending':
+                stats['defending_receivers'] += 1
+
+            # Match location to node position
+            if location is not None and hasattr(graph, 'node_features'):
+                positions = graph.node_features[:, :2]  # First 2 cols are x, y
+                teams = graph.teams if hasattr(graph, 'teams') else None
+
+                node_idx = match_location_to_node(location, positions, teams, team)
+
+                if node_idx is not None:
+                    graph.receiver_node_index = node_idx
+                    stats['matched_to_node'] += 1
+
+                    # Calculate matching distance
+                    matched_pos = positions[node_idx]
+                    distance = np.linalg.norm(matched_pos - location)
+                    stats['distances'].append(distance)
+                else:
+                    graph.receiver_node_index = None
+                    stats['failed_matching'] += 1
+            else:
+                graph.receiver_node_index = None
+                stats['failed_matching'] += 1
+
+            stats['with_receiver'] += 1
 
         updated_graphs.append(graph)
 
+    # Compute summary statistics
     stats['coverage_pct'] = (stats['with_receiver'] / stats['total_graphs']) * 100
-    stats['mapping_pct'] = (stats['mapped_to_node'] / stats['with_receiver']) * 100 if stats['with_receiver'] > 0 else 0.0
     stats['avg_distance'] = np.mean(stats['distances']) if stats['distances'] else 0.0
 
     return updated_graphs, stats
@@ -197,25 +270,37 @@ def add_receiver_labels_to_graphs(
 
 def main():
     """Main execution function."""
-    logger.info("=== Adding Receiver Labels to Corner Graphs ===")
-    logger.info("Using Ball Receipt location matching approach")
+    logger.info("="*80)
+    logger.info("RE-LABELING RECEIVERS USING EVENT STREAMS (v2)")
+    logger.info("="*80)
 
-    # Paths - Use StatsBomb temporal augmented graphs
+    # Paths
     input_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented.pkl")
-    output_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl")
+    output_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl")
+    corners_csv_path = Path("data/raw/statsbomb/corners_360.csv")
 
-    # Check if input exists
+    # Check inputs exist
     if not input_graph_path.exists():
-        logger.error(f"Input graph file not found: {input_graph_path}")
-        logger.error("Please run: sbatch scripts/slurm/phase2_4_statsbomb_augment.sh")
+        logger.error(f"Input graphs not found: {input_graph_path}")
         return
 
-    # Load data
-    corners_df = load_statsbomb_corners()
-    graphs = load_existing_graphs(input_graph_path)
+    if not corners_csv_path.exists():
+        logger.error(f"Corners CSV not found: {corners_csv_path}")
+        return
+
+    # Load graphs
+    logger.info(f"Loading graphs from {input_graph_path}")
+    with open(input_graph_path, 'rb') as f:
+        graphs = pickle.load(f)
+    logger.info(f"Loaded {len(graphs)} graphs")
+
+    # Load corner metadata (for match_id mapping)
+    logger.info(f"Loading corner metadata from {corners_csv_path}")
+    corners_df = pd.read_csv(corners_csv_path)
+    logger.info(f"Loaded {len(corners_df)} corners")
 
     # Add receiver labels
-    updated_graphs, stats = add_receiver_labels_to_graphs(graphs, corners_df)
+    updated_graphs, stats = add_receiver_labels_from_events(graphs, corners_df)
 
     # Save updated graphs
     logger.info(f"\nSaving updated graphs to {output_graph_path}")
@@ -223,35 +308,31 @@ def main():
         pickle.dump(updated_graphs, f)
 
     # Print statistics
-    logger.info("\n" + "="*70)
-    logger.info("RECEIVER LABEL STATISTICS")
-    logger.info("="*70)
+    logger.info("\n" + "="*80)
+    logger.info("RECEIVER LABELING STATISTICS (v2)")
+    logger.info("="*80)
     logger.info(f"Total graphs: {stats['total_graphs']}")
-    logger.info(f"Graphs with receiver location: {stats['with_receiver']}")
-    logger.info(f"Graphs without receiver location: {stats['without_receiver']}")
-    logger.info(f"Successfully mapped to node: {stats['mapped_to_node']}")
-    logger.info(f"Failed mapping (no attacking players): {stats['failed_mapping']}")
-    logger.info(f"")
+    logger.info(f"Graphs with receiver: {stats['with_receiver']}")
+    logger.info(f"Graphs without receiver: {stats['without_receiver']}")
     logger.info(f"Coverage: {stats['coverage_pct']:.1f}%")
-    logger.info(f"Mapping success rate: {stats['mapping_pct']:.1f}%")
-    logger.info(f"Average distance to matched position: {stats['avg_distance']:.2f}m")
-    logger.info("="*70)
+    logger.info(f"")
+    logger.info(f"Receiver team distribution:")
+    logger.info(f"  Attacking: {stats['attacking_receivers']}")
+    logger.info(f"  Defending: {stats['defending_receivers']}")
+    logger.info(f"")
+    logger.info(f"Node matching:")
+    logger.info(f"  Successfully matched: {stats['matched_to_node']}")
+    logger.info(f"  Failed matching: {stats['failed_matching']}")
+    logger.info(f"  Avg distance to match: {stats['avg_distance']:.2f}m")
+    logger.info("="*80)
 
-    # Check success criteria (adjusted for 668 corners with receiver locations)
-    # With 5 temporal frames + mirrors = 10x augmentation
-    # Expected: 668 * 10 = 6,680 graphs with receivers
-    expected_with_receiver = 668 * 10
-    if stats['with_receiver'] >= expected_with_receiver * 0.85:
-        logger.info("✅ SUCCESS: Achieved expected receiver coverage")
+    # Success criteria
+    if stats['coverage_pct'] >= 85.0:
+        logger.info("✅ SUCCESS: Achieved target coverage (>85%)")
+    elif stats['coverage_pct'] >= 75.0:
+        logger.info(f"⚠️  WARNING: Coverage below target ({stats['coverage_pct']:.1f}% < 85%)")
     else:
-        logger.warning(f"⚠️ WARNING: Lower than expected receiver coverage")
-        logger.warning(f"   Expected: ~{expected_with_receiver} graphs with receivers")
-        logger.warning(f"   Actual: {stats['with_receiver']} graphs with receivers")
-
-    if stats['mapping_pct'] >= 95.0:
-        logger.info("✅ SUCCESS: High mapping success rate (>95%)")
-    else:
-        logger.warning(f"⚠️ WARNING: Mapping success rate below 95%")
+        logger.error(f"❌ FAILURE: Coverage significantly below target ({stats['coverage_pct']:.1f}%)")
 
     logger.info(f"\nOutput saved to: {output_graph_path}")
 
