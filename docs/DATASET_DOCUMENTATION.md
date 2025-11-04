@@ -176,7 +176,45 @@ Receiver Coverage:      100.0%
 
 **Key Finding**: Over 1/3 of first touches are defensive actions (clearances, interceptions)
 
-### 3. Temporal Augmentation
+### 3. Outcome Class Distribution
+
+Each corner has an **outcome class label** for multi-class outcome prediction (3-class):
+
+| Class ID | Class Name | Description | Count | Percentage |
+|----------|------------|-------------|-------|------------|
+| **0** | **Shot** | Goal scored OR shot attempt within 20s | 1,056 | 18.2% |
+| **1** | **Clearance** | Defensive clearance or interception | 3,021 | 52.0% |
+| **2** | **Possession** | Attacking team retains or loses possession | 1,737 | 29.9% |
+
+**Total**: 5,814 corners
+
+**Class Mapping**:
+```python
+OUTCOME_CLASS_MAPPING = {
+    "Goal": 0,          # Merged with Shot → Shot (~1.3%)
+    "Shot": 0,          # Shot (~16.9%) → Combined ~18.2%
+    "Clearance": 1,     # ~52.0% (common)
+    "Possession": 2,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
+    "Loss": 2           # Merged into Possession
+}
+```
+
+**Rationale for 3-Class (vs 4-Class)**:
+- Original Goal class (1.3%, 76 samples) was too rare to predict from static positions
+- Merged Goal+Shot into "Shot" class representing dangerous situations (18.2%)
+- This improved baseline Macro F1 by ~30% (see [Outcome Baseline Documentation](OUTCOME_BASELINE_DOCUMENTATION.md))
+
+**Train/Val/Test Stratification**:
+
+| Split | Total Samples | Shot Rate |
+|-------|---------------|-----------|
+| **Train** | 4,066 (69.9%) | 18.1% |
+| **Val** | 871 (15.0%) | 18.3% |
+| **Test** | 877 (15.1%) | 18.6% |
+
+The dataset is stratified by corner ID to prevent temporal leakage (all 5 temporal frames of a corner stay in the same split).
+
+### 4. Temporal Augmentation
 
 | Frame | Count | Percentage |
 |-------|-------|------------|
@@ -190,7 +228,7 @@ Receiver Coverage:      100.0%
 - **Augmented frames**: 4,472 (76.9%)
 - **Mirrored graphs**: 224 (3.9%)
 
-### 4. Graph Structure
+### 5. Graph Structure
 
 #### Nodes (Players)
 ```
@@ -213,7 +251,7 @@ Attacking Players:  Mean 8.4 (Range: 2-11)
 Defending Players:  Mean 10.6 (Range: 5-11)
 ```
 
-### 5. Spatial Distribution
+### 6. Spatial Distribution
 
 **Receiver Event Locations** (StatsBomb 120×80 pitch):
 
