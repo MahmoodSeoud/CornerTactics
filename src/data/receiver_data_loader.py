@@ -31,6 +31,16 @@ from src.data_loader import CornerDataset
 from src.graph_builder import CornerGraph
 
 
+# Outcome class mapping for multi-class classification
+OUTCOME_CLASS_MAPPING = {
+    "Goal": 0,          # ~1.3% (rare)
+    "Shot": 1,          # ~16.9% (minority)
+    "Clearance": 2,     # ~52.0% (common)
+    "Possession": 3,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
+    "Loss": 3           # Merged into Possession
+}
+
+
 class ReceiverCornerDataset(CornerDataset):
     """
     Extended dataset for TacticAI-style receiver prediction and outcome classification.
@@ -112,14 +122,7 @@ class ReceiverCornerDataset(CornerDataset):
             shot_label = torch.FloatTensor([1.0 if is_dangerous else 0.0])
 
             # OUTCOME CLASS LABEL: Multi-class (0=Goal, 1=Shot, 2=Clearance, 3=Possession)
-            outcome_mapping = {
-                "Goal": 0,
-                "Shot": 1,
-                "Clearance": 2,
-                "Possession": 3,
-                "Loss": 3  # Merge Loss into Possession
-            }
-            outcome_class = outcome_mapping.get(graph.outcome_label, 3)  # Default to Possession
+            outcome_class = OUTCOME_CLASS_MAPPING.get(graph.outcome_label, 3)  # Default to Possession
             outcome_class_label = torch.LongTensor([outcome_class])
 
             # Create PyG Data object
