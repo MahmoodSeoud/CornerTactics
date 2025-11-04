@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CornerTactics is a soccer analytics research project focused on predicting corner kick outcomes using Graph Neural Networks (GNNs). The project implements the methodology from Bekkers & Sahasrabudhe (2024) "A Graph Neural Network Deep-Dive into Successful Counterattacks", applying it to corner kick scenarios with StatsBomb 360 freeze frames, SkillCorner tracking data, and SoccerNet videos.
 
-**Current Status**: Phase 2 Complete + Temporal Augmentation - Ready for Phase 3 Training
+**Current Status**: Dataset Complete - Ready for Multi-Class Outcome Training
 
-**Dataset**: 7,369 temporally augmented graphs (6.6× increase from original 1,118 corners)
+**Dataset**: 5,814 temporally augmented graphs (5.2× increase from original 1,118 corners with 100% receiver coverage)
 
 ## Development Environment
 
@@ -112,7 +112,7 @@ CornerTactics/
 │   ├── graphs/                       # Graph datasets
 │   │   └── adjacency_team/           # Team-based adjacency strategy
 │   │       ├── statsbomb_graphs.pkl  # Original single-frame (Phase 2.2)
-│   │       ├── statsbomb_temporal_augmented.pkl  # Temporal augmented (Phase 2.4)
+│   │       ├── statsbomb_temporal_augmented_with_receiver.pkl  # Main dataset (5,814 graphs)
 │   │       └── graph_statistics.json
 │   │
 │   └── results/                      # Analysis outputs
@@ -188,13 +188,12 @@ Labels corner kick outcomes by analyzing subsequent events.
   - `calculate_xthreat()`: Compute expected threat value
   - `get_temporal_features()`: Extract time/events to outcome
 
-**Outcome Categories**:
-- `goal`: Goal scored within 20 seconds
-- `shot`: Shot attempt (no goal)
-- `clearance`: Defensive clearance
-- `second_corner`: Another corner awarded
-- `possession`: Attacking team retains possession
-- `opposition_possession`: Defending team gains possession
+**Outcome Categories (3-Class System)**:
+- **Class 0 - Shot**: Goal scored OR shot attempt within 20s (18.2%, 1,056 samples)
+- **Class 1 - Clearance**: Defensive clearance or interception (52.0%, 3,021 samples)
+- **Class 2 - Possession**: Attacking team retains or loses possession (29.9%, 1,737 samples)
+
+**Note**: Goal (1.3%) merged with Shot for better class balance. Original 4-class system had too few goal samples.
 
 **Usage Example**:
 ```python
@@ -234,8 +233,18 @@ Converts player features into graph representations with various connectivity st
 
 **Key Classes**:
 - `GraphBuilder`: Main graph construction class
-- `CornerGraph`: Complete graph representation dataclass
+- `CornerGraph`: Complete graph representation dataclass with receiver labels
 - `EdgeFeatures`: 6-dimensional edge feature vectors
+
+**CornerGraph Schema**:
+- **Receiver Information**: 100% coverage (5,814/5,814 graphs)
+  - `receiver_player_id`: StatsBomb player ID
+  - `receiver_player_name`: Player name
+  - `receiver_location`: [x, y] event location
+  - `receiver_node_index`: Graph node index (0-based)
+  - Includes both attacking (62.7%) and defending (37.3%) receivers
+- **Outcome**: 3-class labels (Shot/Clearance/Possession)
+- **Temporal Frames**: 5 frames per corner (t = -2s, -1s, 0s, +1s, +2s)
 
 **Adjacency Strategies (5 types)**:
 1. **team**: Connect teammates only (paper baseline)
@@ -493,70 +502,73 @@ Think like John Carmack when writing code:
 
 The `docs/` directory contains comprehensive project documentation:
 
-**`docs/CORNER_GNN_PLAN.md`** (Primary Reference)
+**`docs/DATASET_DOCUMENTATION.md`** (Primary Reference)
+- **Most up-to-date dataset specifications**
+- Complete dataset documentation (5,814 graphs)
+- Receiver labeling methodology (100% coverage)
+- 3-class outcome system details
+- Statistical summary and quality metrics
+- Usage examples and API reference
+- **Always check this for dataset specifications**
+
+**`docs/OUTCOME_BASELINE_DOCUMENTATION.md`**
+- Multi-class outcome prediction baselines
+- GNN vs MLP performance comparison
+- Training procedures and hyperparameters
+- Evaluation metrics (Macro F1, per-class F1)
+- Results and analysis
+
+**`docs/CORNER_GNN_PLAN.md`**
 - Master implementation plan for GNN system
 - Phase-by-phase breakdown (Phases 1-6)
 - Task checklists with completion status
 - Architecture specifications
-- Success metrics and publication targets
-- **Always check this for implementation roadmap**
 
 **`docs/DATA_FEASIBILITY_ANALYSIS.md`**
 - Analysis of available data sources
 - Dataset size estimates
 - Coverage and quality assessments
-- Recommendations for data combinations
 
-**`docs/PROJECT_STATUS.md`**
-- Current project progress tracker
-- Completed phases and deliverables
-- Active work and blockers
-- Next steps and priorities
+**Usage**: Always consult `DATASET_DOCUMENTATION.md` first for dataset specifications, then `CORNER_GNN_PLAN.md` for implementation roadmap.
 
-**Usage**: When starting a new phase or task, always consult `CORNER_GNN_PLAN.md` first to understand requirements and dependencies.
-
-## Project Status (as of October 23, 2024)
+## Project Status (as of November 2025)
 
 **Completed Phases**:
-- ✅ Phase 1.1: Data Integration (1,118 StatsBomb corners + SkillCorner + SoccerNet)
-- ✅ Phase 1.2: Outcome Labeling (goal/shot/clearance/possession)
+- ✅ Phase 1.1: Data Integration (1,118 StatsBomb corners)
+- ✅ Phase 1.2: Outcome Labeling (3-class system: Shot/Clearance/Possession)
 - ✅ Phase 2.1: Node Feature Engineering (14-dim features, 21,231 players)
 - ✅ Phase 2.2: Adjacency Matrix Construction (5 strategies, 6-dim edges)
-- ✅ Phase 2.3: SkillCorner Temporal Extraction (1,555 temporal graphs from 317 corners)
 - ✅ Phase 2.4: StatsBomb Temporal Augmentation (5,814 augmented graphs)
-- ✅ Phase 3.0: GNN Model Implementation (PyTorch Geometric, 28k parameters)
+- ✅ **Dataset Complete**: Event-stream receiver labeling (100% coverage)
 
 **Current Phase**:
-- ⏳ Phase 3.1: Re-training with Expanded Dataset (NEXT)
+- ⏳ Phase 3: Multi-Class Outcome Prediction Training (NEXT)
 
-**Dataset Summary**:
-- **Total Graphs**: 7,369 (6.6× increase from original)
-  - StatsBomb Augmented: 5,814 graphs (5× temporal + mirrors)
-  - SkillCorner Temporal: 1,555 graphs (real 10fps tracking)
-- **Dangerous Situations**: ~1,261 (17.1% positive class)
-  - Changed target from "goal" (1.3%) to "shot OR goal" for better balance
+**Dataset Summary** (`statsbomb_temporal_augmented_with_receiver.pkl`):
+- **Total Graphs**: 5,814 (5.2× augmentation from 1,118 base corners)
+- **Receiver Coverage**: 100% (5,814/5,814) - includes both attacking and defending receivers
+- **Receiver Distribution**:
+  - Attacking: 3,645 (62.7%)
+  - Defending: 2,169 (37.3%)
+- **Outcome Classes (3-Class)**:
+  - Class 0 - Shot: 1,056 (18.2%) - Goal + Shot merged
+  - Class 1 - Clearance: 3,021 (52.0%)
+  - Class 2 - Possession: 1,737 (29.9%)
 - **Temporal Augmentation**: US Soccer Federation approach
   - 5 temporal frames: t = -2s, -1s, 0s, +1s, +2s
-  - Position perturbations + mirror augmentation
+  - Position perturbations + mirror augmentation (224 mirrored graphs)
+- **Train/Val/Test Split**: 69.9% / 15.0% / 15.1% (stratified by corner ID to prevent temporal leakage)
 
-**Previous Training Results** (Original 1,118 corners, goal-only target):
-- Best Val AUC: 0.765
-- Test AUC: 0.271 (severe overfitting)
-- Only 14 goals (1.3%) - extreme class imbalance
-
-**CRITICAL FIX - Data Leakage (October 26, 2024)**:
-- ✅ Fixed train/val/test split to prevent temporal frame leakage
-- **Issue**: Previous splits randomly assigned temporal frames, allowing model to see same corner at different times across train/test
-- **Fix**: Now splits by base corner ID (1,435 unique corners) instead of graphs (7,369 frames)
-- **Impact**: All temporal frames from a corner now stay together in same split
-- **Verification**: Zero overlap between splits confirmed (see `DATA_LEAKAGE_FIX_NOTES.md`)
-- **File Modified**: `src/data_loader.py::get_split_indices()`
-- **Test Script**: `scripts/test_split_fix.py`
+**Key Features**:
+- ✅ 100% receiver coverage (all 5,814 graphs labeled)
+- ✅ Extended time window: 270s (captures VAR reviews, stoppages)
+- ✅ Includes corner taker as potential receiver (short corners)
+- ✅ Full defensive receiver coverage (37.3% defending, 62.7% attacking)
+- ✅ 3-class outcome system (merged Goal into Shot for better balance)
 
 **Next Immediate Tasks**:
-1. ✅ Fix data leakage in train/val/test split
-2. ⏳ Re-train with fixed splits (expect AUC 0.70-0.80, not inflated 0.95)
-3. ⏳ Update data loader to use augmented dataset
-4. ⏳ Re-train with "dangerous situation" target (shot OR goal)
-5. ⏳ Evaluate on test set with 17% positive class
+1. ⏳ Train receiver prediction model (which player receives the ball)
+2. ⏳ Train multi-class outcome prediction model (Shot/Clearance/Possession)
+3. ⏳ Evaluate baseline performance (GNN vs MLP)
+4. ⏳ Compare with TacticAI baseline results
 - When running cosure to always run it via slurm

@@ -17,9 +17,9 @@ print("="*80)
 print("GENERATING DATASET DOCUMENTATION")
 print("="*80)
 
-# Load v2 graphs (100% coverage)
+# Load graphs (100% coverage)
 print("\nLoading graphs...")
-with open("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl", 'rb') as f:
+with open("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl", 'rb') as f:
     graphs = pickle.load(f)
 
 print(f"Total graphs: {len(graphs)}")

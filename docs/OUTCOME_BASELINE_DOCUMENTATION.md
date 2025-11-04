@@ -85,6 +85,7 @@ Output: P(Shot), P(Clearance), P(Possession)
 **File**: `data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl`
 
 **Origin**: StatsBomb 360 freeze frame data with temporal augmentation
+**Coverage**: 100% receiver labels (5,814/5,814 graphs)
 
 ### Dataset Statistics
 

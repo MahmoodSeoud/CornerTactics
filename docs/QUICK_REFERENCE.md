@@ -7,7 +7,7 @@ A quick reference guide for working with the CornerTactics dataset.
 ## Dataset at a Glance
 
 ```
-📦 Dataset: statsbomb_temporal_augmented_with_receiver_v2.pkl
+📦 Dataset: statsbomb_temporal_augmented_with_receiver.pkl
 📊 Size: 5,814 graphs (1,118 unique corners × 5.2 augmentation)
 ✅ Coverage: 100% receiver labels
 🎯 Purpose: GNN-based corner kick outcome prediction
@@ -36,7 +36,7 @@ A quick reference guide for working with the CornerTactics dataset.
 import pickle
 
 # Load dataset
-with open("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl", 'rb') as f:
+with open("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl", 'rb') as f:
     graphs = pickle.load(f)
 
 # Access graph
@@ -148,20 +148,14 @@ train_idx, val_idx, test_idx = get_split_indices(
 
 ## Receiver Labeling Info
 
-### Methodology (v2)
+### Methodology
 
 - **Definition**: First player to touch ball after corner
 - **Time Window**: 270 seconds (captures VAR/injury delays)
 - **Includes**: Attacking AND defending players
 - **Includes**: Corner taker (short corners)
 - **Valid Events**: Pass, Shot, Duel, Interception, Clearance, Miscontrol, Ball Receipt
-
-### Evolution
-
-| Version | Coverage | Key Change |
-|---------|----------|------------|
-| v1 (CSV) | 60.1% | Attacking only, 5s window |
-| v2 (Events) | 100.0% | Both teams, 270s window ✅ |
+- **Coverage**: 100% (5,814/5,814 graphs)
 
 ---
 
@@ -218,7 +212,7 @@ from src.data.receiver_data_loader import ReceiverDataLoader
 
 # Initialize loader
 loader = ReceiverDataLoader(
-    graph_path="data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl",
+    graph_path="data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl",
     batch_size=32,
     mask_velocities=True  # Mask velocities for receiver prediction
 )
@@ -276,15 +270,14 @@ loader = ReceiverDataLoader(mask_velocities=True)
 ```
 📁 Dataset
   └─ data/graphs/adjacency_team/
-     └─ statsbomb_temporal_augmented_with_receiver_v2.pkl
+     └─ statsbomb_temporal_augmented_with_receiver.pkl
 
 📁 Documentation
   ├─ docs/DATASET_DOCUMENTATION.md        (Full docs)
-  ├─ docs/DATASET_STATISTICS.json         (JSON stats)
   └─ docs/QUICK_REFERENCE.md              (This file)
 
 📁 Scripts
-  ├─ scripts/preprocessing/add_receiver_labels_v2.py
+  ├─ scripts/preprocessing/add_receiver_labels.py
   └─ scripts/analysis/generate_dataset_documentation.py
 
 📁 Source
@@ -302,6 +295,5 @@ loader = ReceiverDataLoader(mask_velocities=True)
 
 ---
 
-**Version**: v2
 **Last Updated**: November 2025
 **Status**: Production Ready ✅

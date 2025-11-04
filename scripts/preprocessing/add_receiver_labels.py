@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Add Receiver Labels Using Event Streams (v2)
+Add Receiver Labels Using Event Streams
 
 This version uses ReceiverLabeler with StatsBomb event streams to extract
 receivers for ALL corners (including defensive clearances, interceptions, duels).
@@ -271,12 +271,12 @@ def add_receiver_labels_from_events(
 def main():
     """Main execution function."""
     logger.info("="*80)
-    logger.info("RE-LABELING RECEIVERS USING EVENT STREAMS (v2)")
+    logger.info("RE-LABELING RECEIVERS USING EVENT STREAMS")
     logger.info("="*80)
 
     # Paths
     input_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented.pkl")
-    output_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl")
+    output_graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl")
     corners_csv_path = Path("data/raw/statsbomb/corners_360.csv")
 
     # Check inputs exist
@@ -309,7 +309,7 @@ def main():
 
     # Print statistics
     logger.info("\n" + "="*80)
-    logger.info("RECEIVER LABELING STATISTICS (v2)")
+    logger.info("RECEIVER LABELING STATISTICS")
     logger.info("="*80)
     logger.info(f"Total graphs: {stats['total_graphs']}")
     logger.info(f"Graphs with receiver: {stats['with_receiver']}")

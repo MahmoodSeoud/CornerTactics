@@ -1,6 +1,5 @@
 # CornerTactics Dataset Documentation
 
-**Version**: v2 (Event-Stream Based Receiver Labeling)
 **Date**: November 2025
 **Coverage**: 100% (5,814/5,814 graphs)
 
@@ -44,7 +43,7 @@ The CornerTactics dataset contains **5,814 temporally augmented corner kick grap
 ### File Location
 
 ```
-data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl
+data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl
 ```
 
 ### Data Format
@@ -72,7 +71,7 @@ class CornerGraph:
     # Team Information
     teams: List[str]                    # ['attacking', 'defending', ...] per node
 
-    # Receiver Information (v2)
+    # Receiver Information
     receiver_player_id: Optional[int]   # StatsBomb player ID
     receiver_player_name: Optional[str] # Player name
     receiver_location: Optional[list]   # [x, y] event location
@@ -120,7 +119,7 @@ class CornerGraph:
 
 ## Receiver Labeling
 
-### Methodology (v2)
+### Methodology
 
 **Matches TacticAI approach**: "First player to touch ball after corner was taken"
 
@@ -145,14 +144,12 @@ def find_receiver(events, corner_id, max_time_diff=270.0):
     """
 ```
 
-#### Key Improvements (v2)
+#### Key Features
 
-| Feature | Old (v1) | New (v2) | Impact |
-|---------|----------|----------|--------|
-| **Time Window** | 5s | 270s | +39.9% coverage |
-| **Corner Taker** | Excluded | Included | +186 receivers |
-| **Defensive Players** | Partial | Full | +2,169 receivers |
-| **Coverage** | 60.1% | 100.0% | Complete dataset |
+- **Time Window**: 270s (captures VAR reviews, injuries, stoppages - max observed delay: 260.1s)
+- **Corner Taker**: Included as potential receiver (short corners supported)
+- **Defensive Players**: Full coverage of both attacking and defending receivers
+- **Coverage**: 100.0% (complete dataset - all 5,814 graphs labeled)
 
 ---
 
@@ -391,7 +388,7 @@ import pickle
 from pathlib import Path
 
 # Load graphs
-graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver_v2.pkl")
+graph_path = Path("data/graphs/adjacency_team/statsbomb_temporal_augmented_with_receiver.pkl")
 with open(graph_path, 'rb') as f:
     graphs = pickle.load(f)
 
@@ -469,10 +466,10 @@ print(f"Train: {len(train_graphs)} | Val: {len(val_graphs)} | Test: {len(test_gr
 - **Impact**: May not capture complex player movements (acceleration, deceleration)
 - **Alternative**: Real tracking data (SkillCorner) available for subset
 
-### 3. Outcome Labeling
-- **Status**: Outcome labels appear to be missing or incorrectly populated
-- **Finding**: 0% dangerous situations (should be ~17%)
-- **Action Required**: Re-run outcome labeling script
+### 3. Outcome Class Distribution
+- **3-class system**: Shot (18.2%), Clearance (52.0%), Possession (29.9%)
+- **Note**: Goal class merged into Shot for better class balance
+- **Action**: Multi-class outcome prediction baselines documented separately
 
 ### 4. Coordinate Systems
 - **Freeze Frame**: StatsBomb 120×80 pitch
@@ -486,20 +483,15 @@ print(f"Train: {len(train_graphs)} | Val: {len(val_graphs)} | Test: {len(test_gr
 
 ---
 
-## Version History
+## Dataset History
 
-### v2 (Current) - November 2025
+### Current Version - November 2025
 - ✅ **100% receiver coverage** (5,814/5,814)
 - ✅ Includes defensive receivers (37.3%)
 - ✅ Extended time window (270s for stoppages)
 - ✅ Includes corner taker (short corners)
 - ✅ Event-stream based labeling
-
-### v1 - October 2024
-- 60.1% receiver coverage (3,492/5,814)
-- CSV-based labeling (attacking only)
-- 5s time window (too restrictive)
-- Excluded corner taker
+- ✅ 3-class outcome system (Shot/Clearance/Possession)
 
 ---
 
@@ -530,5 +522,4 @@ If you use this dataset, please cite:
 ---
 
 **Last Updated**: November 2025
-**Dataset Version**: v2
 **Status**: Production Ready ✅
