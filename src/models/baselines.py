@@ -983,6 +983,632 @@ def train_mlp_baseline(model: MLPReceiverBaseline,
     return history
 
 
+class RandomOutcomeBaseline(nn.Module):
+    """
+    Random outcome prediction baseline for multi-class classification.
+
+    Predicts uniform random probabilities over 3 outcome classes:
+    - 0: Shot (Goal + Shot) (~18.2%)
+    - 1: Clearance (~52.0%)
+    - 2: Possession (~29.9%)
+
+    Expected performance (sanity check):
+    - Accuracy: 33% (1/3 uniform random)
+    - Macro F1: ~0.33
+    """
+
+    def __init__(self, num_classes: int = 3):
+        """
+        Initialize random outcome baseline.
+
+        Args:
+            num_classes: Number of outcome classes (default 4)
+        """
+        super().__init__()
+        self.num_classes = num_classes
+
+    def forward(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Generate random outcome predictions.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes] indicating graph membership
+
+        Returns:
+            Random logits [batch_size, num_classes]
+        """
+        batch_size = batch.max().item() + 1
+        logits = torch.randn(batch_size, self.num_classes, device=x.device)
+        return logits
+
+    def predict(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Generate random predictions and return softmax probabilities.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Softmax probabilities [batch_size, num_classes]
+        """
+        logits = self.forward(x, batch)
+        return F.softmax(logits, dim=1)
+
+
+class XGBoostOutcomeBaseline:
+    """
+    XGBoost outcome prediction baseline with graph-level features.
+
+    Extracts aggregated features for multi-class outcome prediction:
+    - Graph statistics: mean/std positions, formation compactness
+    - Spatial features: defensive line height, attacking positioning
+    - Density features: players in box, goal area crowding
+
+    Expected performance (3-class):
+    - Accuracy: 55-65%
+    - Macro F1: > 0.50
+    """
+
+    def __init__(self, max_depth: int = 6, n_estimators: int = 500,
+                 learning_rate: float = 0.05, random_state: int = 42):
+        """
+        Initialize XGBoost outcome baseline.
+
+        Args:
+            max_depth: Maximum tree depth
+            n_estimators: Number of boosting rounds
+            learning_rate: Learning rate (eta)
+            random_state: Random seed
+        """
+        try:
+            import xgboost as xgb
+            self.xgb = xgb
+        except ImportError:
+            raise ImportError("XGBoost not installed. Run: pip install xgboost")
+
+        self.max_depth = max_depth
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
+        self.random_state = random_state
+        self.model = None
+        self.num_classes = 3  # Shot, Clearance, Possession
+
+        # StatsBomb pitch dimensions
+        self.pitch_length = 120.0
+        self.pitch_width = 80.0
+
+    def extract_graph_features(self, x: torch.Tensor) -> np.ndarray:
+        """
+        Extract graph-level features by aggregating player features.
+
+        Args:
+            x: Node features [num_players, 14]
+
+        Returns:
+            Graph-level features [num_features]
+        """
+        x_np = x.detach().cpu().numpy()
+
+        # Extract base features
+        pos_x = x_np[:, 0]
+        pos_y = x_np[:, 1]
+        dist_goal = x_np[:, 2]
+        dist_ball = x_np[:, 3]
+        team_flag = x_np[:, 10]  # 1 = attacking, 0 = defending
+        in_penalty = x_np[:, 11]
+
+        features = []
+
+        # === POSITION STATISTICS (8) ===
+        features.extend([
+            pos_x.mean(), pos_x.std(),
+            pos_y.mean(), pos_y.std(),
+            pos_x.max(), pos_x.min(),
+            pos_y.max(), pos_y.min()
+        ])
+
+        # === DISTANCE STATISTICS (4) ===
+        features.extend([
+            dist_goal.mean(), dist_goal.min(),
+            dist_ball.mean(), dist_ball.min()
+        ])
+
+        # === TEAM BALANCE (4) ===
+        attacking_mask = (team_flag == 1.0)
+        defending_mask = (team_flag == 0.0)
+        num_attackers = attacking_mask.sum()
+        num_defenders = defending_mask.sum()
+
+        features.extend([
+            float(num_attackers),
+            float(num_defenders),
+            float(num_attackers) / max(float(num_defenders), 1.0),
+            float(num_attackers) - float(num_defenders)
+        ])
+
+        # === FORMATION COMPACTNESS (6) ===
+        if num_attackers > 1:
+            attacking_x = pos_x[attacking_mask]
+            attacking_y = pos_y[attacking_mask]
+            features.extend([
+                attacking_x.mean(), attacking_x.std(),
+                attacking_y.mean(), attacking_y.std()
+            ])
+        else:
+            features.extend([0.0, 0.0, 0.0, 0.0])
+
+        if num_defenders > 1:
+            defending_x = pos_x[defending_mask]
+            defending_y = pos_y[defending_mask]
+            features.extend([
+                defending_x.mean(), defending_x.std()
+            ])
+        else:
+            features.extend([0.0, 0.0])
+
+        # === ZONAL DENSITY (5) ===
+        players_in_box = in_penalty.sum()
+        players_in_6yard = ((pos_x > 114) & (pos_y > 30) & (pos_y < 50)).sum()
+        players_near_goal = ((pos_x > 100) & (pos_y > 25) & (pos_y < 55)).sum()
+        attackers_in_box = (attacking_mask & (in_penalty == 1)).sum()
+        defenders_in_box = (defending_mask & (in_penalty == 1)).sum()
+
+        features.extend([
+            float(players_in_box),
+            float(players_in_6yard),
+            float(players_near_goal),
+            float(attackers_in_box),
+            float(defenders_in_box)
+        ])
+
+        # === DEFENSIVE LINE (2) ===
+        if num_defenders > 1:
+            defensive_line_height = defending_x.min()
+            defensive_line_compactness = defending_y.std()
+        else:
+            defensive_line_height = 0.0
+            defensive_line_compactness = 0.0
+
+        features.extend([
+            defensive_line_height,
+            defensive_line_compactness
+        ])
+
+        return np.array(features)
+
+    def train(self, x_list: List[torch.Tensor], batch_list: List[torch.Tensor],
+              labels: List[int]):
+        """
+        Train XGBoost multi-class classifier.
+
+        Args:
+            x_list: List of node features [num_players, 14] for each corner
+            batch_list: List of batch tensors (for compatibility)
+            labels: List of outcome class labels (0-3) for each corner
+        """
+        X_train = []
+
+        for x in x_list:
+            graph_features = self.extract_graph_features(x)
+            X_train.append(graph_features)
+
+        X_train = np.array(X_train)
+        y_train = np.array(labels)
+
+        # Compute class weights for imbalanced data
+        from sklearn.utils.class_weight import compute_class_weight
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        sample_weights = np.array([class_weights[label] for label in y_train])
+
+        # Train XGBoost
+        self.model = self.xgb.XGBClassifier(
+            max_depth=self.max_depth,
+            n_estimators=self.n_estimators,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+            objective='multi:softprob',
+            eval_metric='mlogloss',
+            num_class=self.num_classes,
+            verbosity=0
+        )
+
+        self.model.fit(X_train, y_train, sample_weight=sample_weights)
+
+    def predict(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Predict outcome probabilities.
+
+        Args:
+            x: Node features [num_nodes, 14]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Softmax probabilities [batch_size, num_classes]
+        """
+        if self.model is None:
+            raise RuntimeError("Model not trained! Call train() first.")
+
+        batch_size = batch.max().item() + 1
+        all_probs = []
+
+        for i in range(batch_size):
+            mask = (batch == i)
+            graph_x = x[mask]
+
+            graph_features = self.extract_graph_features(graph_x)
+            graph_features = graph_features.reshape(1, -1)
+
+            probs = self.model.predict_proba(graph_features)[0]
+            all_probs.append(probs)
+
+        return torch.FloatTensor(np.array(all_probs))
+
+
+class MLPOutcomeBaseline(nn.Module):
+    """
+    MLP outcome prediction baseline for multi-class classification.
+
+    Flattens all player features and uses a 3-layer MLP to predict outcome.
+    Architecture:
+    - Flatten: [batch, 22 nodes × 14 features] = [batch, 308]
+    - MLP: 308 → 512 → 256 → 128 → 3
+    - Dropout: 0.25
+    - Activation: ReLU
+
+    Expected performance (3-class):
+    - Accuracy: 60-70%
+    - Macro F1: > 0.55
+    """
+
+    def __init__(self, num_features: int = 14, num_players: int = 22,
+                 hidden_dim1: int = 512, hidden_dim2: int = 256,
+                 hidden_dim3: int = 128, num_classes: int = 3,
+                 dropout: float = 0.25):
+        """
+        Initialize MLP outcome baseline.
+
+        Args:
+            num_features: Number of features per player (default 14)
+            num_players: Number of players (default 22)
+            hidden_dim1: First hidden layer dimension
+            hidden_dim2: Second hidden layer dimension
+            hidden_dim3: Third hidden layer dimension
+            num_classes: Number of outcome classes (default 4)
+            dropout: Dropout rate
+        """
+        super().__init__()
+
+        self.num_features = num_features
+        self.num_players = num_players
+        self.num_classes = num_classes
+        self.input_dim = num_players * num_features  # 22 × 14 = 308
+
+        # MLP layers
+        self.fc1 = nn.Linear(self.input_dim, hidden_dim1)
+        self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
+        self.fc3 = nn.Linear(hidden_dim2, hidden_dim3)
+        self.fc4 = nn.Linear(hidden_dim3, num_classes)
+
+        self.dropout = nn.Dropout(dropout)
+        self.relu = nn.ReLU()
+
+    def forward(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through MLP.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes] indicating graph membership
+
+        Returns:
+            Logits [batch_size, num_classes]
+        """
+        batch_size = batch.max().item() + 1
+
+        # Flatten: [num_nodes, num_features] → [batch_size, num_players * num_features]
+        flattened = self._flatten_batch(x, batch, batch_size)
+
+        # MLP layers
+        h1 = self.relu(self.fc1(flattened))
+        h1 = self.dropout(h1)
+
+        h2 = self.relu(self.fc2(h1))
+        h2 = self.dropout(h2)
+
+        h3 = self.relu(self.fc3(h2))
+        h3 = self.dropout(h3)
+
+        logits = self.fc4(h3)
+
+        return logits
+
+    def _flatten_batch(self, x: torch.Tensor, batch: torch.Tensor,
+                      batch_size: int) -> torch.Tensor:
+        """
+        Flatten node features by batch (same as MLPReceiverBaseline).
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes]
+            batch_size: Number of graphs in batch
+
+        Returns:
+            Flattened features [batch_size, num_players * num_features]
+        """
+        flattened = torch.zeros(batch_size, self.input_dim, device=x.device)
+
+        for i in range(batch_size):
+            mask = (batch == i)
+            graph_features = x[mask]
+
+            num_nodes = graph_features.size(0)
+            if num_nodes > self.num_players:
+                graph_features = graph_features[:self.num_players]
+                num_nodes = self.num_players
+
+            flat = graph_features.flatten()
+            flattened[i, :len(flat)] = flat
+
+        return flattened
+
+    def predict(self, x: torch.Tensor, batch: torch.Tensor) -> torch.Tensor:
+        """
+        Generate predictions and return softmax probabilities.
+
+        Args:
+            x: Node features [num_nodes, num_features]
+            batch: Batch vector [num_nodes]
+
+        Returns:
+            Softmax probabilities [batch_size, num_classes]
+        """
+        logits = self.forward(x, batch)
+        return F.softmax(logits, dim=1)
+
+
+def evaluate_outcome_baseline(model, data_loader, device: str = 'cuda') -> Dict[str, float]:
+    """
+    Evaluate multi-class outcome prediction model.
+
+    Computes:
+    - Accuracy
+    - Macro F1, Precision, Recall
+    - Per-class F1 scores
+    - Confusion matrix
+
+    Args:
+        model: Outcome prediction model
+        data_loader: PyTorch Geometric DataLoader
+        device: Device to run on
+
+    Returns:
+        Dictionary with metrics
+    """
+    from sklearn.metrics import (
+        accuracy_score, f1_score, precision_score, recall_score,
+        confusion_matrix, classification_report
+    )
+
+    # Set eval mode
+    if hasattr(model, 'eval'):
+        model.eval()
+    if hasattr(model, 'to'):
+        model.to(device)
+
+    all_preds = []
+    all_labels = []
+
+    with torch.no_grad():
+        for batch in data_loader:
+            if hasattr(model, 'to'):
+                batch = batch.to(device)
+
+            # Get predictions
+            if hasattr(model, 'forward'):
+                logits = model(batch.x, batch.batch)
+                probs = F.softmax(logits, dim=1)
+            else:
+                probs = model.predict(batch.x, batch.batch)
+
+            preds = torch.argmax(probs, dim=1)
+            labels = batch.outcome_class_label.squeeze()
+
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
+    all_preds = np.array(all_preds)
+    all_labels = np.array(all_labels)
+
+    # Compute metrics
+    metrics = {
+        'accuracy': accuracy_score(all_labels, all_preds),
+        'macro_f1': f1_score(all_labels, all_preds, average='macro', zero_division=0),
+        'macro_precision': precision_score(all_labels, all_preds, average='macro', zero_division=0),
+        'macro_recall': recall_score(all_labels, all_preds, average='macro', zero_division=0),
+        'weighted_f1': f1_score(all_labels, all_preds, average='weighted', zero_division=0)
+    }
+
+    # Per-class F1 scores
+    per_class_f1 = f1_score(all_labels, all_preds, average=None, zero_division=0)
+    class_names = ['Shot', 'Clearance', 'Possession']  # 3-class
+    for i, name in enumerate(class_names):
+        metrics[f'{name.lower()}_f1'] = per_class_f1[i] if i < len(per_class_f1) else 0.0
+
+    # Confusion matrix
+    conf_matrix = confusion_matrix(all_labels, all_preds)
+    metrics['confusion_matrix'] = conf_matrix.tolist()
+
+    return metrics
+
+
+def train_mlp_outcome(model: MLPOutcomeBaseline,
+                     train_loader,
+                     val_loader,
+                     num_steps: int = 15000,
+                     lr: float = 5e-4,
+                     weight_decay: float = 1e-4,
+                     device: str = 'cuda',
+                     eval_every: int = 500,
+                     verbose: bool = True,
+                     use_class_weights: bool = True,
+                     early_stopping_patience: int = 5000) -> Dict:
+    """
+    Train MLP outcome baseline for multi-class classification.
+
+    Args:
+        model: MLPOutcomeBaseline model
+        train_loader: Training data loader
+        val_loader: Validation data loader
+        num_steps: Number of training steps (default 15k)
+        lr: Learning rate
+        weight_decay: L2 regularization
+        device: Device to train on
+        eval_every: Evaluate every N steps
+        verbose: Print progress
+        use_class_weights: Whether to use class weights for imbalanced data
+        early_stopping_patience: Stop if no improvement for N steps
+
+    Returns:
+        Training history dictionary
+    """
+    model.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    # Learning rate scheduler (cosine annealing)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_steps, eta_min=lr/10
+    )
+
+    # Compute class weights if needed (using SQRT to reduce extremes)
+    if use_class_weights:
+        all_labels = []
+        for batch in train_loader:
+            all_labels.extend(batch.outcome_class_label.numpy())
+
+        from sklearn.utils.class_weight import compute_class_weight
+        class_weights_raw = compute_class_weight(
+            'balanced',
+            classes=np.unique(all_labels),
+            y=all_labels
+        )
+        # Use SQRT to reduce extreme weights (Goal class was 33.88!)
+        class_weights = np.sqrt(class_weights_raw)
+        class_weights = torch.FloatTensor(class_weights).to(device)
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+    else:
+        criterion = nn.CrossEntropyLoss()
+
+    history = {
+        'train_loss': [],
+        'val_accuracy': [],
+        'val_macro_f1': [],
+        'val_shot_f1': [],  # Changed from goal_f1
+        'val_clearance_f1': [],  # Changed from shot_f1
+        'steps': []
+    }
+
+    step = 0
+    best_val_macro_f1 = 0.0
+    best_model_state = None
+    steps_without_improvement = 0
+
+    if verbose:
+        print(f"\nTraining MLP outcome baseline for {num_steps} steps...")
+        print(f"Learning rate: {lr}, Weight decay: {weight_decay}")
+        print(f"Early stopping patience: {early_stopping_patience} steps")
+        if use_class_weights:
+            print(f"Using SQRT class weights: {class_weights.cpu().numpy()}")
+            print(f"  (Raw weights were: {class_weights_raw})")
+        print(f"Evaluating every {eval_every} steps\n")
+
+    train_iter = iter(train_loader)
+
+    while step < num_steps:
+        try:
+            batch = next(train_iter)
+        except StopIteration:
+            train_iter = iter(train_loader)
+            batch = next(train_iter)
+
+        batch = batch.to(device)
+
+        # Forward pass
+        model.train()
+        optimizer.zero_grad()
+
+        logits = model(batch.x, batch.batch)
+        targets = batch.outcome_class_label.squeeze()
+        loss = criterion(logits, targets)
+
+        # Backward pass
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Gradient clipping
+        optimizer.step()
+        scheduler.step()  # Update learning rate
+
+        step += 1
+
+        # Evaluate
+        if step % eval_every == 0 or step == num_steps:
+            val_metrics = evaluate_outcome_baseline(model, val_loader, device)
+
+            history['train_loss'].append(loss.item())
+            history['val_accuracy'].append(val_metrics['accuracy'])
+            history['val_macro_f1'].append(val_metrics['macro_f1'])
+            history['val_shot_f1'].append(val_metrics['shot_f1'])
+            history['val_clearance_f1'].append(val_metrics['clearance_f1'])
+            history['steps'].append(step)
+
+            current_lr = scheduler.get_last_lr()[0]
+
+            if verbose:
+                print(f"Step {step:5d}/{num_steps} | "
+                      f"Loss: {loss.item():.4f} | "
+                      f"LR: {current_lr:.6f} | "
+                      f"Acc: {val_metrics['accuracy']*100:.1f}% | "
+                      f"Macro F1: {val_metrics['macro_f1']:.3f} | "
+                      f"Danger F1: {val_metrics['shot_f1']:.3f} | "
+                      f"Clear F1: {val_metrics['clearance_f1']:.3f}")
+
+            # Save best model and check early stopping
+            if val_metrics['macro_f1'] > best_val_macro_f1:
+                best_val_macro_f1 = val_metrics['macro_f1']
+                best_model_state = model.state_dict().copy()
+                steps_without_improvement = 0
+                if verbose:
+                    print(f"  → New best Macro F1: {best_val_macro_f1:.3f}")
+            else:
+                steps_without_improvement += eval_every
+
+            # Early stopping
+            if steps_without_improvement >= early_stopping_patience:
+                if verbose:
+                    print(f"\n⚠️  Early stopping triggered (no improvement for {early_stopping_patience} steps)")
+                break
+
+    # Restore best model
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+
+    history['best_val_macro_f1'] = best_val_macro_f1
+    history['stopped_early'] = (step < num_steps)
+    history['final_step'] = step
+
+    if verbose:
+        print(f"\nTraining complete!")
+        print(f"Best Val Macro F1: {best_val_macro_f1:.3f}")
+        if history['stopped_early']:
+            print(f"Stopped early at step {step}/{num_steps}")
+
+    return history
+
+
 if __name__ == "__main__":
     # Test baseline models
     print("="*60)
@@ -1024,6 +1650,30 @@ if __name__ == "__main__":
 
     # Count parameters
     num_params = sum(p.numel() for p in mlp_model.parameters())
+    print(f"  Number of parameters: {num_params:,}")
+
+    # Test RandomOutcomeBaseline
+    print("\n3. Testing RandomOutcomeBaseline...")
+    random_outcome_model = RandomOutcomeBaseline(num_classes=4)
+    outcome_logits = random_outcome_model(x, batch)
+    outcome_probs = random_outcome_model.predict(x, batch)
+
+    print(f"  Logits shape: {outcome_logits.shape}")
+    print(f"  Probs shape: {outcome_probs.shape}")
+    print(f"  Probs sum (should be 1.0): {outcome_probs.sum(dim=1)}")
+
+    # Test MLPOutcomeBaseline
+    print("\n4. Testing MLPOutcomeBaseline...")
+    mlp_outcome_model = MLPOutcomeBaseline(num_features=14, num_players=22)
+    outcome_logits = mlp_outcome_model(x, batch)
+    outcome_probs = mlp_outcome_model.predict(x, batch)
+
+    print(f"  Logits shape: {outcome_logits.shape}")
+    print(f"  Probs shape: {outcome_probs.shape}")
+    print(f"  Probs sum (should be 1.0): {outcome_probs.sum(dim=1)}")
+
+    # Count parameters
+    num_params = sum(p.numel() for p in mlp_outcome_model.parameters())
     print(f"  Number of parameters: {num_params:,}")
 
     print("\n" + "="*60)

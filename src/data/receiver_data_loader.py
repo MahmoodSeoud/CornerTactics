@@ -9,7 +9,7 @@ Based on TacticAI Implementation Plan:
 - Load graphs with receiver labels (player who receives ball 0-5s after corner)
 - Mask velocity features (vx, vy = 0) to acknowledge missing data
 - Add receiver_label field: torch.LongTensor (0-21)
-- Add shot_label field: torch.FloatTensor (1.0 if dangerous else 0.0)
+- Add shot_label field: torch.FloatTensor (1.0 if shot else 0.0)
 - Skip corners without valid receiver labels
 
 Author: mseo
@@ -31,14 +31,18 @@ from src.data_loader import CornerDataset
 from src.graph_builder import CornerGraph
 
 
-# Outcome class mapping for multi-class classification
+# Outcome class mapping for multi-class classification (3-class)
+# Goal merged into Shot to create "Shot" class (~18.2%)
 OUTCOME_CLASS_MAPPING = {
-    "Goal": 0,          # ~1.3% (rare)
-    "Shot": 1,          # ~16.9% (minority)
-    "Clearance": 2,     # ~52.0% (common)
-    "Possession": 3,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
-    "Loss": 3           # Merged into Possession
+    "Goal": 0,          # Merged with Shot → Shot (~1.3%)
+    "Shot": 0,          # Shot (~16.9%) → Combined ~18.2%
+    "Clearance": 1,     # ~52.0% (common)
+    "Possession": 2,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
+    "Loss": 2           # Merged into Possession
 }
+
+# Class names for 3-class problem
+OUTCOME_CLASS_NAMES = ["Shot", "Clearance", "Possession"]
 
 
 class ReceiverCornerDataset(CornerDataset):
@@ -118,8 +122,8 @@ class ReceiverCornerDataset(CornerDataset):
             receiver_label = torch.LongTensor([graph.receiver_node_index])
 
             # SHOT LABEL: Binary (1.0 if shot/goal, 0.0 otherwise)
-            is_dangerous = (graph.outcome_label == "Shot") or graph.goal_scored
-            shot_label = torch.FloatTensor([1.0 if is_dangerous else 0.0])
+            is_shot = (graph.outcome_label == "Shot") or graph.goal_scored
+            shot_label = torch.FloatTensor([1.0 if is_shot else 0.0])
 
             # OUTCOME CLASS LABEL: Multi-class (0=Goal, 1=Shot, 2=Clearance, 3=Possession)
             outcome_class = OUTCOME_CLASS_MAPPING.get(graph.outcome_label, 3)  # Default to Possession
@@ -167,7 +171,7 @@ class ReceiverCornerDataset(CornerDataset):
         # Shot label statistics
         positive_shots = sum(data.shot_label.item() for data in self.data_list)
         shot_rate = positive_shots / self.num_graphs if self.num_graphs > 0 else 0
-        print(f"Dangerous situations (shot/goal): {int(positive_shots)} "
+        print(f"Shot situations (shot/goal): {int(positive_shots)} "
               f"({shot_rate*100:.1f}%)")
 
         # Node and edge statistics
@@ -314,7 +318,7 @@ class ReceiverCornerDataset(CornerDataset):
         val_shot_rate = sum(d.shot_label.item() for d in val_data) / len(val_data)
         test_shot_rate = sum(d.shot_label.item() for d in test_data) / len(test_data)
 
-        print(f"\nDangerous situation rates:")
+        print(f"\nShot situation rates:")
         print(f"  Train: {train_shot_rate*100:.1f}%")
         print(f"  Val:   {val_shot_rate*100:.1f}%")
         print(f"  Test:  {test_shot_rate*100:.1f}%")
