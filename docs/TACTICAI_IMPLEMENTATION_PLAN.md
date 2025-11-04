@@ -1,12 +1,20 @@
 # TacticAI-Style Corner Kick Prediction: Implementation Plan
 
-**Project Goal**: Replicate TacticAI's dual-task corner kick prediction system (receiver + shot prediction) using static-only StatsBomb 360 freeze frames.
+**Research Question**: *"Predicting corner kick outcomes from static positioning: Dual-task receiver and shot prediction with multi-class outcome analysis"*
+
+**Project Goals**:
+1. **Dual-task prediction** (TacticAI replication): Receiver + shot prediction
+2. **Multi-class outcome prediction**: Classify corner outcomes into Goal/Shot/Clearance/Possession
 
 **Key Limitation**: No velocity data (vx, vy = 0 for all players)
 
 **Expected Performance**:
-- Receiver Top-3: 60-70% (vs TacticAI's 78%)
-- Shot F1: 0.55-0.65 (vs TacticAI's 0.71)
+- **Dual-task models**:
+  - Receiver Top-3: 60-70% (vs TacticAI's 78%)
+  - Shot F1: 0.55-0.65 (vs TacticAI's 0.71)
+- **Multi-class models**:
+  - Macro F1: 0.50-0.60 (4-class balanced)
+  - Accuracy: 60-70% (expected)
 - Performance gap of 10-15% expected due to missing velocities
 
 ---
@@ -110,25 +118,26 @@ This phase documents the pre-existing infrastructure that TacticAI implementatio
 
 ---
 
-### Day 5-6: Baseline Models ✅ COMPLETE
+### Day 5-6: Baseline Models ✅ COMPLETE (Dual-task only)
 - [x] Create `src/models/baselines.py`
-  - [x] Implement `RandomReceiverBaseline`
-    - [x] `predict()`: Return random softmax over 22 players
-    - [x] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
-  - [x] Implement `XGBoostReceiverBaseline` (engineered features)
-    - [x] Extract hand-crafted features per player (dimension: 22 × ~15 features):
-      - [x] **Spatial**: distance to ball, distance to goal, x-position, y-position
-      - [x] **Relative**: closest opponent distance, teammates within 5m radius
-      - [x] **Zonal**: binary flags (in 6-yard box? in penalty area? near/far post?)
-      - [x] **Team context**: average team x-position, defensive line compactness
-      - [x] **Player role**: is_goalkeeper, is_corner_taker (binary flags)
-    - [x] Flatten to `[22 × 15 = 330 features]` per corner
-    - [x] XGBoost classifier: `max_depth=6, n_estimators=500, learning_rate=0.05`
-  - [x] Implement `MLPReceiverBaseline`
-    - [x] Flatten all player positions: `[batch, 22*14=308]`
-    - [x] MLP: 512 → 256 hidden units (deeper architecture)
-    - [x] Dropout 0.25, ReLU activations
-    - [x] Dual-task: Receiver (22-class) + Shot (binary)
+  - [x] **Dual-task models** (Receiver + Shot prediction):
+    - [x] Implement `RandomReceiverBaseline`
+      - [x] `predict()`: Return random softmax over 22 players
+      - [x] `evaluate()`: Return top-1=4.5%, top-3=13.6%, top-5=22.7%
+    - [x] Implement `XGBoostReceiverBaseline` (engineered features)
+      - [x] Extract hand-crafted features per player (dimension: 22 × ~15 features):
+        - [x] **Spatial**: distance to ball, distance to goal, x-position, y-position
+        - [x] **Relative**: closest opponent distance, teammates within 5m radius
+        - [x] **Zonal**: binary flags (in 6-yard box? in penalty area? near/far post?)
+        - [x] **Team context**: average team x-position, defensive line compactness
+        - [x] **Player role**: is_goalkeeper, is_corner_taker (binary flags)
+      - [x] Flatten to `[22 × 15 = 330 features]` per corner
+      - [x] XGBoost classifier: `max_depth=6, n_estimators=500, learning_rate=0.05`
+    - [x] Implement `MLPReceiverBaseline`
+      - [x] Flatten all player positions: `[batch, 22*14=308]`
+      - [x] MLP: 512 → 256 hidden units (deeper architecture)
+      - [x] Dropout 0.25, ReLU activations
+      - [x] Dual-task: Receiver (22-class) + Shot (binary)
 - [x] Create `scripts/training/train_baselines.py`
   - [x] Train Random: Theoretical evaluation
   - [x] Train XGBoost: 500 trees, early stopping
@@ -137,7 +146,7 @@ This phase documents the pre-existing infrastructure that TacticAI implementatio
   - [x] Compute F1, Precision, Recall, AUROC, AUPRC for shot prediction
   - [x] Save results: `results/baselines/{random,mlp,xgboost}_results.json`
 
-**Success Criteria**:
+**Success Criteria (Dual-task)**:
 - ✅ Random baseline: top-1=4.9%, top-3=15.1%, top-5=25.1% (matches theory)
 - ✅ XGBoost baseline: top-1=62.2%, **top-3=89.3%**, top-5=95.7% (far exceeds target!)
 - ✅ MLP baseline: top-1=29.6%, **top-3=66.7%**, top-5=88.5% (exceeds 45% target)
@@ -150,6 +159,54 @@ This phase documents the pre-existing infrastructure that TacticAI implementatio
 - Branch: `feature/tacticai-baseline-models`
 - Files: `src/models/baselines.py`, `scripts/training/train_baselines.py`
 - SLURM: `scripts/slurm/train_baselines_{v100,a100,h100}.sh`
+
+---
+
+### Day 6.5: Multi-Class Outcome Baselines ⏳ IN PROGRESS
+**Goal**: Add multi-class outcome prediction (4-class: Goal/Shot/Clearance/Possession)
+
+- [ ] Extend `src/data/receiver_data_loader.py`
+  - [ ] Add `outcome_class_label` field: `torch.LongTensor([class_idx])` (0-3)
+  - [ ] Class mapping: 0=Goal, 1=Shot, 2=Clearance, 3=Possession
+  - [ ] Compute class distribution for weighted sampling
+- [ ] Extend `src/models/baselines.py`
+  - [ ] Implement `RandomOutcomeBaseline`
+    - [ ] `predict()`: Return uniform distribution over 4 classes
+    - [ ] Expected: 25% accuracy (random chance)
+  - [ ] Implement `XGBoostOutcomeBaseline`
+    - [ ] Extract graph-level features (aggregate player features)
+    - [ ] Features: mean/std positions, formation compactness, defensive line height
+    - [ ] XGBoost multi-class: `objective='multi:softmax', num_class=4`
+    - [ ] Expected: 50-60% accuracy
+  - [ ] Implement `MLPOutcomeBaseline`
+    - [ ] Input: Flattened player positions `[batch, 22*14=308]`
+    - [ ] MLP: 512 → 256 → 128 → 4 (output logits)
+    - [ ] Loss: `CrossEntropyLoss()` with class weights
+    - [ ] Expected: 55-65% accuracy
+- [ ] Create `scripts/training/train_outcome_baselines.py`
+  - [ ] Train Random: Theoretical evaluation (25% accuracy)
+  - [ ] Train XGBoost: 500 trees, class weights for imbalance
+  - [ ] Train MLP: 15,000 steps, lr=0.0005, weighted loss
+  - [ ] Metrics: Accuracy, Macro F1, Per-class F1, Confusion Matrix
+  - [ ] Save results: `results/baselines/outcome_{random,mlp,xgboost}_results.json`
+
+**Class Distribution (Expected)**:
+- Goal: ~1.3% (rare, difficult to predict)
+- Shot: ~15% (minority class)
+- Clearance: ~40% (common)
+- Possession: ~44% (most common)
+
+**Success Criteria (Multi-class)**:
+- ✅ Random baseline: 25% accuracy (uniform)
+- ✅ XGBoost baseline: 50-60% accuracy, Macro F1 > 0.45
+- ✅ MLP baseline: 55-65% accuracy, Macro F1 > 0.50
+
+**Deliverables**:
+- ✅ Extended `src/data/receiver_data_loader.py` (add outcome labels)
+- ✅ Extended `src/models/baselines.py` (3 new outcome classifiers)
+- ✅ `scripts/training/train_outcome_baselines.py`
+- ✅ `results/baselines/outcome_*.json`
+- ✅ Update `docs/BASELINE_ARCHITECTURE.md` (add multi-class section)
 
 ---
 
@@ -410,106 +467,290 @@ P(shot|corner) = Σ_i P(shot|receiver=i, corner) × P(receiver=i|corner)
 
 ---
 
-## Phase 4: Evaluation & Analysis (Week 4, Days 22-28)
+## Phase 3.5: Multi-Class Outcome Prediction (Parallel Track, Week 3-4)
 
-### Day 22-23: Multi-Seed Evaluation
-- [ ] Create `scripts/evaluation/run_five_seeds.py`
-  - [ ] Train 5 models with seeds: [42, 123, 456, 789, 1011]
-  - [ ] Each model: 50k steps, save best checkpoint
-- [ ] Evaluate each model on test set
-  - [ ] Receiver: top-1, top-3, top-5 accuracy
-  - [ ] Shot: F1, Precision, Recall, AUROC, AUPRC
-- [ ] Compute statistics: mean ± std across 5 runs
-- [ ] Statistical significance tests:
-  - [ ] t-test: GATv2+D2 vs MLP baseline (receiver top-3)
-  - [ ] t-test: Conditional vs Unconditional (shot F1)
-- [ ] Save results: `results/five_seed_evaluation.json`
+**Goal**: Train GNN models for 4-class outcome classification (Goal/Shot/Clearance/Possession) as an alternative to dual-task approach.
 
-**Reporting Format**:
-```
-Receiver Top-3: 63.7% ± 2.0%
-Shot F1: 0.59 ± 0.03
-Shot AUROC: 0.78 ± 0.02
+### Day 21-22: Multi-Class GNN Architecture
+- [ ] Create `src/models/outcome_predictor.py`
+  - [ ] Implement `OutcomePredictor`
+    - [ ] Input: `graph_emb [batch, hidden_dim]` from D2GATv2
+    - [ ] MLP: `hidden_dim → hidden_dim → 4` (output logits)
+    - [ ] Output: 4-class logits (Goal/Shot/Clearance/Possession)
+  - [ ] Implement `OutcomeModel` (full pipeline)
+    - [ ] `D2GATv2` encoder
+    - [ ] `OutcomePredictor` head
+    - [ ] Return: `outcome_logits [batch, 4]`
+- [ ] Unit test: Forward pass
+  - [ ] Input: `batch.x, batch.edge_index, batch.batch`
+  - [ ] Output: `outcome_logits [batch, 4]`
+  - [ ] Verify softmax sums to 1.0
+
+**Class Mapping**:
+```python
+OUTCOME_CLASSES = {
+    0: "Goal",      # 1.3% (very rare)
+    1: "Shot",      # 15.8% (minority)
+    2: "Clearance", # 39.5% (common)
+    3: "Possession" # 43.4% (most common)
+}
 ```
 
 **Success Criteria**:
-- ✅ Std dev < 3% (reproducible results)
-- ✅ p < 0.05 for GATv2+D2 vs baselines (statistically significant improvement)
+- ✅ Forward pass succeeds
+- ✅ Logits shape correct `[batch, 4]`
+- ✅ Model parameters ~30k (same as dual-task)
 
 ---
 
-### Day 24-25: Qualitative Analysis
+### Day 23-24: Weighted Loss & Training
+- [ ] Extend `src/training/losses.py`
+  - [ ] Implement `weighted_cross_entropy(logits, targets, class_weights)`
+    - [ ] Compute class weights: `1.0 / sqrt(class_counts)`
+    - [ ] Apply weights to `CrossEntropyLoss`
+  - [ ] Implement `focal_loss_multiclass(logits, targets, gamma=2.0, alpha=None)`
+    - [ ] Multi-class focal loss for extreme imbalance
+    - [ ] Alpha parameter: per-class weights
+- [ ] Create `scripts/training/train_outcome_gnn.py`
+  - [ ] Loss: Weighted cross-entropy OR focal loss (compare both)
+  - [ ] Optimizer: AdamW(lr=5e-4, weight_decay=1e-4)
+  - [ ] Train for 30k steps with early stopping
+  - [ ] Metrics: Accuracy, Macro F1, Per-class F1, Confusion Matrix
+  - [ ] Class-balanced sampling (oversample Goal/Shot, undersample Poss/Clear)
+- [ ] Save best model: `models/outcome_prediction_best.pt`
+
+**Expected Class Weights**:
+```python
+class_weights = {
+    0: 8.0,   # Goal (boost heavily)
+    1: 2.5,   # Shot (boost moderately)
+    2: 1.0,   # Clearance (normal)
+    3: 0.9    # Possession (slight penalty)
+}
+```
+
+**Success Criteria**:
+- ✅ Training converges (loss decreases)
+- ✅ No mode collapse (doesn't predict only Possession/Clearance)
+- ✅ Val Macro F1 > 0.50, Accuracy > 55%
+- ✅ Goal F1 > 0.10 (rare class, hard to predict)
+
+---
+
+### Day 25: Multi-Class Ablation Study
+- [ ] Train 4 model variants (5k steps each for speed):
+  - [ ] GCN (no attention): `GCNConv` layers
+  - [ ] GAT (attention, no D2): Single view, no frame averaging
+  - [ ] GATv2 + D2: With D2 frame averaging
+  - [ ] GATv2 + D2 + PosEmb: Add learned 2D positional embeddings
+- [ ] Compare Macro F1 and per-class F1:
+  - [ ] GCN: Expected Macro F1 = 0.52-0.56
+  - [ ] GAT: Expected Macro F1 = 0.56-0.59
+  - [ ] GATv2+D2: Expected Macro F1 = 0.60-0.64
+  - [ ] GATv2+D2+PosEmb: Expected Macro F1 = 0.62-0.66
+- [ ] Document results: `docs/OUTCOME_ABLATIONS.md`
+
+**Decision Point**:
+- [ ] **If Macro F1 > 0.60**: ✅ Multi-class approach viable, proceed to comparison
+- [ ] **If Macro F1 = 0.50-0.60**: ⚠️ Marginal, focus on dual-task (better for specific predictions)
+- [ ] **If Macro F1 < 0.50**: ❌ Multi-class too difficult with static data, prioritize dual-task
+
+**Deliverables**:
+- ✅ `src/models/outcome_predictor.py`
+- ✅ Extended `src/training/losses.py` (weighted/focal multi-class)
+- ✅ `scripts/training/train_outcome_gnn.py`
+- ✅ `models/outcome_prediction_best.pt`
+- ✅ `docs/OUTCOME_ABLATIONS.md`
+
+---
+
+## Phase 4: Evaluation & Analysis (Week 4, Days 22-28)
+
+### Day 22-23: Multi-Seed Evaluation (Both Approaches)
+- [ ] Create `scripts/evaluation/run_five_seeds.py`
+  - [ ] **Dual-task models**: Train 5 seeds [42, 123, 456, 789, 1011]
+    - [ ] Each: 50k steps, save best checkpoint
+    - [ ] Evaluate: Receiver (top-1/3/5), Shot (F1/AUROC/AUPRC)
+  - [ ] **Multi-class models**: Train 5 seeds [42, 123, 456, 789, 1011]
+    - [ ] Each: 30k steps, save best checkpoint
+    - [ ] Evaluate: Accuracy, Macro F1, Per-class F1, Confusion Matrix
+- [ ] Compute statistics: mean ± std across 5 runs
+- [ ] Statistical significance tests:
+  - [ ] **Dual-task**: t-test GATv2+D2 vs MLP baseline (receiver top-3)
+  - [ ] **Multi-class**: t-test GATv2+D2 vs MLP baseline (Macro F1)
+  - [ ] **Cross-approach**: Compare dual-task shot F1 vs multi-class shot F1
+- [ ] Save results:
+  - [ ] `results/five_seed_evaluation_dualtask.json`
+  - [ ] `results/five_seed_evaluation_multiclass.json`
+
+**Reporting Format**:
+```
+Dual-task:
+  Receiver Top-3: 63.7% ± 2.0%
+  Shot F1: 0.59 ± 0.03
+  Shot AUROC: 0.78 ± 0.02
+
+Multi-class:
+  Accuracy: 65.2% ± 1.8%
+  Macro F1: 0.62 ± 0.02
+  Goal F1: 0.22 ± 0.04
+  Shot F1: 0.58 ± 0.03
+  Clearance F1: 0.76 ± 0.02
+  Possession F1: 0.79 ± 0.01
+```
+
+**Success Criteria**:
+- ✅ Std dev < 3% for all metrics (reproducible results)
+- ✅ p < 0.05 for GATv2+D2 vs baselines (statistically significant improvement)
+- ✅ Dual-task shot F1 ≈ Multi-class shot F1 (cross-validation of approaches)
+
+---
+
+### Day 24: Dual-task vs Multi-class Comparison
+- [ ] Create `scripts/analysis/compare_approaches.py`
+  - [ ] **Quantitative Comparison**:
+    - [ ] Shot prediction agreement: % where dual-task & multi-class agree
+    - [ ] Shot F1 comparison: Dual-task (binary) vs Multi-class (shot class)
+    - [ ] Confusion analysis: Where do approaches disagree?
+  - [ ] **Use Case Analysis**:
+    - [ ] Dual-task strength: Better for receiver-specific tactics (set plays)
+    - [ ] Multi-class strength: Better for holistic outcome understanding
+    - [ ] Computational cost: Training time, inference speed
+  - [ ] **Interpretability**:
+    - [ ] Dual-task: Clear causal chain (receiver → shot)
+    - [ ] Multi-class: Direct outcome prediction (no intermediate steps)
+- [ ] Create visualization: `scripts/visualization/plot_approach_comparison.py`
+  - [ ] Side-by-side confusion matrices
+  - [ ] Venn diagram: Shot predictions overlap
+  - [ ] Per-corner case studies: Where approaches differ
+- [ ] Document findings: `docs/DUAL_VS_MULTICLASS_COMPARISON.md`
+
+**Key Research Questions**:
+- Which approach is better for coaching? (Hypothesis: Dual-task, explains "why")
+- Which approach is better for betting? (Hypothesis: Multi-class, direct outcomes)
+- Can we ensemble both approaches? (Hypothesis: Yes, +2-3% performance)
+
+**Success Criteria**:
+- ✅ Clear use case recommendations for each approach
+- ✅ Shot F1 difference < 5% (cross-validation of methods)
+- ✅ Identified specific corner scenarios where approaches disagree
+
+---
+
+### Day 25-26: Qualitative Analysis
 - [ ] Create `scripts/visualization/visualize_attention.py`
-  - [ ] Select 10 correct receiver predictions (high confidence)
-  - [ ] Select 10 incorrect receiver predictions (failures)
-  - [ ] For each:
-    - [ ] Plot pitch with player positions (colored by team)
-    - [ ] Overlay attention edges (thickness = attention weight)
-    - [ ] Highlight predicted receiver (star)
-    - [ ] Show true receiver (circle)
+  - [ ] **Dual-task model**:
+    - [ ] Select 10 correct receiver predictions (high confidence)
+    - [ ] Select 10 incorrect receiver predictions (failures)
+    - [ ] Plot pitch with attention edges (thickness = weight)
+  - [ ] **Multi-class model**:
+    - [ ] Select 5 correct Goal predictions (rare, interesting)
+    - [ ] Select 10 Shot vs Clearance confusion cases
+    - [ ] Visualize attention patterns for each outcome class
   - [ ] Save to `data/results/attention_heatmaps/`
 - [ ] Create `scripts/visualization/analyze_errors.py`
-  - [ ] Categorize receiver errors by position:
-    - [ ] Striker errors: % of strikers misclassified
-    - [ ] Midfielder errors: % of midfielders misclassified
-    - [ ] Defender errors: % of defenders misclassified
-  - [ ] Categorize shot errors by corner type:
-    - [ ] In-swinging vs out-swinging
-    - [ ] Short vs long corners
-  - [ ] Analyze correlation: Does low receiver confidence → low shot accuracy?
+  - [ ] **Dual-task errors**:
+    - [ ] Receiver errors by position (striker/midfielder/defender)
+    - [ ] Shot errors by corner type (in-swing/out-swing/short/long)
+    - [ ] Correlation: Low receiver confidence → low shot accuracy?
+  - [ ] **Multi-class errors**:
+    - [ ] Confusion matrix analysis: Most common misclassifications
+    - [ ] Goal false negatives: Missed goal predictions (critical failures)
+    - [ ] Clearance vs Possession: Why do models confuse these?
+- [ ] Create confusion matrix visualization: `scripts/visualization/plot_confusion_matrix.py`
+  - [ ] Multi-class confusion matrix (4×4 heatmap)
+  - [ ] Per-class precision-recall curves
+  - [ ] Error breakdown by outcome class
 - [ ] Document findings: `docs/ERROR_ANALYSIS.md`
 
 **Key Insights to Find**:
-- Which positions are hardest to predict? (Hypothesis: midfielders, due to positional ambiguity)
-- Does the model attend to correct players? (Hypothesis: yes, attention focuses on players near ball landing zone)
-- What types of corners cause failures? (Hypothesis: short corners, crowded penalty box)
+- **Dual-task**: Which positions hardest to predict? Attention interpretability?
+- **Multi-class**: Which outcome transitions cause confusion? (e.g., Shot → Clearance)
+- **Cross-model**: Do both models fail on same corners? (systematic failures)
 
 **Success Criteria**:
 - ✅ Clear patterns in error analysis (not random failures)
 - ✅ Attention visualizations interpretable by soccer experts
+- ✅ Actionable insights for model improvement
 
 ---
 
-### Day 26-27: Paper Figures & Tables
+### Day 27-28: Paper Figures & Tables
 - [ ] Create `notebooks/04_paper_figures.ipynb`
-  - [ ] **Table 1**: Receiver Prediction Comparison
+  - [ ] **Table 1**: Receiver Prediction Comparison (Dual-task)
     - [ ] Rows: Random, MLP, GCN, GAT, GATv2+D2, GATv2+D2+PosEmb, TacticAI
     - [ ] Columns: Top-1, Top-3, Top-5, Params, Features
-  - [ ] **Table 2**: Shot Prediction Comparison
+  - [ ] **Table 2**: Shot Prediction Comparison (Dual-task)
     - [ ] Rows: Baseline, Unconditional, Conditional, TacticAI
     - [ ] Columns: F1, Precision, Recall, AUROC, AUPRC
+  - [ ] **Table 3**: Multi-Class Outcome Comparison (NEW)
+    - [ ] Rows: Random, XGBoost, MLP, GCN, GAT, GATv2+D2, GATv2+D2+PosEmb
+    - [ ] Columns: Accuracy, Macro F1, Goal F1, Shot F1, Clear F1, Poss F1
+  - [ ] **Table 4**: Dual-task vs Multi-class Summary (NEW)
+    - [ ] Rows: Dual-task, Multi-class, Ensemble
+    - [ ] Columns: Best for, Shot F1, Training time, Interpretability
   - [ ] **Figure 1**: Attention Heatmap Examples
-    - [ ] 2×2 grid: 2 correct predictions, 2 failures
+    - [ ] 2×2 grid: 2 correct predictions, 2 failures (dual-task)
     - [ ] Professional broadcast-style pitch rendering
   - [ ] **Figure 2**: Precision-Recall Curves
-    - [ ] Compare: Baseline, Unconditional, Conditional
+    - [ ] Compare: Baseline, Unconditional, Conditional (dual-task)
     - [ ] Highlight F1-optimal threshold
   - [ ] **Figure 3**: Learning Curves
-    - [ ] Top-3 accuracy over training steps (train vs val)
-    - [ ] F1 score over training steps (train vs val)
+    - [ ] Dual-task: Top-3 accuracy, Shot F1 over steps
+    - [ ] Multi-class: Accuracy, Macro F1 over steps
   - [ ] **Figure 4**: Ablation Study Bar Chart
-    - [ ] Top-3 accuracy for: GCN, GAT, GATv2+D2, GATv2+D2+PosEmb
+    - [ ] Dual-task: Top-3 accuracy (GCN/GAT/GATv2+D2/+PosEmb)
+    - [ ] Multi-class: Macro F1 (GCN/GAT/GATv2+D2/+PosEmb)
+  - [ ] **Figure 5**: Multi-Class Confusion Matrix (NEW)
+    - [ ] 4×4 heatmap (Goal/Shot/Clearance/Possession)
+    - [ ] Per-class F1 scores annotated
+  - [ ] **Figure 6**: Dual-task vs Multi-class Comparison (NEW)
+    - [ ] Shot prediction Venn diagram (overlap analysis)
+    - [ ] Bar chart: Metrics comparison side-by-side
 - [ ] Export figures to `results/paper_figures/`
 
 **Figure Quality Requirements**:
 - ✅ Publication-ready: 300 DPI, vector graphics (SVG/PDF)
 - ✅ Clear labels, legends, axis titles
 - ✅ Consistent color scheme across all figures
+- ✅ Color-blind friendly palettes (viridis, colorblind-safe)
 
 ---
 
-### Day 28: Final Report & Documentation
+### Day 29: Final Report & Documentation
 - [ ] Create `docs/FINAL_REPORT.md`
-  - [ ] **Executive Summary**: 1 paragraph
-  - [ ] **Methodology**: Architecture, training procedure, hyperparameters
-  - [ ] **Results**: Tables 1-2, Figures 1-4
+  - [ ] **Executive Summary**: 1 paragraph (research question, dual approaches, key findings)
+  - [ ] **Methodology**:
+    - [ ] Dual-task architecture: Receiver + Shot prediction
+    - [ ] Multi-class architecture: 4-class outcome classification
+    - [ ] Training procedures, hyperparameters, ablations
+  - [ ] **Results**: Tables 1-4, Figures 1-6
   - [ ] **Key Findings**:
-    - [ ] Performance gap: 10-15% lower than TacticAI (due to missing velocities)
-    - [ ] D2 symmetry: +6% top-3 accuracy (even without velocities)
-    - [ ] Positional embeddings: +2.4% top-3 accuracy (compensate for missing velocities)
-    - [ ] Conditional shot prediction: +5% F1 (receiver info helps)
-  - [ ] **Limitations**: Static data, small dataset (15% of TacticAI's size)
-  - [ ] **Future Work**: Velocity estimation, larger datasets, multi-task learning
+    - [ ] **Dual-task results**:
+      - [ ] Receiver Top-3: 66% (vs TacticAI 78%)
+      - [ ] Shot F1: 0.61 (vs TacticAI 0.71)
+      - [ ] Conditional prediction: +5% F1 (receiver bottleneck validated)
+    - [ ] **Multi-class results**:
+      - [ ] Accuracy: 67%, Macro F1: 0.64
+      - [ ] Goal F1: 0.25 (very hard from static data)
+      - [ ] Shot/Clearance/Possession: F1 0.58-0.79 (feasible)
+    - [ ] **Comparison findings**:
+      - [ ] Dual-task better for coaching (explains "why" via receiver)
+      - [ ] Multi-class better for holistic understanding (direct outcomes)
+      - [ ] Shot F1 similar (~0.60) - cross-validates both approaches
+    - [ ] **Architecture insights**:
+      - [ ] D2 symmetry: +6% receiver top-3, +3% multi-class accuracy
+      - [ ] Positional embeddings: +2.4% top-3 (compensate for missing velocities)
+      - [ ] Performance gap: 10-15% lower than TacticAI (velocities critical)
+  - [ ] **Limitations**:
+    - [ ] Static data (no velocities)
+    - [ ] Small dataset (15% of TacticAI's size)
+    - [ ] Goal prediction very challenging (1.3% class)
+  - [ ] **Future Work**:
+    - [ ] Velocity estimation from static frames
+    - [ ] Ensemble dual-task + multi-class (+2-3% expected)
+    - [ ] Hierarchical multi-class (coarse → fine outcomes)
+    - [ ] Larger datasets, temporal modeling
 - [ ] Create `README_TACTICAI.md` in project root
   - [ ] Quick start guide
   - [ ] Model download links
@@ -576,7 +817,7 @@ Shot AUROC: 0.78 ± 0.02
 
 ---
 
-### Shot Prediction
+### Shot Prediction (Binary)
 
 | Model | F1 | Precision | Recall | AUROC | AUPRC |
 |-------|-----|-----------|--------|-------|-------|
@@ -586,6 +827,30 @@ Shot AUROC: 0.78 ± 0.02
 | TacticAI (reference) | 0.71 | ~0.69 | ~0.73 | ~0.85 | ~0.55 |
 
 **Gap**: 10% lower F1, 5% lower AUROC (expected due to missing velocities)
+
+---
+
+### Multi-Class Outcome Prediction (4-class: Goal/Shot/Clearance/Possession)
+
+| Model | Accuracy | Macro F1 | Goal F1 | Shot F1 | Clear F1 | Poss F1 | Params |
+|-------|----------|----------|---------|---------|----------|---------|--------|
+| Random | 25.0% | 0.25 | 0.25 | 0.25 | 0.25 | 0.25 | 0 |
+| XGBoost Baseline | 52% ± 3% | 0.48 ± 0.03 | 0.08 ± 0.05 | 0.42 ± 0.04 | 0.61 ± 0.03 | 0.65 ± 0.02 | N/A |
+| MLP Baseline | 58% ± 2% | 0.53 ± 0.02 | 0.12 ± 0.06 | 0.48 ± 0.03 | 0.67 ± 0.02 | 0.70 ± 0.02 | 50k |
+| GCN | 60% ± 2% | 0.56 ± 0.02 | 0.15 ± 0.05 | 0.52 ± 0.03 | 0.70 ± 0.02 | 0.73 ± 0.02 | 25k |
+| GAT (no D2) | 62% ± 2% | 0.59 ± 0.02 | 0.18 ± 0.04 | 0.55 ± 0.03 | 0.73 ± 0.02 | 0.76 ± 0.02 | 28k |
+| **GATv2 + D2** | **65% ± 2%** | **0.62 ± 0.02** | **0.22 ± 0.04** | **0.59 ± 0.02** | **0.76 ± 0.02** | **0.79 ± 0.01** | 30k |
+| GATv2 + D2 + PosEmb | **67% ± 1%** | **0.64 ± 0.02** | **0.25 ± 0.03** | **0.62 ± 0.02** | **0.78 ± 0.01** | **0.81 ± 0.01** | 32k |
+
+**Class Distribution**: Goal (1.3%), Shot (15.8%), Clearance (39.5%), Possession (43.4%)
+
+**Key Insights**:
+- Goal class extremely hard (F1 ~0.25) due to rarity (1.3%)
+- Shot/Clearance/Possession benefit from graph structure (+10-15% F1)
+- Macro F1 heavily penalized by rare Goal class
+- Weighted F1 likely more appropriate metric for imbalanced data
+
+**Gap**: Multi-class is harder than binary (Macro F1 0.64 vs Binary F1 0.61) due to class imbalance
 
 ---
 
@@ -614,19 +879,26 @@ Shot AUROC: 0.78 ± 0.02
 
 ## Research Contribution Statement
 
-**Title**: *Predicting Corner Kick Outcomes from Static Player Positions: A TacticAI Replication on Open Data*
+**Title**: *Predicting Corner Kick Outcomes from Static Player Positions: Dual-task Receiver and Shot Prediction with Multi-class Outcome Analysis*
+
+**Research Question**: Can static player positioning (without velocities) predict corner kick outcomes through dual-task learning (receiver + shot) and multi-class classification (Goal/Shot/Clearance/Possession)?
 
 **Key Contributions**:
 1. ✅ First open-data replication of TacticAI's geometric deep learning approach
 2. ✅ Quantification of velocity feature importance (10-15% performance gap)
-3. ✅ D2 equivariance on static data (+6% top-3 accuracy)
+3. ✅ D2 equivariance on static data (+6% top-3 receiver accuracy)
 4. ✅ Learned positional embeddings compensate for missing velocities (+2.4% top-3)
 5. ✅ Conditional shot prediction validates receiver bottleneck hypothesis (+5% F1)
+6. ✅ **Multi-class outcome analysis**: Direct comparison of dual-task vs. multi-class approaches
+   - Dual-task (receiver + shot): Better for specific predictions (receiver top-3: 66%, shot F1: 0.61)
+   - Multi-class (Goal/Shot/Clearance/Poss): Better for holistic outcome understanding (Macro F1: 0.64)
+7. ✅ **Class imbalance insights**: Goal prediction from static positioning extremely challenging (F1 ~0.25)
 
 **Positioning**:
 - Primary: "Methodological replication with ablations" (ML/sports analytics)
-- Secondary: "Data efficiency analysis" (what's possible with limited tracking data)
-- Tertiary: "Open-source baseline" (enable future research)
+- Secondary: "Dual-task vs. Multi-class learning comparison" (machine learning methodology)
+- Tertiary: "Data efficiency analysis" (what's possible with limited tracking data)
+- Quaternary: "Open-source baseline" (enable future research)
 
 ---
 
@@ -653,22 +925,29 @@ Shot AUROC: 0.78 ± 0.02
 - [ ] `src/training/metrics.py`
 
 **Scripts**:
-- [ ] `scripts/training/train_baseline.py`
+- [ ] `scripts/training/train_baseline.py` (dual-task: receiver + shot)
+- [ ] `scripts/training/train_outcome_baselines.py` (multi-class: Goal/Shot/Clear/Poss)
 - [ ] `scripts/training/train_receiver.py`
 - [ ] `scripts/training/train_shot.py`
 - [ ] `scripts/training/train_two_stage.py`
+- [ ] `scripts/training/train_outcome_gnn.py` (GNN multi-class models)
 - [ ] `scripts/training/hyperparameter_search.py`
 - [ ] `scripts/evaluation/run_five_seeds.py`
 - [ ] `scripts/evaluation/evaluate_receiver.py`
 - [ ] `scripts/evaluation/evaluate_shot.py`
+- [ ] `scripts/evaluation/evaluate_outcomes.py` (multi-class evaluation)
 - [ ] `scripts/visualization/visualize_attention.py`
 - [ ] `scripts/visualization/analyze_errors.py`
+- [ ] `scripts/visualization/plot_confusion_matrix.py` (multi-class confusion)
 
 **Documentation**:
-- [ ] `docs/BASELINE_RESULTS.md`
+- [ ] `docs/BASELINE_RESULTS.md` (dual-task baselines)
+- [ ] `docs/OUTCOME_BASELINE_RESULTS.md` (multi-class baselines)
 - [ ] `docs/RECEIVER_ABLATIONS.md`
 - [ ] `docs/SHOT_ABLATIONS.md`
+- [ ] `docs/OUTCOME_ABLATIONS.md` (multi-class ablations)
 - [ ] `docs/ERROR_ANALYSIS.md`
+- [ ] `docs/DUAL_VS_MULTICLASS_COMPARISON.md` (compare approaches)
 - [ ] `docs/FINAL_REPORT.md`
 - [ ] `README_TACTICAI.md`
 
