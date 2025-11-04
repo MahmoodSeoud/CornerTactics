@@ -31,14 +31,18 @@ from src.data_loader import CornerDataset
 from src.graph_builder import CornerGraph
 
 
-# Outcome class mapping for multi-class classification
+# Outcome class mapping for multi-class classification (3-class)
+# Goal merged into Shot to create "Dangerous" class (~18.2%)
 OUTCOME_CLASS_MAPPING = {
-    "Goal": 0,          # ~1.3% (rare)
-    "Shot": 1,          # ~16.9% (minority)
-    "Clearance": 2,     # ~52.0% (common)
-    "Possession": 3,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
-    "Loss": 3           # Merged into Possession
+    "Goal": 0,          # Merged with Shot → Dangerous (~1.3%)
+    "Shot": 0,          # Dangerous (~16.9%) → Combined ~18.2%
+    "Clearance": 1,     # ~52.0% (common)
+    "Possession": 2,    # ~10.5% + Loss ~19.4% = ~29.9% (merged)
+    "Loss": 2           # Merged into Possession
 }
+
+# Class names for 3-class problem
+OUTCOME_CLASS_NAMES = ["Dangerous", "Clearance", "Possession"]
 
 
 class ReceiverCornerDataset(CornerDataset):

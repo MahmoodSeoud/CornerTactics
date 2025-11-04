@@ -987,18 +987,17 @@ class RandomOutcomeBaseline(nn.Module):
     """
     Random outcome prediction baseline for multi-class classification.
 
-    Predicts uniform random probabilities over 4 outcome classes:
-    - 0: Goal (~1.3%)
-    - 1: Shot (~15.8%)
-    - 2: Clearance (~39.5%)
-    - 3: Possession (~43.4%)
+    Predicts uniform random probabilities over 3 outcome classes:
+    - 0: Dangerous (Goal + Shot) (~18.2%)
+    - 1: Clearance (~52.0%)
+    - 2: Possession (~29.9%)
 
     Expected performance (sanity check):
-    - Accuracy: 25% (1/4 uniform random)
-    - Macro F1: ~0.25
+    - Accuracy: 33% (1/3 uniform random)
+    - Macro F1: ~0.33
     """
 
-    def __init__(self, num_classes: int = 4):
+    def __init__(self, num_classes: int = 3):
         """
         Initialize random outcome baseline.
 
@@ -1047,9 +1046,9 @@ class XGBoostOutcomeBaseline:
     - Spatial features: defensive line height, attacking positioning
     - Density features: players in box, goal area crowding
 
-    Expected performance (TacticAI plan):
-    - Accuracy: 50-60%
-    - Macro F1: > 0.45
+    Expected performance (3-class):
+    - Accuracy: 55-65%
+    - Macro F1: > 0.50
     """
 
     def __init__(self, max_depth: int = 6, n_estimators: int = 500,
@@ -1074,7 +1073,7 @@ class XGBoostOutcomeBaseline:
         self.learning_rate = learning_rate
         self.random_state = random_state
         self.model = None
-        self.num_classes = 4  # Goal, Shot, Clearance, Possession
+        self.num_classes = 3  # Dangerous, Clearance, Possession
 
         # StatsBomb pitch dimensions
         self.pitch_length = 120.0
@@ -1258,18 +1257,18 @@ class MLPOutcomeBaseline(nn.Module):
     Flattens all player features and uses a 3-layer MLP to predict outcome.
     Architecture:
     - Flatten: [batch, 22 nodes × 14 features] = [batch, 308]
-    - MLP: 308 → 512 → 256 → 128 → 4
+    - MLP: 308 → 512 → 256 → 128 → 3
     - Dropout: 0.25
     - Activation: ReLU
 
-    Expected performance (TacticAI plan):
-    - Accuracy: 55-65%
-    - Macro F1: > 0.50
+    Expected performance (3-class):
+    - Accuracy: 60-70%
+    - Macro F1: > 0.55
     """
 
     def __init__(self, num_features: int = 14, num_players: int = 22,
                  hidden_dim1: int = 512, hidden_dim2: int = 256,
-                 hidden_dim3: int = 128, num_classes: int = 4,
+                 hidden_dim3: int = 128, num_classes: int = 3,
                  dropout: float = 0.25):
         """
         Initialize MLP outcome baseline.
@@ -1437,7 +1436,7 @@ def evaluate_outcome_baseline(model, data_loader, device: str = 'cuda') -> Dict[
 
     # Per-class F1 scores
     per_class_f1 = f1_score(all_labels, all_preds, average=None, zero_division=0)
-    class_names = ['Goal', 'Shot', 'Clearance', 'Possession']
+    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class
     for i, name in enumerate(class_names):
         metrics[f'{name.lower()}_f1'] = per_class_f1[i] if i < len(per_class_f1) else 0.0
 

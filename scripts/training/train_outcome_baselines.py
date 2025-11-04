@@ -39,12 +39,12 @@ from src.models.baselines import (
 def print_dataset_statistics(dataset, train_loader, val_loader, test_loader):
     """Print comprehensive dataset statistics."""
     print("\n" + "=" * 80)
-    print("DATASET STATISTICS")
+    print("DATASET STATISTICS (3-CLASS)")
     print("=" * 80)
 
     # Outcome class distribution
     all_outcomes = [data.outcome_class_label.item() for data in dataset.data_list]
-    class_names = ['Goal', 'Shot', 'Clearance', 'Possession']
+    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class (Goal+Shot merged)
 
     print("\nOutcome class distribution:")
     for class_id, class_name in enumerate(class_names):
@@ -64,12 +64,12 @@ def print_dataset_statistics(dataset, train_loader, val_loader, test_loader):
 def train_random_baseline(test_loader, device='cpu'):
     """Evaluate random baseline (no training needed)."""
     print("\n" + "=" * 80)
-    print("RANDOM OUTCOME BASELINE")
+    print("RANDOM OUTCOME BASELINE (3-CLASS)")
     print("=" * 80)
-    print("Expected: 25% accuracy (uniform random over 4 classes)")
+    print("Expected: 33% accuracy (uniform random over 3 classes)")
     print("=" * 80 + "\n")
 
-    model = RandomOutcomeBaseline(num_classes=4)
+    model = RandomOutcomeBaseline(num_classes=3)
     model.to(device)
 
     # Evaluate on test set
@@ -83,17 +83,17 @@ def train_random_baseline(test_loader, device='cpu'):
     print(f"  Weighted F1:     {metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Goal', 'Shot', 'Clearance', 'Possession']
+    class_names = ['Dangerous', 'Clearance', 'Possession']  # 3-class
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(metrics['confusion_matrix'])
-    print("  Predicted:  Goal  Shot  Clear  Poss")
+    print("  Predicted:  Danger  Clear  Poss")
     for i, actual in enumerate(class_names):
-        row_str = "  " + actual[:5].ljust(9) + ": "
-        row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(4))
+        row_str = "  " + actual[:6].ljust(10) + ": "
+        row_str += "  ".join(f"{conf_matrix[i, j]:5d}" for j in range(3))
         print(row_str)
 
     return metrics
@@ -102,9 +102,9 @@ def train_random_baseline(test_loader, device='cpu'):
 def train_xgboost_baseline(train_loader, val_loader, test_loader, device='cpu'):
     """Train XGBoost baseline with graph-level features."""
     print("\n" + "=" * 80)
-    print("XGBOOST OUTCOME BASELINE")
+    print("XGBOOST OUTCOME BASELINE (3-CLASS)")
     print("=" * 80)
-    print("Expected: 50-60% accuracy, Macro F1 > 0.45")
+    print("Expected: 55-65% accuracy, Macro F1 > 0.50")
     print("Graph-level features: position stats, team balance, zonal density")
     print("=" * 80 + "\n")
 
@@ -153,17 +153,17 @@ def train_xgboost_baseline(train_loader, val_loader, test_loader, device='cpu'):
     print(f"  Weighted F1:     {test_metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Goal', 'Shot', 'Clearance', 'Possession']
+    class_names = ['Dangerous', 'Clearance', 'Possession']
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {test_metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(test_metrics['confusion_matrix'])
-    print("  Predicted:  Goal  Shot  Clear  Poss")
+    print("  Predicted:  Danger  Clear  Poss")
     for i, actual in enumerate(class_names):
         row_str = "  " + actual[:5].ljust(9) + ": "
-        row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(4))
+        row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(3))
         print(row_str)
 
     return test_metrics
@@ -172,10 +172,10 @@ def train_xgboost_baseline(train_loader, val_loader, test_loader, device='cpu'):
 def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num_steps=15000):
     """Train MLP baseline with flattened player positions."""
     print("\n" + "=" * 80)
-    print("MLP OUTCOME BASELINE")
+    print("MLP OUTCOME BASELINE (3-CLASS)")
     print("=" * 80)
-    print("Expected: 55-65% accuracy, Macro F1 > 0.50")
-    print("Architecture: 308 → 512 → 256 → 128 → 4")
+    print("Expected: 60-70% accuracy, Macro F1 > 0.55")
+    print("Architecture: 308 → 512 → 256 → 128 → 3")
     print(f"Training for {num_steps} steps with class-weighted loss")
     print("=" * 80 + "\n")
 
@@ -186,7 +186,7 @@ def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num
         hidden_dim1=512,
         hidden_dim2=256,
         hidden_dim3=128,
-        num_classes=4,
+        num_classes=3,  # 3-class: Dangerous, Clearance, Possession
         dropout=0.25
     )
 
@@ -222,17 +222,17 @@ def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num
     print(f"  Weighted F1:     {test_metrics['weighted_f1']:.3f}")
 
     print(f"\nPer-class F1 scores:")
-    class_names = ['Goal', 'Shot', 'Clearance', 'Possession']
+    class_names = ['Dangerous', 'Clearance', 'Possession']
     for name in class_names:
         f1_key = f'{name.lower()}_f1'
         print(f"  {name:12s}: {test_metrics[f1_key]:.3f}")
 
     print(f"\nConfusion Matrix:")
     conf_matrix = np.array(test_metrics['confusion_matrix'])
-    print("  Predicted:  Goal  Shot  Clear  Poss")
+    print("  Predicted:  Danger  Clear  Poss")
     for i, actual in enumerate(class_names):
         row_str = "  " + actual[:5].ljust(9) + ": "
-        row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(4))
+        row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(3))
         print(row_str)
 
     return test_metrics, history, model
@@ -347,18 +347,18 @@ def main():
 
     # Print summary
     print("\n" + "=" * 80)
-    print("SUMMARY")
+    print("SUMMARY (3-CLASS: DANGEROUS/CLEARANCE/POSSESSION)")
     print("=" * 80)
     print(f"\nModel Performance (Test Set):")
-    print(f"{'Model':<15} {'Accuracy':<12} {'Macro F1':<12} {'Goal F1':<12} {'Shot F1':<12}")
-    print("-" * 63)
+    print(f"{'Model':<15} {'Accuracy':<12} {'Macro F1':<12} {'Danger F1':<12} {'Clear F1':<12}")
+    print("-" * 67)
 
     for model_name, metrics in results.items():
         print(f"{model_name.capitalize():<15} "
               f"{metrics['accuracy']*100:>6.1f}%      "
               f"{metrics['macro_f1']:>6.3f}       "
-              f"{metrics.get('goal_f1', 0.0):>6.3f}       "
-              f"{metrics.get('shot_f1', 0.0):>6.3f}")
+              f"{metrics.get('dangerous_f1', 0.0):>6.3f}       "
+              f"{metrics.get('clearance_f1', 0.0):>6.3f}")
 
     print("\n" + "=" * 80)
     print("✅ TRAINING COMPLETE")
