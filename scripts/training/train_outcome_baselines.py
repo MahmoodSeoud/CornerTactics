@@ -36,6 +36,67 @@ from src.models.baselines import (
 )
 
 
+def save_feature_importance(model, output_dir: Path):
+    """
+    Save XGBoost feature importance to JSON and create basic plot.
+
+    Args:
+        model: Trained XGBoostOutcomeBaseline model
+        output_dir: Directory to save outputs
+    """
+    import matplotlib.pyplot as plt
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get feature importance
+    try:
+        booster = model.model
+        importance_dict = booster.get_score(importance_type='gain')
+
+        # Sort by importance
+        sorted_importance = dict(sorted(importance_dict.items(), key=lambda x: x[1], reverse=True))
+
+        # Save to JSON
+        json_path = output_dir / "feature_importance.json"
+        with open(json_path, 'w') as f:
+            json.dump(sorted_importance, f, indent=2)
+        print(f"✓ Saved feature importance to {json_path}")
+
+        # Create basic plot
+        top_n = min(20, len(sorted_importance))
+        top_features = list(sorted_importance.items())[:top_n]
+        features = [f[0] for f in top_features]
+        scores = [f[1] for f in top_features]
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.barh(range(len(features)), scores, color='steelblue', alpha=0.8)
+        ax.set_yticks(range(len(features)))
+        ax.set_yticklabels(features, fontsize=9)
+        ax.set_xlabel('Feature Importance (Gain)', fontsize=11, fontweight='bold')
+        ax.set_title(f'Top {top_n} XGBoost Features', fontsize=13, fontweight='bold')
+        ax.invert_yaxis()
+        ax.grid(axis='x', alpha=0.3)
+
+        plt.tight_layout()
+        plot_path = output_dir / "feature_importance_basic.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved basic importance plot to {plot_path}")
+        plt.close()
+
+        # Print top 10
+        print("\nTop 10 Most Important Features:")
+        for i, (feature, score) in enumerate(list(sorted_importance.items())[:10], 1):
+            print(f"  {i:2d}. {feature:40s}: {score:8.2f}")
+
+        print(f"\nRun visualization script to create pitch-based visualizations:")
+        print(f"  python scripts/visualization/visualize_feature_importance.py \\")
+        print(f"      --importance-path {json_path} \\")
+        print(f"      --output-dir {output_dir / 'visualizations'}")
+
+    except Exception as e:
+        print(f"⚠️  Could not extract feature importance: {e}")
+
+
 def print_dataset_statistics(dataset, train_loader, val_loader, test_loader):
     """Print comprehensive dataset statistics."""
     print("\n" + "=" * 80)
@@ -166,7 +227,7 @@ def train_xgboost_baseline(train_loader, val_loader, test_loader, device='cpu'):
         row_str += "  ".join(f"{conf_matrix[i, j]:4d}" for j in range(3))
         print(row_str)
 
-    return test_metrics
+    return model, test_metrics
 
 
 def train_mlp_baseline(train_loader, val_loader, test_loader, device='cuda', num_steps=15000):
@@ -321,7 +382,12 @@ def main():
         results['random'] = train_random_baseline(test_loader, args.device)
 
     if args.models in ['all', 'xgboost']:
-        results['xgboost'] = train_xgboost_baseline(train_loader, val_loader, test_loader, args.device)
+        xgboost_model, xgboost_metrics = train_xgboost_baseline(train_loader, val_loader, test_loader, args.device)
+        results['xgboost'] = xgboost_metrics
+
+        # Save feature importance
+        print("\nExtracting and saving feature importance...")
+        save_feature_importance(xgboost_model, output_dir=Path(args.output_dir))
 
     if args.models in ['all', 'mlp']:
         test_metrics, history, model = train_mlp_baseline(
