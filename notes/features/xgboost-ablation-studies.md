@@ -130,3 +130,65 @@ results/ablation_studies/
 - Created feature branch: `feature/xgboost-ablation-studies`
 - Reviewed existing baseline implementation
 - Documented dataset specifications and experiment designs
+- Implemented all three experiments
+- Fixed bugs (boolean operations, attribute names)
+- Successfully ran all experiments via SLURM
+- Generated comprehensive results summary
+
+## Experiment Results (Completed November 8, 2025)
+
+### Experiment 1: Temporal Augmentation Impact
+**Result**: No benefit from temporal augmentation
+- No augmentation (195 graphs): 54.4% accuracy, 0.410 Macro F1, 0.130 Shot F1
+- With augmentation (871 graphs): 54.2% accuracy, 0.403 Macro F1, 0.090 Shot F1
+- **Change**: -0.2pp accuracy, -0.007 Macro F1, -0.040 Shot F1
+
+**Interpretation**: Corner kick moment (t=0s) captures most predictive information. Temporal augmentation adds noise rather than signal for XGBoost.
+
+### Experiment 2: Feature Selection Impact
+**Result**: Modest degradation with 69% feature reduction
+- All 22 players (29 features): 54.2% accuracy, 0.403 Macro F1, 0.090 Shot F1
+- 5 closest players (9 features): 51.5% accuracy, 0.382 Macro F1, 0.165 Shot F1
+- **Change**: -2.6pp accuracy, -0.021 Macro F1, +0.075 Shot F1
+
+**Interpretation**: Local spatial patterns predict shot outcomes better. Distant players contribute contextual information for clearance/possession.
+
+### Experiment 3: Feature Importance
+**Result**: Distance and density metrics dominate (73% of importance)
+
+Top 10 features:
+1. Mean Distance To Ball (7.2)
+2. Std Distance To Ball (7.0)
+3. Player Density Penalty (6.3)
+4. Player Density 6Yard (5.1)
+5. Ball Landing Zone X (4.7)
+6. Std Distance To Goal (4.3)
+7. Mean Distance To Goal (4.0)
+8. Min Distance To Goal (2.8)
+9. Mean Angle To Goal (1.1)
+10. Std Angle To Goal (1.0)
+
+**Interpretation**: XGBoost relies on simple geometric relationships. Room for improvement with GNNs that can learn complex relational patterns.
+
+## Key Findings
+
+1. **Temporal augmentation doesn't help XGBoost** - Use single-frame data
+2. **Local patterns predict shots, global context predicts clearances**
+3. **Simple geometric features suffice** - Distance/density dominate
+4. **Class imbalance is a problem** - Shot F1 very low (0.09-0.17)
+
+## Deliverables
+
+All results saved to `results/ablation_studies/`:
+- 3 LaTeX tables ready for paper inclusion
+- Feature importance visualization (PNG)
+- JSON results for programmatic access
+- Markdown interpretations
+- Comprehensive results summary
+
+## Next Steps
+
+1. Address class imbalance (SMOTE, class weights, focal loss)
+2. Try RNN/LSTM for temporal augmentation
+3. Implement GNN baselines
+4. Consider dual-model architecture (local vs global)
