@@ -211,8 +211,8 @@ def extract_features_and_labels(graphs: List, task: str = 'outcome') -> Tuple[np
             features = aggregate_node_features_to_graph(node_features)
 
             # Label: outcome class (0=Shot, 1=Clearance, 2=Possession)
-            if graph.outcome is not None:
-                label = outcome_to_class_id(graph.outcome)
+            if hasattr(graph, 'outcome_label') and graph.outcome_label is not None:
+                label = outcome_to_class_id(graph.outcome_label)
             else:
                 continue  # Skip if no outcome label
         else:
@@ -776,8 +776,8 @@ def extract_5_closest_players_features(graphs: List, task: str = 'outcome') -> T
             features = aggregate_5_players_to_graph(closest_5_features)
 
             # Label: outcome class
-            if graph.outcome is not None:
-                label = outcome_to_class_id(graph.outcome)
+            if hasattr(graph, 'outcome_label') and graph.outcome_label is not None:
+                label = outcome_to_class_id(graph.outcome_label)
             else:
                 continue
 

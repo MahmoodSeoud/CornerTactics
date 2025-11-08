@@ -6,7 +6,7 @@
 #SBATCH --error=logs/xgb_ablation_all_%j.err
 #SBATCH --time=06:00:00
 #SBATCH --mem=24G
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=8
 
 # XGBoost Ablation Studies - All Three Experiments
 # 1. Temporal Augmentation Impact (t=0s vs 5 frames)
