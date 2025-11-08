@@ -342,12 +342,12 @@ def aggregate_node_features_to_graph(node_features: np.ndarray) -> np.ndarray:
     features.append(defensive_line_height)
 
     # Players in zones (feature 9: in_penalty_box)
-    in_penalty = node_features[:, 9]
+    in_penalty = node_features[:, 9].astype(bool)
     players_in_penalty_attacking = (in_penalty & attacking_mask).sum()
     players_in_penalty_defending = (in_penalty & defending_mask).sum()
 
     # Approximate 6-yard box (x > 114 for StatsBomb coordinates)
-    in_6yard = node_features[:, 0] > 114
+    in_6yard = (node_features[:, 0] > 114).astype(bool)
     players_in_6yard_attacking = (in_6yard & attacking_mask).sum()
     players_in_6yard_defending = (in_6yard & defending_mask).sum()
 
@@ -719,6 +719,490 @@ prediction task and suggests that {"expanding the temporal window may yield furt
     return results_t0, results_aug
 
 
+def extract_5_closest_players_features(graphs: List, task: str = 'outcome') -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Extract features for only the 5 players closest to ball landing zone.
+
+    Args:
+        graphs: List of CornerGraph objects
+        task: 'receiver' or 'outcome'
+
+    Returns:
+        Tuple of (X, y) where X has reduced features (70D for receiver, 9D for outcome)
+    """
+    X_list = []
+    y_list = []
+
+    for graph in graphs:
+        # Get ball location (use receiver location as proxy)
+        if hasattr(graph, 'ball_landing_zone') and graph.ball_landing_zone is not None:
+            ball_location = np.array(graph.ball_landing_zone)
+        elif hasattr(graph, 'receiver_location') and graph.receiver_location is not None:
+            ball_location = np.array(graph.receiver_location)
+        else:
+            # Fallback: use center of penalty box
+            ball_location = np.array([102.0, 40.0])  # StatsBomb coordinates
+
+        # Extract player positions (first 2 features are x, y)
+        node_features = graph.node_features
+        player_positions = node_features[:, :2]  # [num_nodes, 2]
+
+        # Calculate distances to ball
+        distances = np.linalg.norm(player_positions - ball_location, axis=1)
+
+        # Get indices of 5 closest players
+        closest_5_idx = np.argsort(distances)[:5]
+
+        # Extract features for these 5 players
+        closest_5_features = node_features[closest_5_idx, :]  # [5, 14]
+
+        if task == 'receiver':
+            # Flatten to 70D vector (5 players × 14 features)
+            features = closest_5_features.flatten()  # [70,]
+
+            # Pad if less than 5 players (edge case)
+            if len(closest_5_idx) < 5:
+                padding = np.zeros((5 - len(closest_5_idx)) * 14)
+                features = np.concatenate([features, padding])
+
+            # Label: receiver node index
+            if graph.receiver_node_index is not None:
+                label = graph.receiver_node_index
+            else:
+                continue
+
+        elif task == 'outcome':
+            # Aggregate 5-player features to graph level (9D)
+            features = aggregate_5_players_to_graph(closest_5_features)
+
+            # Label: outcome class
+            if graph.outcome is not None:
+                label = outcome_to_class_id(graph.outcome)
+            else:
+                continue
+
+        X_list.append(features)
+        y_list.append(label)
+
+    X = np.array(X_list)
+    y = np.array(y_list)
+
+    print(f"\nExtracted 5-closest-players {task} features:")
+    print(f"  X shape: {X.shape}")
+    print(f"  y shape: {y.shape}")
+
+    return X, y
+
+
+def aggregate_5_players_to_graph(player_features: np.ndarray) -> np.ndarray:
+    """
+    Aggregate 5-player features to graph-level features (9D).
+
+    Reduced version of aggregate_node_features_to_graph.
+
+    Args:
+        player_features: [5, 14] array
+
+    Returns:
+        graph_features: [9,] array
+    """
+    # Position statistics (features 0-1: x, y)
+    pos_mean = player_features[:, :2].mean(axis=0)  # [2]
+    pos_std = player_features[:, :2].std(axis=0)    # [2]
+
+    # Distance statistics (feature 2: distance_to_goal)
+    dist_mean = player_features[:, 2].mean()
+    dist_std = player_features[:, 2].std()
+    dist_min = player_features[:, 2].min()
+
+    # Density statistics (features 12-13)
+    density_mean = player_features[:, 12:].mean(axis=0)  # [2]
+
+    # Concatenate
+    graph_feat = np.concatenate([
+        pos_mean, pos_std,           # 4 features
+        [dist_mean, dist_std, dist_min],  # 3 features
+        density_mean                 # 2 features
+    ])  # Total: 9 features (reduced from 29)
+
+    return graph_feat
+
+
+def experiment_2_feature_selection(graph_path: str, output_dir: Path,
+                                   random_seed: int = 42):
+    """
+    Experiment 2: Impact of aggressive feature selection.
+
+    Compares:
+    - Baseline: All 22 players (308 features for receiver, 29 for outcome)
+    - Reduced: 5 closest players (70 features for receiver, 9 for outcome)
+    """
+    print("\n" + "="*80)
+    print("EXPERIMENT 2: FEATURE SELECTION IMPACT (5 CLOSEST PLAYERS)")
+    print("="*80)
+
+    # Load dataset
+    all_graphs = load_graph_dataset(graph_path)
+    train_graphs, val_graphs, test_graphs = split_dataset(all_graphs, random_seed=random_seed)
+
+    # Baseline: All 22 players
+    print("\n--- Baseline: All 22 Players ---")
+    X_train_22, y_train_22 = extract_features_and_labels(train_graphs, task='outcome')
+    X_val_22, y_val_22 = extract_features_and_labels(val_graphs, task='outcome')
+    X_test_22, y_test_22 = extract_features_and_labels(test_graphs, task='outcome')
+
+    model_22 = train_xgboost(X_train_22, y_train_22, X_val_22, y_val_22,
+                             task='outcome', random_seed=random_seed)
+
+    results_22 = evaluate_model(model_22, X_test_22, y_test_22, task='outcome')
+    results_22.config_name = "All 22 Players (29 features)"
+    print_results(results_22, task='outcome')
+
+    # Reduced: 5 closest players
+    print("\n--- Reduced: 5 Closest Players to Ball ---")
+    X_train_5, y_train_5 = extract_5_closest_players_features(train_graphs, task='outcome')
+    X_val_5, y_val_5 = extract_5_closest_players_features(val_graphs, task='outcome')
+    X_test_5, y_test_5 = extract_5_closest_players_features(test_graphs, task='outcome')
+
+    model_5 = train_xgboost(X_train_5, y_train_5, X_val_5, y_val_5,
+                            task='outcome', random_seed=random_seed)
+
+    results_5 = evaluate_model(model_5, X_test_5, y_test_5, task='outcome')
+    results_5.config_name = "5 Closest Players (9 features)"
+    print_results(results_5, task='outcome')
+
+    # Comparison
+    print("\n" + "="*80)
+    print("COMPARISON")
+    print("="*80)
+    print(f"Baseline (22 players): Outcome Acc = {results_22.outcome_accuracy*100:.1f}%, "
+          f"Macro F1 = {results_22.outcome_macro_f1:.3f}, "
+          f"Shot F1 = {results_22.outcome_shot_f1:.3f}")
+    print(f"Reduced (5 players): Outcome Acc = {results_5.outcome_accuracy*100:.1f}%, "
+          f"Macro F1 = {results_5.outcome_macro_f1:.3f}, "
+          f"Shot F1 = {results_5.outcome_shot_f1:.3f}")
+
+    acc_change = (results_5.outcome_accuracy - results_22.outcome_accuracy) * 100
+    f1_change = results_5.outcome_macro_f1 - results_22.outcome_macro_f1
+    shot_f1_change = results_5.outcome_shot_f1 - results_22.outcome_shot_f1
+
+    print(f"\nChange:")
+    print(f"  Outcome Accuracy: {acc_change:+.1f}pp")
+    print(f"  Macro F1: {f1_change:+.3f}")
+    print(f"  Shot F1: {shot_f1_change:+.3f}")
+    print("="*80)
+
+    # Save results
+    exp2_dir = output_dir / "exp2_feature_selection"
+    save_results_to_json(results_22, exp2_dir / "results_22_players.json")
+    save_results_to_json(results_5, exp2_dir / "results_5_players.json")
+
+    # Generate LaTeX table
+    latex_table = f"""\\begin{{table}}[h]
+\\centering
+\\caption{{Impact of aggressive feature selection on XGBoost (augmented dataset).}}
+\\label{{tab:feature_selection}}
+\\begin{{tabular}}{{lcccc}}
+\\toprule
+\\textbf{{Players}} & \\textbf{{Features}} & \\textbf{{Outcome Acc}} & \\textbf{{Macro F1}} & \\textbf{{Shot F1}} \\\\
+\\midrule
+All 22 players & 29 & {results_22.outcome_accuracy*100:.1f}\\% & {results_22.outcome_macro_f1:.3f} & {results_22.outcome_shot_f1:.3f} \\\\
+5 closest to ball & 9 & {results_5.outcome_accuracy*100:.1f}\\% & {results_5.outcome_macro_f1:.3f} & {results_5.outcome_shot_f1:.3f} \\\\
+\\midrule
+Change & -69\\% & {acc_change:+.1f}pp & {f1_change:+.3f} & {shot_f1_change:+.3f} \\\\
+\\bottomrule
+\\end{{tabular}}
+\\end{{table}}
+"""
+
+    latex_path = exp2_dir / "latex_table.txt"
+    latex_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(latex_path, 'w') as f:
+        f.write(latex_table)
+    print(f"\n✓ Saved LaTeX table to {latex_path}")
+
+    # Interpretation
+    interpretation = f"""# Experiment 2: Feature Selection Impact
+
+## Results Summary
+- **Baseline (22 players, 29 features)**:
+  - Outcome Accuracy: {results_22.outcome_accuracy*100:.1f}%
+  - Macro F1: {results_22.outcome_macro_f1:.3f}
+  - Shot F1: {results_22.outcome_shot_f1:.3f}
+
+- **Reduced (5 closest players, 9 features)**:
+  - Outcome Accuracy: {results_5.outcome_accuracy*100:.1f}%
+  - Macro F1: {results_5.outcome_macro_f1:.3f}
+  - Shot F1: {results_5.outcome_shot_f1:.3f}
+
+## Change
+- Outcome Accuracy: {acc_change:+.1f}pp
+- Macro F1: {f1_change:+.3f}
+- Shot F1: {shot_f1_change:+.3f}
+- Feature reduction: 69% (29 → 9 features)
+
+## Interpretation
+Aggressive feature selection focusing on the 5 players closest to the ball landing zone
+{"reduces" if acc_change < 0 else "maintains"} model performance, with outcome accuracy
+{"decreasing" if acc_change < 0 else "increasing"} by {abs(acc_change):.1f} percentage points.
+
+This {"confirms" if acc_change < -1 else "suggests"} that
+{"distant players still contribute meaningful information to outcome prediction" if acc_change < -1 else "the most relevant information is concentrated near the ball landing zone"}.
+The 69% reduction in features (from 29 to 9) comes at a
+{"significant performance cost" if abs(acc_change) > 3 else "modest performance cost" if abs(acc_change) > 1 else "minimal performance cost"},
+making it {"unsuitable" if abs(acc_change) > 5 else "a viable option"} for resource-constrained deployments.
+
+Notably, the Shot class F1 score {"drops significantly" if shot_f1_change < -0.05 else "remains relatively stable"}
+(change: {shot_f1_change:+.3f}), {"indicating that full-field context is important for detecting rare dangerous outcomes" if shot_f1_change < -0.05 else "suggesting that local spatial patterns capture most shot-predictive information"}.
+"""
+
+    interpretation_path = exp2_dir / "interpretation.md"
+    with open(interpretation_path, 'w') as f:
+        f.write(interpretation)
+    print(f"✓ Saved interpretation to {interpretation_path}")
+
+    return results_22, results_5
+
+
+def experiment_3_feature_importance(graph_path: str, output_dir: Path,
+                                    random_seed: int = 42):
+    """
+    Experiment 3: Feature importance analysis.
+
+    Analyzes which graph-level features contribute most to XGBoost predictions.
+    """
+    print("\n" + "="*80)
+    print("EXPERIMENT 3: FEATURE IMPORTANCE ANALYSIS")
+    print("="*80)
+
+    # Load dataset
+    all_graphs = load_graph_dataset(graph_path)
+    train_graphs, val_graphs, test_graphs = split_dataset(all_graphs, random_seed=random_seed)
+
+    # Train model
+    print("\n--- Training XGBoost for Feature Importance Analysis ---")
+    X_train, y_train = extract_features_and_labels(train_graphs, task='outcome')
+    X_val, y_val = extract_features_and_labels(val_graphs, task='outcome')
+    X_test, y_test = extract_features_and_labels(test_graphs, task='outcome')
+
+    model = train_xgboost(X_train, y_train, X_val, y_val,
+                         task='outcome', random_seed=random_seed)
+
+    # Evaluate
+    results = evaluate_model(model, X_test, y_test, task='outcome')
+    print_results(results, task='outcome')
+
+    # Extract feature importance
+    print("\n--- Extracting Feature Importance ---")
+
+    # Define feature names (29 graph-level features)
+    feature_names = [
+        'mean_x_attacking', 'mean_y_attacking', 'std_x_attacking', 'std_y_attacking',
+        'mean_x_defending', 'mean_y_defending', 'std_x_defending', 'std_y_defending',
+        'mean_distance_to_goal', 'std_distance_to_goal', 'min_distance_to_goal',
+        'mean_distance_to_ball', 'std_distance_to_ball',
+        'attacking_compactness', 'defending_compactness',
+        'defensive_line_height',
+        'players_in_6yard_attacking', 'players_in_6yard_defending',
+        'players_in_penalty_attacking', 'players_in_penalty_defending',
+        'mean_angle_to_goal', 'std_angle_to_goal', 'mean_angle_to_ball',
+        'player_density_6yard', 'player_density_penalty',
+        'formation_width_attacking', 'formation_width_defending',
+        'attacking_defending_ratio', 'ball_landing_zone_x'
+    ]
+
+    # Get importance scores (gain metric)
+    importance_scores = model.get_score(importance_type='gain')
+
+    # Map to feature names
+    importance_dict = {}
+    for feat_idx, score in importance_scores.items():
+        idx = int(feat_idx.replace('f', ''))
+        if idx < len(feature_names):
+            feat_name = feature_names[idx]
+            importance_dict[feat_name] = score
+
+    # Sort by importance
+    sorted_importance = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)
+
+    print("\n=== Top 15 Most Important Features (by gain) ===")
+    for i, (feat_name, score) in enumerate(sorted_importance[:15], 1):
+        print(f"  {i:2d}. {feat_name:35s}: {score:8.2f}")
+
+    # Save results
+    exp3_dir = output_dir / "exp3_feature_importance"
+    exp3_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save importance dict
+    importance_path = exp3_dir / "feature_importance.json"
+    with open(importance_path, 'w') as f:
+        json.dump(dict(sorted_importance), f, indent=2)
+    print(f"\n✓ Saved feature importance to {importance_path}")
+
+    # Create visualization
+    plot_feature_importance_chart(dict(sorted_importance), exp3_dir)
+
+    # Categorize features
+    categories = categorize_features(importance_dict)
+
+    # Generate LaTeX enumeration
+    top_10 = sorted_importance[:10]
+    text_output = """Feature importance analysis (using gain metric) reveals the top 10 predictive features for outcome classification:
+
+\\begin{enumerate}
+"""
+
+    for i, (feat_name, score) in enumerate(top_10, 1):
+        # Clean up feature name for display
+        display_name = feat_name.replace('_', ' ').title()
+        text_output += f"    \\item {display_name} ({score:.1f})\n"
+
+    text_output += "\\end{enumerate}\n"
+
+    latex_path = exp3_dir / "latex_enumeration.txt"
+    with open(latex_path, 'w') as f:
+        f.write(text_output)
+    print(f"✓ Saved LaTeX enumeration to {latex_path}")
+
+    # Interpretation
+    top_feature = sorted_importance[0]
+    interpretation = f"""# Experiment 3: Feature Importance Analysis
+
+## Top 10 Features
+"""
+    for i, (feat_name, score) in enumerate(top_10, 1):
+        interpretation += f"{i}. **{feat_name}**: {score:.2f}\n"
+
+    interpretation += f"""
+## Category Analysis
+{categories}
+
+## Interpretation
+The feature importance analysis reveals that **{top_feature[0]}** is the most predictive
+feature for corner kick outcome classification (gain score: {top_feature[1]:.2f}). This
+{"confirms" if "distance" in top_feature[0].lower() else "highlights"} the importance of
+{"spatial proximity to the goal" if "distance" in top_feature[0].lower() else "player positioning"} in determining corner kick outcomes.
+
+The top 10 features are dominated by
+{"distance metrics" if sum(1 for f, _ in top_10 if "distance" in f.lower()) >= 4 else "positional statistics" if sum(1 for f, _ in top_10 if any(x in f.lower() for x in ["mean", "std", "x", "y"])) >= 4 else "density metrics"},
+suggesting that XGBoost relies heavily on
+{"geometric relationships between players and goal/ball" if "distance" in top_feature[0].lower() else "formation structure and player positioning"}
+to make predictions.
+
+Notably, {"tactical formation features (compactness, width) rank lower" if not any("compactness" in f or "width" in f for f, _ in top_10) else "tactical formation features appear in the top 10"},
+{"suggesting that low-level spatial features outweigh high-level tactical patterns" if not any("compactness" in f or "width" in f for f, _ in top_10) else "indicating that team shape and organization matter for outcome prediction"}.
+
+This analysis provides insights for model simplification: focusing on the top 15 features
+could potentially maintain most of the predictive power while reducing model complexity.
+"""
+
+    interpretation_path = exp3_dir / "interpretation.md"
+    with open(interpretation_path, 'w') as f:
+        f.write(interpretation)
+    print(f"✓ Saved interpretation to {interpretation_path}")
+
+    return importance_dict, sorted_importance
+
+
+def plot_feature_importance_chart(importance_dict: Dict[str, float], output_dir: Path,
+                                  top_n: int = 15):
+    """
+    Create horizontal bar plot of feature importance.
+
+    Args:
+        importance_dict: Dictionary mapping feature names to importance scores
+        output_dir: Directory to save plot
+        top_n: Number of top features to display
+    """
+    # Sort features
+    sorted_features = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)
+    top_features = sorted_features[:top_n]
+
+    # Extract names and scores
+    names = [f[0] for f in top_features]
+    scores = [f[1] for f in top_features]
+
+    # Normalize scores to percentages
+    total = sum(scores)
+    percentages = [(s/total)*100 for s in scores]
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    y_pos = np.arange(len(names))
+    bars = ax.barh(y_pos, percentages, color='steelblue', alpha=0.8)
+
+    # Add percentage labels
+    for i, (bar, pct) in enumerate(zip(bars, percentages)):
+        width = bar.get_width()
+        ax.text(width + 0.5, bar.get_y() + bar.get_height()/2,
+                f'{pct:.1f}%', ha='left', va='center', fontsize=9)
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(names, fontsize=10)
+    ax.set_xlabel('Importance (%)', fontsize=12)
+    ax.set_title(f'Top {top_n} Features for Corner Outcome Prediction\n(XGBoost - Gain Metric)',
+                 fontsize=13, fontweight='bold')
+    ax.grid(axis='x', alpha=0.3)
+    ax.invert_yaxis()  # Top feature at top
+
+    plt.tight_layout()
+
+    save_path = output_dir / "feature_importance_plot.png"
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Feature importance plot saved: {save_path}")
+    plt.close()
+
+
+def categorize_features(importance_dict: Dict[str, float]) -> str:
+    """
+    Group features by category and compute category-level importance.
+
+    Args:
+        importance_dict: Dictionary mapping feature names to importance scores
+
+    Returns:
+        Formatted string with category breakdown
+    """
+    categories = {
+        'Distance metrics': [],
+        'Positional statistics': [],
+        'Density metrics': [],
+        'Formation metrics': [],
+        'Angular features': []
+    }
+
+    for feat_name, score in importance_dict.items():
+        if 'distance' in feat_name.lower():
+            categories['Distance metrics'].append((feat_name, score))
+        elif any(x in feat_name.lower() for x in ['mean_x', 'mean_y', 'std_x', 'std_y']):
+            categories['Positional statistics'].append((feat_name, score))
+        elif 'density' in feat_name.lower() or 'players_in' in feat_name.lower():
+            categories['Density metrics'].append((feat_name, score))
+        elif any(x in feat_name.lower() for x in ['compactness', 'width', 'height', 'ratio']):
+            categories['Formation metrics'].append((feat_name, score))
+        elif 'angle' in feat_name.lower():
+            categories['Angular features'].append((feat_name, score))
+
+    # Compute category totals
+    category_totals = {}
+    for category, features in categories.items():
+        total = sum(score for _, score in features)
+        category_totals[category] = total
+
+    # Format output
+    output = "\n### Feature Importance by Category\n"
+    total_importance = sum(category_totals.values())
+
+    for category, total in sorted(category_totals.items(), key=lambda x: x[1], reverse=True):
+        if total > 0:
+            pct = (total / total_importance) * 100
+            num_features = len(categories[category])
+            output += f"- **{category}**: {pct:.1f}% ({num_features} features)\n"
+
+    return output
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -754,6 +1238,12 @@ def main():
     # Run experiments
     if args.experiments == 'all' or '1' in args.experiments:
         experiment_1_temporal_augmentation(args.graph_path, output_dir, args.random_seed)
+
+    if args.experiments == 'all' or '2' in args.experiments:
+        experiment_2_feature_selection(args.graph_path, output_dir, args.random_seed)
+
+    if args.experiments == 'all' or '3' in args.experiments:
+        experiment_3_feature_importance(args.graph_path, output_dir, args.random_seed)
 
     print("\n" + "="*80)
     print("ABLATION STUDIES COMPLETE")
