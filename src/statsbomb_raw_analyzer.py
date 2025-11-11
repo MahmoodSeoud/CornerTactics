@@ -55,35 +55,32 @@ class StatsBombRawAnalyzer:
         else:
             comps_df = self.competitions
 
-        # Focus on major competitions
-        target_comps = ['Champions League', 'La Liga', 'Premier League']
-
+        # Use all competitions (no filtering)
         for _, comp in comps_df.iterrows():
-            if comp['competition_name'] in target_comps:
-                comp_id = comp['competition_id']
-                season_id = comp['season_id']
+            comp_id = comp['competition_id']
+            season_id = comp['season_id']
 
-                try:
-                    matches_df = self.fetch_matches(comp_id, season_id)
+            try:
+                matches_df = self.fetch_matches(comp_id, season_id)
 
-                    for _, match in matches_df.head(5).iterrows():  # Try first 5 matches
-                        try:
-                            events_df = self.fetch_match_events(match['match_id'])
+                for _, match in matches_df.iterrows():  # Use ALL matches, not just first 5
+                    try:
+                        events_df = self.fetch_match_events(match['match_id'])
 
-                            # Convert DataFrame to list of dicts for compatibility
-                            if not events_df.empty:
-                                events_list = events_df.to_dict('records')
-                                all_events.extend(events_list)
-                                self.matches.append(match.to_dict())
-                                match_count += 1
+                        # Convert DataFrame to list of dicts for compatibility
+                        if not events_df.empty:
+                            events_list = events_df.to_dict('records')
+                            all_events.extend(events_list)
+                            self.matches.append(match.to_dict())
+                            match_count += 1
 
-                                if match_count >= num_matches:
-                                    self.events = all_events
-                                    return all_events
-                        except Exception as e:
-                            continue
-                except Exception as e:
-                    continue
+                            if match_count >= num_matches:
+                                self.events = all_events
+                                return all_events
+                    except Exception as e:
+                        continue
+            except Exception as e:
+                continue
 
         self.events = all_events
         return all_events
