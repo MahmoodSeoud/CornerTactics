@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""
+StatsBomb Raw Data Analyzer
+
+Analyzes raw StatsBomb data to:
+1. Calculate transition probabilities P(Event at t+1 | Event at t)
+2. Build complete transition matrices
+3. Document all available features
+"""
+
+import requests
+import json
+import pandas as pd
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple
+from collections import defaultdict
+from pathlib import Path
+
+
+class StatsBombRawAnalyzer:
+    """Main analyzer for StatsBomb raw data."""
+
+    def __init__(self):
+        """Initialize the analyzer."""
+        self.base_url = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
+        self.events = []
+        self.competitions = []
+        self.matches = []
+
+    def fetch_competitions(self) -> List[Dict]:
+        """Fetch all available competitions from StatsBomb."""
+        url = f"{self.base_url}/competitions.json"
+        response = requests.get(url)
+        self.competitions = response.json()
+        return self.competitions
+
+    def fetch_matches(self, competition_id: int, season_id: int) -> List[Dict]:
+        """Fetch matches for a specific competition and season."""
+        url = f"{self.base_url}/matches/{competition_id}/{season_id}.json"
+        response = requests.get(url)
+        return response.json()
+
+    def fetch_match_events(self, match_id: int) -> List[Dict]:
+        """Fetch all events for a specific match."""
+        url = f"{self.base_url}/events/{match_id}.json"
+        response = requests.get(url)
+        return response.json()
+
+    def fetch_multiple_matches(self, num_matches: int = 10) -> List[Dict]:
+        """Fetch events from multiple matches for better statistics."""
+        all_events = []
+        match_count = 0
+
+        # Try to get competitions if not already fetched
+        if not self.competitions:
+            self.fetch_competitions()
+
+        # Focus on major competitions
+        target_comps = ['Champions League', 'La Liga', 'Premier League']
+
+        for comp in self.competitions:
+            if comp['competition_name'] in target_comps:
+                comp_id = comp['competition_id']
+                season_id = comp['season_id']
+
+                try:
+                    matches = self.fetch_matches(comp_id, season_id)
+
+                    for match in matches[:5]:  # Try first 5 matches
+                        try:
+                            events = self.fetch_match_events(match['match_id'])
+                            if events:
+                                all_events.extend(events)
+                                self.matches.append(match)
+                                match_count += 1
+
+                                if match_count >= num_matches:
+                                    self.events = all_events
+                                    return all_events
+                        except:
+                            continue
+                except:
+                    continue
+
+        self.events = all_events
+        return all_events
+
+    def identify_corner_kicks(self) -> List[Dict]:
+        """Identify all corner kicks in the loaded events."""
+        corners = []
+        for event in self.events:
+            if (event.get('type', {}).get('name') == 'Pass' and
+                event.get('pass', {}).get('type', {}).get('name') == 'Corner'):
+                corners.append(event)
+        return corners
+
+    def extract_corner_sequences(self, window_size: int = 10) -> List[Dict]:
+        """Extract sequences of events following corner kicks."""
+        sequences = []
+        corners = self.identify_corner_kicks()
+
+        for i, event in enumerate(self.events):
+            if (event.get('type', {}).get('name') == 'Pass' and
+                event.get('pass', {}).get('type', {}).get('name') == 'Corner'):
+
+                sequence = {
+                    'corner': event,
+                    'corner_index': i,
+                    'following_events': []
+                }
+
+                # Get next events
+                for j in range(1, min(window_size + 1, len(self.events) - i)):
+                    sequence['following_events'].append(self.events[i + j])
+
+                sequences.append(sequence)
+
+        return sequences
+
+    def analyze(self, num_matches: int = 10) -> Dict:
+        """Complete analysis pipeline."""
+        # Fetch data
+        self.fetch_multiple_matches(num_matches)
+
+        # Build transition matrix
+        builder = TransitionMatrixBuilder()
+        builder.build_from_events(self.events, track_corners=True)
+        matrix = builder.calculate_probability_matrix()
+
+        # Extract features
+        extractor = FeatureExtractor()
+        feature_summary = extractor.summarize_features(self.events)
+
+        # Generate reports
+        generator = ReportGenerator()
+
+        return {
+            'num_events': len(self.events),
+            'num_matches': len(self.matches),
+            'num_corners': len(self.identify_corner_kicks()),
+            'transition_matrix': matrix,
+            'feature_summary': feature_summary,
+            'corner_sequences': self.extract_corner_sequences()
+        }
+
+
+class TransitionMatrixBuilder:
+    """Builds transition probability matrices from event sequences."""
+
+    def __init__(self):
+        """Initialize the builder."""
+        self.transitions = defaultdict(lambda: defaultdict(int))
+        self.event_counts = defaultdict(int)
+
+    def add_transition(self, from_event: str, to_event: str):
+        """Add a transition from one event to another."""
+        self.transitions[from_event][to_event] += 1
+        self.event_counts[from_event] += 1
+
+    def build_from_events(self, events: List[Dict], track_corners: bool = False):
+        """Build transition matrix from a sequence of events."""
+        for i in range(len(events) - 1):
+            curr_event = events[i]
+            next_event = events[i + 1]
+
+            # Get event types
+            curr_type = curr_event.get('type', {}).get('name', 'Unknown')
+            next_type = next_event.get('type', {}).get('name', 'Unknown')
+
+            # Special handling for corners
+            if track_corners and curr_type == 'Pass':
+                if curr_event.get('pass', {}).get('type', {}).get('name') == 'Corner':
+                    curr_type = 'Corner'
+
+            self.add_transition(curr_type, next_type)
+
+    def calculate_probability_matrix(self) -> pd.DataFrame:
+        """Calculate probability matrix from counts."""
+        # Get all unique events
+        all_events = set()
+        for from_event in self.transitions:
+            all_events.add(from_event)
+            for to_event in self.transitions[from_event]:
+                all_events.add(to_event)
+
+        # Create matrix
+        all_events = sorted(all_events)
+        matrix = pd.DataFrame(0.0, index=all_events, columns=all_events)
+
+        # Calculate probabilities
+        for from_event in self.transitions:
+            total = sum(self.transitions[from_event].values())
+            if total > 0:
+                for to_event in self.transitions[from_event]:
+                    matrix.loc[from_event, to_event] = (
+                        self.transitions[from_event][to_event] / total
+                    )
+
+        return matrix
+
+    def get_corner_transitions(self) -> Dict:
+        """Get transitions specifically from corner kicks."""
+        corner_transitions = self.transitions.get('Corner', {})
+        total = sum(corner_transitions.values())
+
+        if total == 0:
+            return {}
+
+        return {
+            event: count / total
+            for event, count in corner_transitions.items()
+        }
+
+
+class FeatureExtractor:
+    """Extracts and documents features from raw StatsBomb data."""
+
+    def __init__(self):
+        """Initialize the extractor."""
+        self.features = {}
+
+    def extract_event_features(self, event: Dict) -> Dict:
+        """Extract features from a single event."""
+        features = {
+            'event_type': event.get('type', {}).get('name', 'Unknown'),
+            'has_location': 'location' in event,
+            'has_timestamp': 'timestamp' in event,
+            'has_under_pressure': 'under_pressure' in event,
+            'has_duration': 'duration' in event,
+            'has_related_events': 'related_events' in event and len(event.get('related_events', [])) > 0
+        }
+
+        # Extract type-specific features
+        if event.get('type', {}).get('name') == 'Pass':
+            pass_data = event.get('pass', {})
+            features['pass_features'] = {
+                'length': pass_data.get('length'),
+                'angle': pass_data.get('angle'),
+                'height': pass_data.get('height', {}).get('name'),
+                'has_end_location': 'end_location' in pass_data,
+                'outcome': pass_data.get('outcome', {}).get('name', 'Complete')
+            }
+
+        elif event.get('type', {}).get('name') == 'Shot':
+            shot_data = event.get('shot', {})
+            features['shot_features'] = {
+                'statsbomb_xg': shot_data.get('statsbomb_xg'),
+                'outcome': shot_data.get('outcome', {}).get('name'),
+                'technique': shot_data.get('technique', {}).get('name'),
+                'body_part': shot_data.get('body_part', {}).get('name')
+            }
+
+        elif event.get('type', {}).get('name') == 'Clearance':
+            clearance_data = event.get('clearance', {})
+            features['clearance_features'] = {
+                'aerial_won': clearance_data.get('aerial_won', False),
+                'head': clearance_data.get('head', False),
+                'body_part': clearance_data.get('body_part', {}).get('name')
+            }
+
+        return features
+
+    def summarize_features(self, events: List[Dict]) -> Dict:
+        """Summarize features across all events."""
+        summary = {
+            'event_types': set(),
+            'location_coverage': 0,
+            'timestamp_coverage': 0,
+            'pressure_rate': 0,
+            'type_specific_features': defaultdict(set),
+            'universal_fields': None,
+            'field_coverage': defaultdict(int)
+        }
+
+        location_count = 0
+        timestamp_count = 0
+        pressure_count = 0
+
+        for event in events:
+            # Track event types
+            event_type = event.get('type', {}).get('name', 'Unknown')
+            summary['event_types'].add(event_type)
+
+            # Track field coverage
+            for field in event.keys():
+                summary['field_coverage'][field] += 1
+
+            # Track specific features
+            if 'location' in event:
+                location_count += 1
+            if 'timestamp' in event:
+                timestamp_count += 1
+            if event.get('under_pressure', False):
+                pressure_count += 1
+
+            # Type-specific features
+            if event_type == 'Pass' and 'pass' in event:
+                for key in event['pass'].keys():
+                    summary['type_specific_features']['pass'].add(key)
+
+            if event_type == 'Shot' and 'shot' in event:
+                for key in event['shot'].keys():
+                    summary['type_specific_features']['shot'].add(key)
+
+            if event_type == 'Clearance' and 'clearance' in event:
+                for key in event['clearance'].keys():
+                    summary['type_specific_features']['clearance'].add(key)
+
+        # Calculate coverage rates
+        if events:
+            summary['location_coverage'] = location_count / len(events)
+            summary['timestamp_coverage'] = timestamp_count / len(events)
+            summary['pressure_rate'] = pressure_count / len(events)
+
+        # Convert sets to lists for JSON serialization
+        summary['event_types'] = list(summary['event_types'])
+        for key in summary['type_specific_features']:
+            summary['type_specific_features'][key] = list(summary['type_specific_features'][key])
+
+        return summary
+
+
+class ReportGenerator:
+    """Generates human-readable reports from analysis results."""
+
+    def __init__(self):
+        """Initialize the generator."""
+        pass
+
+    def generate_transition_report(self, matrix: pd.DataFrame, focus_event: str = None) -> str:
+        """Generate a report on transition probabilities."""
+        report = "# Transition Probability Report\n\n"
+
+        if focus_event and focus_event in matrix.index:
+            report += f"## Transitions from {focus_event}\n\n"
+
+            transitions = matrix.loc[focus_event]
+            transitions = transitions[transitions > 0].sort_values(ascending=False)
+
+            for event, prob in transitions.items():
+                report += f"- {event}: {prob:.3f}\n"
+
+        report += "\n## Top Overall Transitions\n\n"
+
+        # Find highest probability transitions
+        top_transitions = []
+        for from_event in matrix.index:
+            for to_event in matrix.columns:
+                prob = matrix.loc[from_event, to_event]
+                if prob > 0.1:
+                    top_transitions.append((from_event, to_event, prob))
+
+        top_transitions.sort(key=lambda x: x[2], reverse=True)
+
+        for from_e, to_e, prob in top_transitions[:10]:
+            report += f"- {from_e} → {to_e}: {prob:.3f}\n"
+
+        return report
+
+    def generate_feature_report(self, feature_summary: Dict) -> str:
+        """Generate a report on available features."""
+        report = "# Feature Documentation Report\n\n"
+
+        report += "## Event Types Found\n\n"
+        for event_type in sorted(feature_summary.get('event_types', [])):
+            report += f"- {event_type}\n"
+
+        report += "\n## Data Coverage\n\n"
+        report += f"- Location Coverage: {feature_summary.get('location_coverage', 0) * 100:.1f}%\n"
+        report += f"- Timestamp Coverage: {feature_summary.get('timestamp_coverage', 0) * 100:.1f}%\n"
+        report += f"- Pressure Rate: {feature_summary.get('pressure_rate', 0) * 100:.1f}%\n"
+
+        report += "\n## Type-Specific Features\n\n"
+        for event_type, features in feature_summary.get('type_specific_features', {}).items():
+            report += f"\n### {event_type.title()} Features\n"
+            for feature in sorted(features):
+                report += f"- {feature}\n"
+
+        return report
+
+    def generate_complete_report(self, analysis_results: Dict) -> str:
+        """Generate a complete analysis report."""
+        report = "# StatsBomb Raw Data Analysis Report\n\n"
+
+        # Overview
+        report += "## Overview\n\n"
+        report += f"- Matches Analyzed: {analysis_results.get('num_matches', 0)}\n"
+        report += f"- Total Events: {analysis_results.get('num_events', 0)}\n"
+        report += f"- Corner Kicks: {analysis_results.get('num_corners', 0)}\n\n"
+
+        # Transition analysis
+        if 'transition_matrix' in analysis_results:
+            matrix = analysis_results['transition_matrix']
+            report += self.generate_transition_report(matrix, 'Corner')
+
+        # Feature documentation
+        if 'feature_summary' in analysis_results:
+            report += "\n" + self.generate_feature_report(analysis_results['feature_summary'])
+
+        return report
+
+
+def main():
+    """Main execution function."""
+    print("Starting StatsBomb Raw Data Analysis...")
+
+    # Initialize analyzer
+    analyzer = StatsBombRawAnalyzer()
+
+    # Run analysis
+    results = analyzer.analyze(num_matches=5)
+
+    # Generate report
+    generator = ReportGenerator()
+    report = generator.generate_complete_report(results)
+
+    # Save outputs
+    output_dir = Path("data/analysis")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save report
+    with open(output_dir / "statsbomb_raw_analysis_report.md", "w") as f:
+        f.write(report)
+
+    # Save transition matrix
+    if 'transition_matrix' in results:
+        results['transition_matrix'].to_csv(output_dir / "transition_matrix_complete.csv")
+
+    print(f"\nAnalysis complete!")
+    print(f"- Report saved to: {output_dir / 'statsbomb_raw_analysis_report.md'}")
+    print(f"- Matrix saved to: {output_dir / 'transition_matrix_complete.csv'}")
+
+    return results
+
+
+if __name__ == "__main__":
+    main()
