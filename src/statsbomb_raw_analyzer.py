@@ -238,41 +238,187 @@ class FeatureExtractor:
         if isinstance(event_type, dict):
             event_type = event_type.get('name', 'Unknown')
 
+        # CRITICAL FEATURES - Core metadata and player context
         features = {
+            # Event basics
+            'id': event.get('id'),
             'event_type': event_type,
+            'period': event.get('period'),
+            'minute': event.get('minute'),
+            'second': event.get('second'),
+            'possession': event.get('possession'),
+            'possession_team': event.get('possession_team'),
+
+            # Player tracking (CRITICAL)
+            'player_id': event.get('player_id'),
+            'player_name': event.get('player_name'),
+            'position_id': event.get('position_id'),
+            'position_name': event.get('position_name'),
+            'team_id': event.get('team_id'),
+            'team_name': event.get('team_name'),
+
+            # Location and pressure
+            'location': event.get('location'),
             'has_location': 'location' in event,
+            'timestamp': event.get('timestamp'),
             'has_timestamp': 'timestamp' in event,
+            'under_pressure': event.get('under_pressure', False),
             'has_under_pressure': 'under_pressure' in event,
+            'duration': event.get('duration'),
             'has_duration': 'duration' in event,
-            'has_related_events': 'related_events' in event and len(event.get('related_events', [])) > 0
+            'related_events': event.get('related_events', []),
+            'has_related_events': 'related_events' in event and len(event.get('related_events', [])) > 0,
+
+            # HIGH PRIORITY - Universal features
+            'aerial_won': event.get('aerial_won'),
+            'outcome_id': event.get('outcome_id'),
+            'outcome_name': event.get('outcome_name'),
+            'body_part_id': event.get('body_part_id'),
+            'body_part_name': event.get('body_part_name'),
+            'counterpress': event.get('counterpress', False),
+            'off_camera': event.get('off_camera', False),
+            'out': event.get('out', False)
         }
 
         # Extract type-specific features (SDK flattens these as pass_*, shot_*, etc.)
         if event_type == 'Pass':
             features['pass_features'] = {
+                # Existing features
                 'length': event.get('pass_length'),
                 'angle': event.get('pass_angle'),
                 'height': event.get('pass_height'),
+                'height_id': event.get('pass_height_id'),
+                'height_name': event.get('pass_height_name'),
                 'has_end_location': 'pass_end_location' in event,
-                'outcome': event.get('pass_outcome', 'Complete')
+                'end_location': event.get('pass_end_location'),
+                'outcome': event.get('pass_outcome', 'Complete'),
+                'outcome_id': event.get('pass_outcome_id'),
+                'outcome_name': event.get('pass_outcome_name'),
+
+                # CRITICAL - Recipient tracking
+                'recipient_id': event.get('pass_recipient_id'),
+                'recipient_name': event.get('pass_recipient_name'),
+                'shot_assist': event.get('pass_shot_assist', False),
+                'goal_assist': event.get('pass_goal_assist', False),
+
+                # HIGH PRIORITY - Delivery characteristics
+                'cross': event.get('pass_cross', False),
+                'deflected': event.get('pass_deflected', False),
+                'switch': event.get('pass_switch', False),
+                'no_touch': event.get('pass_no_touch', False),
+                'assisted_shot_id': event.get('pass_assisted_shot_id'),
+                'body_part_id': event.get('pass_body_part_id'),
+                'body_part_name': event.get('pass_body_part_name'),
+                'type_id': event.get('pass_type_id'),
+                'type_name': event.get('pass_type_name'),
+                'is_corner': event.get('pass_type_name') == 'Corner' or event.get('pass_type') == 'Corner'
             }
 
         elif event_type == 'Shot':
             features['shot_features'] = {
+                # Existing features
                 'statsbomb_xg': event.get('shot_statsbomb_xg'),
                 'outcome': event.get('shot_outcome'),
+                'outcome_id': event.get('shot_outcome_id'),
+                'outcome_name': event.get('shot_outcome_name'),
                 'technique': event.get('shot_technique'),
-                'body_part': event.get('shot_body_part')
+                'technique_id': event.get('shot_technique_id'),
+                'technique_name': event.get('shot_technique_name'),
+                'body_part': event.get('shot_body_part'),
+                'body_part_id': event.get('shot_body_part_id'),
+                'body_part_name': event.get('shot_body_part_name'),
+
+                # CRITICAL - Shot context
+                'first_time': event.get('shot_first_time', False),
+
+                # HIGH PRIORITY - Shot details
+                'aerial_won': event.get('shot_aerial_won', False),
+                'end_z': event.get('end_z'),  # Shot height/trajectory
+                'key_pass_id': event.get('shot_key_pass_id'),
+                'one_on_one': event.get('shot_one_on_one', False),
+                'follows_dribble': event.get('shot_follows_dribble', False),
+                'redirect': event.get('shot_redirect', False),
+                'open_goal': event.get('shot_open_goal', False),
+                'type_id': event.get('shot_type_id'),
+                'type_name': event.get('shot_type_name'),
+
+                # HIGH PRIORITY - Goalkeeper positioning
+                'goalkeeper_position_id': event.get('goalkeeper_position_id'),
+                'goalkeeper_position_name': event.get('goalkeeper_position_name'),
+
+                # CRITICAL - 360 freeze frame data
+                'freeze_frame': event.get('shot_freeze_frame', [])
             }
 
         elif event_type == 'Clearance':
             features['clearance_features'] = {
                 'aerial_won': event.get('clearance_aerial_won', False),
                 'head': event.get('clearance_head', False),
-                'body_part': event.get('clearance_body_part')
+                'body_part': event.get('clearance_body_part'),
+                'body_part_id': event.get('clearance_body_part_id'),
+                'body_part_name': event.get('clearance_body_part_name'),
+                'left_foot': event.get('clearance_left_foot', False),
+                'right_foot': event.get('clearance_right_foot', False),
+                'other': event.get('clearance_other', False)
+            }
+
+        # HIGH PRIORITY - Duel features
+        elif event_type == 'Duel':
+            features['duel_features'] = {
+                'type_id': event.get('duel_type_id'),
+                'type_name': event.get('duel_type_name'),
+                'outcome_id': event.get('duel_outcome_id'),
+                'outcome_name': event.get('duel_outcome_name')
+            }
+
+        # HIGH PRIORITY - Goalkeeper actions
+        elif event_type == 'Goalkeeper':
+            features['goalkeeper_features'] = {
+                'type_id': event.get('goalkeeper_type_id'),
+                'type_name': event.get('goalkeeper_type_name'),
+                'outcome_id': event.get('goalkeeper_outcome_id'),
+                'outcome_name': event.get('goalkeeper_outcome_name'),
+                'position_id': event.get('goalkeeper_position_id'),
+                'position_name': event.get('goalkeeper_position_name'),
+                'body_part_id': event.get('goalkeeper_body_part_id'),
+                'body_part_name': event.get('goalkeeper_body_part_name'),
+                'technique_id': event.get('goalkeeper_technique_id'),
+                'technique_name': event.get('goalkeeper_technique_name')
+            }
+
+        # HIGH PRIORITY - Carry features
+        elif event_type == 'Carry':
+            features['carry_features'] = {
+                'end_location': event.get('carry_end_location')
+            }
+
+        # HIGH PRIORITY - Interception features
+        elif event_type == 'Interception':
+            features['interception_features'] = {
+                'outcome_id': event.get('interception_outcome_id'),
+                'outcome_name': event.get('interception_outcome_name')
             }
 
         return features
+
+    def extract_freeze_frame_data(self, event: Dict) -> List[Dict]:
+        """Extract 360 freeze frame data for shots/corners (CRITICAL feature)."""
+        freeze_frame = event.get('shot_freeze_frame', [])
+
+        players = []
+        for player in freeze_frame:
+            players.append({
+                'location': player.get('location'),
+                'teammate': player.get('teammate'),
+                'goalkeeper': player.get('goalkeeper'),
+                'actor': player.get('actor', False),
+                'player_id': player.get('player', {}).get('id') if 'player' in player else None,
+                'player_name': player.get('player', {}).get('name') if 'player' in player else None,
+                'position_id': player.get('position', {}).get('id') if 'position' in player else None,
+                'position_name': player.get('position', {}).get('name') if 'position' in player else None
+            })
+
+        return players
 
     def summarize_features(self, events: List[Dict]) -> Dict:
         """Summarize features across all events."""
