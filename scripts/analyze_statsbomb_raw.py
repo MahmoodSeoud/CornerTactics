@@ -33,9 +33,9 @@ def main():
     )
     parser.add_argument(
         '--matches', '-m',
-        type=int,
-        default=10,
-        help='Number of matches to analyze (default: 10)'
+        type=str,
+        default='10',
+        help='Number of matches to analyze (default: 10, use "all" for all available)'
     )
     parser.add_argument(
         '--output-dir', '-o',
@@ -71,8 +71,10 @@ def main():
     analyzer = StatsBombRawAnalyzer()
 
     # Fetch and analyze data
-    print(f"Fetching data from {args.matches} matches...")
-    events = analyzer.fetch_multiple_matches(args.matches)
+    num_matches = 999999 if args.matches.lower() == 'all' else int(args.matches)
+    match_text = "all available" if args.matches.lower() == 'all' else str(num_matches)
+    print(f"Fetching data from {match_text} matches...")
+    events = analyzer.fetch_multiple_matches(num_matches)
 
     if not events:
         print("ERROR: Could not fetch any events")
