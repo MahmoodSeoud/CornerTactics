@@ -29,56 +29,55 @@ class TestStatsBombRawAnalyzer:
         """Test that analyzer initializes correctly."""
         analyzer = StatsBombRawAnalyzer()
         assert analyzer is not None
-        assert analyzer.base_url == "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
+        assert hasattr(analyzer, 'sb')  # Has StatsBomb SDK
         assert analyzer.events == []
         assert analyzer.competitions == []
 
-    @patch('requests.get')
-    def test_fetch_competitions(self, mock_get):
-        """Test fetching competitions from GitHub."""
-        mock_response = Mock()
-        mock_response.json.return_value = [
+    def test_fetch_competitions(self):
+        """Test fetching competitions from SDK."""
+        analyzer = StatsBombRawAnalyzer()
+
+        # Mock the SDK's competitions method
+        mock_comps = pd.DataFrame([
             {"competition_id": 16, "season_id": 4, "competition_name": "Champions League"},
             {"competition_id": 11, "season_id": 1, "competition_name": "La Liga"}
-        ]
-        mock_get.return_value = mock_response
+        ])
 
-        analyzer = StatsBombRawAnalyzer()
-        competitions = analyzer.fetch_competitions()
+        with patch.object(analyzer.sb, 'competitions', return_value=mock_comps):
+            competitions = analyzer.fetch_competitions()
 
-        assert len(competitions) == 2
-        assert competitions[0]["competition_name"] == "Champions League"
-        mock_get.assert_called_once()
+            assert len(competitions) == 2
+            assert competitions.iloc[0]["competition_name"] == "Champions League"
 
-    @patch('requests.get')
-    def test_fetch_match_events(self, mock_get):
+    def test_fetch_match_events(self):
         """Test fetching events for a specific match."""
-        mock_response = Mock()
-        mock_response.json.return_value = [
+        analyzer = StatsBombRawAnalyzer()
+
+        # Mock the SDK's events method
+        mock_events = pd.DataFrame([
             {
                 "id": "event1",
-                "type": {"name": "Pass"},
-                "team": {"name": "Barcelona"},
-                "player": {"name": "Messi"},
+                "type": "Pass",
+                "team": "Barcelona",
+                "player": "Messi",
                 "location": [60.0, 40.0],
                 "timestamp": "00:00:15.123"
             },
             {
                 "id": "event2",
-                "type": {"name": "Ball Receipt*"},
-                "team": {"name": "Barcelona"},
+                "type": "Ball Receipt*",
+                "team": "Barcelona",
                 "location": [65.0, 42.0],
                 "timestamp": "00:00:16.456"
             }
-        ]
-        mock_get.return_value = mock_response
+        ])
 
-        analyzer = StatsBombRawAnalyzer()
-        events = analyzer.fetch_match_events(12345)
+        with patch.object(analyzer.sb, 'events', return_value=mock_events):
+            events = analyzer.fetch_match_events(12345)
 
-        assert len(events) == 2
-        assert events[0]["type"]["name"] == "Pass"
-        assert events[1]["type"]["name"] == "Ball Receipt*"
+            assert len(events) == 2
+            assert events.iloc[0]["type"] == "Pass"
+            assert events.iloc[1]["type"] == "Ball Receipt*"
 
     def test_identify_corner_kicks(self):
         """Test identification of corner kicks in events."""

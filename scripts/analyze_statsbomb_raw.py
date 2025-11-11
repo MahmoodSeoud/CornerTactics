@@ -119,15 +119,21 @@ def main():
         for seq in sequences:
             # First event after corner
             if seq['following_events']:
-                first = seq['following_events'][0].get('type', {}).get('name', 'Unknown')
+                first_event = seq['following_events'][0]
+                first = first_event.get('type', 'Unknown')
+                if isinstance(first, dict):
+                    first = first.get('name', 'Unknown')
                 first_events[first] = first_events.get(first, 0) + 1
 
             # Three-event chains
             if len(seq['following_events']) >= 3:
-                chain = ' → '.join([
-                    e.get('type', {}).get('name', 'Unknown')
-                    for e in seq['following_events'][:3]
-                ])
+                chain_parts = []
+                for e in seq['following_events'][:3]:
+                    event_type = e.get('type', 'Unknown')
+                    if isinstance(event_type, dict):
+                        event_type = event_type.get('name', 'Unknown')
+                    chain_parts.append(event_type)
+                chain = ' → '.join(chain_parts)
                 three_chains[chain] = three_chains.get(chain, 0) + 1
 
         print("\nMost common first events after corners:")

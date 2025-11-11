@@ -8,7 +8,6 @@ Analyzes raw StatsBomb data to:
 3. Document all available features
 """
 
-import requests
 import json
 import pandas as pd
 import numpy as np
@@ -18,33 +17,32 @@ from pathlib import Path
 
 
 class StatsBombRawAnalyzer:
-    """Main analyzer for StatsBomb raw data."""
+    """Main analyzer for StatsBomb raw data using statsbombpy SDK."""
 
     def __init__(self):
-        """Initialize the analyzer."""
-        self.base_url = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
+        """Initialize the analyzer with StatsBomb SDK."""
+        try:
+            from statsbombpy import sb
+            self.sb = sb
+        except ImportError:
+            raise ImportError("statsbombpy not installed. Run: pip install statsbombpy")
+
         self.events = []
         self.competitions = []
         self.matches = []
 
-    def fetch_competitions(self) -> List[Dict]:
+    def fetch_competitions(self) -> pd.DataFrame:
         """Fetch all available competitions from StatsBomb."""
-        url = f"{self.base_url}/competitions.json"
-        response = requests.get(url)
-        self.competitions = response.json()
+        self.competitions = self.sb.competitions()
         return self.competitions
 
-    def fetch_matches(self, competition_id: int, season_id: int) -> List[Dict]:
+    def fetch_matches(self, competition_id: int, season_id: int) -> pd.DataFrame:
         """Fetch matches for a specific competition and season."""
-        url = f"{self.base_url}/matches/{competition_id}/{season_id}.json"
-        response = requests.get(url)
-        return response.json()
+        return self.sb.matches(competition_id=competition_id, season_id=season_id)
 
-    def fetch_match_events(self, match_id: int) -> List[Dict]:
+    def fetch_match_events(self, match_id: int) -> pd.DataFrame:
         """Fetch all events for a specific match."""
-        url = f"{self.base_url}/events/{match_id}.json"
-        response = requests.get(url)
-        return response.json()
+        return self.sb.events(match_id=match_id)
 
     def fetch_multiple_matches(self, num_matches: int = 10) -> List[Dict]:
         """Fetch events from multiple matches for better statistics."""
@@ -52,34 +50,39 @@ class StatsBombRawAnalyzer:
         match_count = 0
 
         # Try to get competitions if not already fetched
-        if not self.competitions:
-            self.fetch_competitions()
+        if len(self.competitions) == 0:
+            comps_df = self.fetch_competitions()
+        else:
+            comps_df = self.competitions
 
         # Focus on major competitions
         target_comps = ['Champions League', 'La Liga', 'Premier League']
 
-        for comp in self.competitions:
+        for _, comp in comps_df.iterrows():
             if comp['competition_name'] in target_comps:
                 comp_id = comp['competition_id']
                 season_id = comp['season_id']
 
                 try:
-                    matches = self.fetch_matches(comp_id, season_id)
+                    matches_df = self.fetch_matches(comp_id, season_id)
 
-                    for match in matches[:5]:  # Try first 5 matches
+                    for _, match in matches_df.head(5).iterrows():  # Try first 5 matches
                         try:
-                            events = self.fetch_match_events(match['match_id'])
-                            if events:
-                                all_events.extend(events)
-                                self.matches.append(match)
+                            events_df = self.fetch_match_events(match['match_id'])
+
+                            # Convert DataFrame to list of dicts for compatibility
+                            if not events_df.empty:
+                                events_list = events_df.to_dict('records')
+                                all_events.extend(events_list)
+                                self.matches.append(match.to_dict())
                                 match_count += 1
 
                                 if match_count >= num_matches:
                                     self.events = all_events
                                     return all_events
-                        except:
+                        except Exception as e:
                             continue
-                except:
+                except Exception as e:
                     continue
 
         self.events = all_events
@@ -89,20 +92,25 @@ class StatsBombRawAnalyzer:
         """Identify all corner kicks in the loaded events."""
         corners = []
         for event in self.events:
-            if (event.get('type', {}).get('name') == 'Pass' and
-                event.get('pass', {}).get('type', {}).get('name') == 'Corner'):
+            # StatsBomb SDK flattens the data structure
+            # Check for 'type' == 'Pass' and 'pass_type' contains 'Corner'
+            event_type = event.get('type', '')
+            pass_type = event.get('pass_type', '')
+
+            if event_type == 'Pass' and isinstance(pass_type, str) and 'Corner' in pass_type:
                 corners.append(event)
         return corners
 
     def extract_corner_sequences(self, window_size: int = 10) -> List[Dict]:
         """Extract sequences of events following corner kicks."""
         sequences = []
-        corners = self.identify_corner_kicks()
 
         for i, event in enumerate(self.events):
-            if (event.get('type', {}).get('name') == 'Pass' and
-                event.get('pass', {}).get('type', {}).get('name') == 'Corner'):
+            # Check if this is a corner kick (SDK flattened format)
+            event_type = event.get('type', '')
+            pass_type = event.get('pass_type', '')
 
+            if event_type == 'Pass' and isinstance(pass_type, str) and 'Corner' in pass_type:
                 sequence = {
                     'corner': event,
                     'corner_index': i,
@@ -163,13 +171,20 @@ class TransitionMatrixBuilder:
             curr_event = events[i]
             next_event = events[i + 1]
 
-            # Get event types
-            curr_type = curr_event.get('type', {}).get('name', 'Unknown')
-            next_type = next_event.get('type', {}).get('name', 'Unknown')
+            # Get event types (SDK flattens to just 'type' field)
+            curr_type = curr_event.get('type', 'Unknown')
+            next_type = next_event.get('type', 'Unknown')
 
-            # Special handling for corners
+            # Handle nested structure if it exists (for backward compatibility)
+            if isinstance(curr_type, dict):
+                curr_type = curr_type.get('name', 'Unknown')
+            if isinstance(next_type, dict):
+                next_type = next_type.get('name', 'Unknown')
+
+            # Special handling for corners (SDK uses 'pass_type' field)
             if track_corners and curr_type == 'Pass':
-                if curr_event.get('pass', {}).get('type', {}).get('name') == 'Corner':
+                pass_type = curr_event.get('pass_type', '')
+                if isinstance(pass_type, str) and 'Corner' in pass_type:
                     curr_type = 'Corner'
 
             self.add_transition(curr_type, next_type)
@@ -221,8 +236,13 @@ class FeatureExtractor:
 
     def extract_event_features(self, event: Dict) -> Dict:
         """Extract features from a single event."""
+        # SDK flattens structure, so 'type' is just a string
+        event_type = event.get('type', 'Unknown')
+        if isinstance(event_type, dict):
+            event_type = event_type.get('name', 'Unknown')
+
         features = {
-            'event_type': event.get('type', {}).get('name', 'Unknown'),
+            'event_type': event_type,
             'has_location': 'location' in event,
             'has_timestamp': 'timestamp' in event,
             'has_under_pressure': 'under_pressure' in event,
@@ -230,32 +250,29 @@ class FeatureExtractor:
             'has_related_events': 'related_events' in event and len(event.get('related_events', [])) > 0
         }
 
-        # Extract type-specific features
-        if event.get('type', {}).get('name') == 'Pass':
-            pass_data = event.get('pass', {})
+        # Extract type-specific features (SDK flattens these as pass_*, shot_*, etc.)
+        if event_type == 'Pass':
             features['pass_features'] = {
-                'length': pass_data.get('length'),
-                'angle': pass_data.get('angle'),
-                'height': pass_data.get('height', {}).get('name'),
-                'has_end_location': 'end_location' in pass_data,
-                'outcome': pass_data.get('outcome', {}).get('name', 'Complete')
+                'length': event.get('pass_length'),
+                'angle': event.get('pass_angle'),
+                'height': event.get('pass_height'),
+                'has_end_location': 'pass_end_location' in event,
+                'outcome': event.get('pass_outcome', 'Complete')
             }
 
-        elif event.get('type', {}).get('name') == 'Shot':
-            shot_data = event.get('shot', {})
+        elif event_type == 'Shot':
             features['shot_features'] = {
-                'statsbomb_xg': shot_data.get('statsbomb_xg'),
-                'outcome': shot_data.get('outcome', {}).get('name'),
-                'technique': shot_data.get('technique', {}).get('name'),
-                'body_part': shot_data.get('body_part', {}).get('name')
+                'statsbomb_xg': event.get('shot_statsbomb_xg'),
+                'outcome': event.get('shot_outcome'),
+                'technique': event.get('shot_technique'),
+                'body_part': event.get('shot_body_part')
             }
 
-        elif event.get('type', {}).get('name') == 'Clearance':
-            clearance_data = event.get('clearance', {})
+        elif event_type == 'Clearance':
             features['clearance_features'] = {
-                'aerial_won': clearance_data.get('aerial_won', False),
-                'head': clearance_data.get('head', False),
-                'body_part': clearance_data.get('body_part', {}).get('name')
+                'aerial_won': event.get('clearance_aerial_won', False),
+                'head': event.get('clearance_head', False),
+                'body_part': event.get('clearance_body_part')
             }
 
         return features
@@ -277,8 +294,10 @@ class FeatureExtractor:
         pressure_count = 0
 
         for event in events:
-            # Track event types
-            event_type = event.get('type', {}).get('name', 'Unknown')
+            # Track event types (SDK format)
+            event_type = event.get('type', 'Unknown')
+            if isinstance(event_type, dict):
+                event_type = event_type.get('name', 'Unknown')
             summary['event_types'].add(event_type)
 
             # Track field coverage
@@ -293,18 +312,21 @@ class FeatureExtractor:
             if event.get('under_pressure', False):
                 pressure_count += 1
 
-            # Type-specific features
-            if event_type == 'Pass' and 'pass' in event:
-                for key in event['pass'].keys():
-                    summary['type_specific_features']['pass'].add(key)
+            # Type-specific features (SDK flattens these as pass_*, shot_*, etc.)
+            if event_type == 'Pass':
+                for key in event.keys():
+                    if key.startswith('pass_'):
+                        summary['type_specific_features']['pass'].add(key)
 
-            if event_type == 'Shot' and 'shot' in event:
-                for key in event['shot'].keys():
-                    summary['type_specific_features']['shot'].add(key)
+            if event_type == 'Shot':
+                for key in event.keys():
+                    if key.startswith('shot_'):
+                        summary['type_specific_features']['shot'].add(key)
 
-            if event_type == 'Clearance' and 'clearance' in event:
-                for key in event['clearance'].keys():
-                    summary['type_specific_features']['clearance'].add(key)
+            if event_type == 'Clearance':
+                for key in event.keys():
+                    if key.startswith('clearance_'):
+                        summary['type_specific_features']['clearance'].add(key)
 
         # Calculate coverage rates
         if events:
