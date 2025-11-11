@@ -13,6 +13,9 @@ CornerTactics analyzes corner kick outcomes using StatsBomb's open data, combini
 - Download and process StatsBomb corner kick data with 360 player positions
 - Extract corner kick outcomes (shots, clearances, goals, etc.)
 - Visualize player positioning during corner kicks
+- Analyze transition probabilities from raw StatsBomb data
+- Build complete transition matrices for all event types
+- Document all available features in StatsBomb raw data
 - SLURM cluster integration for large-scale data processing
 
 ## Installation
@@ -43,6 +46,30 @@ pip install -r requirements.txt
 ```
 
 ## Quick Start
+
+### Analyze Raw StatsBomb Data
+
+Analyze transition probabilities and document features from raw StatsBomb data:
+
+```bash
+# Analyze 10 matches (default)
+python scripts/analyze_statsbomb_raw.py
+
+# Analyze specific number of matches
+python scripts/analyze_statsbomb_raw.py --matches 20
+
+# With verbose output
+python scripts/analyze_statsbomb_raw.py --matches 5 --verbose
+
+# Custom output directory
+python scripts/analyze_statsbomb_raw.py --output-dir results/analysis
+```
+
+This will generate:
+- `transition_matrix_complete.csv`: Full transition probability matrix
+- `corner_transitions.json`: Corner-specific transition probabilities
+- `feature_summary.json`: Documentation of all available features
+- `statsbomb_raw_analysis_report.md`: Comprehensive analysis report
 
 ### Download StatsBomb Corner Data
 
@@ -109,14 +136,22 @@ CornerTactics/
 ├── scripts/
 │   ├── download_statsbomb_corners.py    # Download StatsBomb 360 data
 │   ├── visualize_corners_with_players.py # Create visualizations
+│   ├── analyze_statsbomb_raw.py         # Analyze raw StatsBomb data
 │   └── slurm/                            # SLURM job scripts
 │       ├── download_statsbomb_corners.sh
 │       └── visualize_corners_players.sh
 ├── src/
-│   └── statsbomb_loader.py               # StatsBomb data loader
+│   ├── statsbomb_loader.py               # StatsBomb data loader
+│   └── statsbomb_raw_analyzer.py         # Raw data analyzer
+├── tests/
+│   ├── test_statsbomb_raw_analyzer.py    # Unit tests
+│   └── test_statsbomb_integration.py     # Integration tests
 ├── data/                                  # Data directory (gitignored)
 │   ├── statsbomb/                        # StatsBomb data
+│   ├── analysis/                         # Analysis outputs
 │   └── datasets/                         # Other datasets
+├── docs/                                  # Documentation
+│   └── CORNER_ANALYSIS_COMPLETE_CONTEXT.md # Analysis context
 ├── requirements.txt
 ├── CLAUDE.md                             # Development guide for Claude Code
 └── README.md
