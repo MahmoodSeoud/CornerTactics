@@ -80,26 +80,26 @@ class TestStatsBombRawAnalyzer:
             assert events.iloc[1]["type"] == "Ball Receipt*"
 
     def test_identify_corner_kicks(self):
-        """Test identification of corner kicks in events."""
+        """Test identification of corner kicks in events (SDK format)."""
         events = [
             {
-                "type": {"name": "Pass"},
-                "pass": {"type": {"name": "Corner"}},
-                "team": {"name": "Barcelona"}
+                "type": "Pass",  # SDK flattens
+                "pass_type": "Corner",  # SDK uses pass_type field
+                "team": "Barcelona"
             },
             {
-                "type": {"name": "Pass"},
-                "pass": {"type": {"name": "Normal"}},
-                "team": {"name": "Barcelona"}
+                "type": "Pass",
+                "pass_type": "Normal",
+                "team": "Barcelona"
             },
             {
-                "type": {"name": "Shot"},
-                "team": {"name": "Barcelona"}
+                "type": "Shot",
+                "team": "Barcelona"
             },
             {
-                "type": {"name": "Pass"},
-                "pass": {"type": {"name": "Corner"}},
-                "team": {"name": "Real Madrid"}
+                "type": "Pass",
+                "pass_type": "Corner",
+                "team": "Real Madrid"
             }
         ]
 
@@ -108,8 +108,8 @@ class TestStatsBombRawAnalyzer:
         corners = analyzer.identify_corner_kicks()
 
         assert len(corners) == 2
-        assert corners[0]["team"]["name"] == "Barcelona"
-        assert corners[1]["team"]["name"] == "Real Madrid"
+        assert corners[0]["team"] == "Barcelona"
+        assert corners[1]["team"] == "Real Madrid"
 
 
 class TestTransitionMatrixBuilder:
@@ -168,13 +168,13 @@ class TestTransitionMatrixBuilder:
         assert builder.transitions["Shot"]["Goal Keeper"] == 1
 
     def test_corner_specific_transitions(self):
-        """Test tracking corner-specific transitions."""
+        """Test tracking corner-specific transitions (SDK format)."""
         events = [
-            {"type": {"name": "Pass"}, "pass": {"type": {"name": "Corner"}}},
-            {"type": {"name": "Ball Receipt*"}},
-            {"type": {"name": "Shot"}},
-            {"type": {"name": "Pass"}, "pass": {"type": {"name": "Corner"}}},
-            {"type": {"name": "Clearance"}},
+            {"type": "Pass", "pass_type": "Corner"},  # SDK format
+            {"type": "Ball Receipt*"},
+            {"type": "Shot"},
+            {"type": "Pass", "pass_type": "Corner"},
+            {"type": "Clearance"},
         ]
 
         builder = TransitionMatrixBuilder()
@@ -195,21 +195,19 @@ class TestFeatureExtractor:
         assert extractor.features == {}
 
     def test_extract_event_features(self):
-        """Test extracting features from a single event."""
+        """Test extracting features from a single event (SDK format)."""
         event = {
             "id": "abc123",
-            "type": {"name": "Pass"},
-            "team": {"name": "Barcelona"},
-            "player": {"name": "Messi"},
+            "type": "Pass",  # SDK flattens this
+            "team": "Barcelona",
+            "player": "Messi",
             "location": [60.0, 40.0],
             "timestamp": "00:15:30.123",
             "under_pressure": True,
-            "pass": {
-                "length": 25.5,
-                "angle": 1.57,
-                "height": {"name": "High Pass"},
-                "end_location": [85.0, 45.0]
-            }
+            "pass_length": 25.5,  # SDK flattens to pass_*
+            "pass_angle": 1.57,
+            "pass_height": "High Pass",
+            "pass_end_location": [85.0, 45.0]
         }
 
         extractor = FeatureExtractor()
@@ -223,23 +221,23 @@ class TestFeatureExtractor:
         assert features["pass_features"]["has_end_location"] == True
 
     def test_summarize_all_features(self):
-        """Test summarizing features across all events."""
+        """Test summarizing features across all events (SDK format)."""
         events = [
             {
-                "type": {"name": "Pass"},
+                "type": "Pass",  # SDK flattens
                 "location": [60.0, 40.0],
                 "under_pressure": True,
-                "pass": {"length": 20.0}
+                "pass_length": 20.0  # SDK uses pass_*
             },
             {
-                "type": {"name": "Shot"},
+                "type": "Shot",
                 "location": [100.0, 40.0],
-                "shot": {"statsbomb_xg": 0.25}
+                "shot_statsbomb_xg": 0.25  # SDK uses shot_*
             },
             {
-                "type": {"name": "Clearance"},
+                "type": "Clearance",
                 "location": [30.0, 40.0],
-                "clearance": {"aerial_won": True}
+                "clearance_aerial_won": True  # SDK uses clearance_*
             }
         ]
 

@@ -23,94 +23,95 @@ class TestStatsBombIntegration:
     @patch('requests.get')
     def test_complete_analysis_pipeline(self, mock_get):
         """Test the complete analysis pipeline with mock data."""
-        # Mock competition response
-        comp_response = Mock()
-        comp_response.json.return_value = [
+        # Mock competition response (SDK returns DataFrame)
+        mock_comps_df = pd.DataFrame([
             {
                 "competition_id": 16,
                 "season_id": 4,
                 "competition_name": "Champions League",
                 "season_name": "2019/2020"
             }
-        ]
+        ])
 
-        # Mock matches response
-        matches_response = Mock()
-        matches_response.json.return_value = [
+        # Mock matches response (SDK returns DataFrame)
+        mock_matches_df = pd.DataFrame([
             {
                 "match_id": 12345,
-                "home_team": {"home_team_name": "Barcelona"},
-                "away_team": {"away_team_name": "Liverpool"}
+                "home_team": "Barcelona",
+                "away_team": "Liverpool"
             }
-        ]
+        ])
 
-        # Mock events with corner kick and following events
-        events_response = Mock()
-        events_response.json.return_value = [
+        # Mock events with corner kick and following events (SDK format)
+        mock_events_df = pd.DataFrame([
             {
                 "id": "1",
-                "type": {"name": "Pass"},
-                "pass": {"type": {"name": "Corner"}, "end_location": [110, 40]},
-                "team": {"name": "Barcelona"},
-                "player": {"name": "Messi"},
+                "type": "Pass",  # SDK flattens
+                "pass_type": "Corner",  # SDK uses pass_type
+                "pass_end_location": [110, 40],
+                "team": "Barcelona",
+                "player": "Messi",
                 "location": [120, 0],
                 "timestamp": "00:10:00.000"
             },
             {
                 "id": "2",
-                "type": {"name": "Ball Receipt*"},
-                "team": {"name": "Barcelona"},
-                "player": {"name": "Pique"},
+                "type": "Ball Receipt*",
+                "team": "Barcelona",
+                "player": "Pique",
                 "location": [110, 40],
                 "timestamp": "00:10:01.000"
             },
             {
                 "id": "3",
-                "type": {"name": "Shot"},
-                "shot": {"outcome": {"name": "Saved"}, "statsbomb_xg": 0.15},
-                "team": {"name": "Barcelona"},
-                "player": {"name": "Pique"},
+                "type": "Shot",
+                "shot_outcome": "Saved",  # SDK flattens
+                "shot_statsbomb_xg": 0.15,
+                "team": "Barcelona",
+                "player": "Pique",
                 "location": [108, 40],
                 "timestamp": "00:10:02.000"
             },
             {
                 "id": "4",
-                "type": {"name": "Goal Keeper"},
-                "team": {"name": "Liverpool"},
-                "player": {"name": "Alisson"},
+                "type": "Goal Keeper",
+                "team": "Liverpool",
+                "player": "Alisson",
                 "location": [120, 40],
                 "timestamp": "00:10:02.500"
             }
-        ]
+        ])
 
-        # Set up mock responses in order
-        mock_get.side_effect = [comp_response, matches_response, events_response]
-
-        # Run analysis
+        # Mock SDK methods
         analyzer = StatsBombRawAnalyzer()
-        results = analyzer.analyze(num_matches=1)
 
-        # Verify results
-        assert results['num_events'] == 4
-        assert results['num_corners'] == 1
-        assert results['num_matches'] == 1
+        with patch.object(analyzer.sb, 'competitions', return_value=mock_comps_df):
+            with patch.object(analyzer.sb, 'matches', return_value=mock_matches_df):
+                with patch.object(analyzer.sb, 'events', return_value=mock_events_df):
+                    # Run analysis
+                    results = analyzer.analyze(num_matches=1)
 
-        # Check transition matrix
-        matrix = results['transition_matrix']
-        assert 'Corner' in matrix.index
-        assert matrix.loc['Corner', 'Ball Receipt*'] > 0
+                    # Verify results
+                    assert results['num_events'] == 4
+                    assert results['num_corners'] == 1
+                    assert results['num_matches'] == 1
 
-        # Check features
-        features = results['feature_summary']
-        assert 'Pass' in features['event_types']
-        assert 'Shot' in features['event_types']
-        assert features['location_coverage'] == 1.0  # All events have location
+                    # Check transition matrix
+                    matrix = results['transition_matrix']
+                    assert 'Corner' in matrix.index
+                    assert matrix.loc['Corner', 'Ball Receipt*'] > 0
 
-        # Check corner sequences
-        sequences = results['corner_sequences']
-        assert len(sequences) == 1
-        assert sequences[0]['corner']['player']['name'] == 'Messi'
-        assert len(sequences[0]['following_events']) == 3
+                    # Check features
+                    features = results['feature_summary']
+                    assert 'Pass' in features['event_types']
+                    assert 'Shot' in features['event_types']
+                    assert features['location_coverage'] == 1.0  # All events have location
+
+                    # Check corner sequences (SDK format)
+                    sequences = results['corner_sequences']
+                    assert len(sequences) == 1
+                    assert sequences[0]['corner']['player'] == 'Messi'  # SDK flattens
+                    assert len(sequences[0]['following_events']) == 3
 
     def test_transition_probability_calculation(self):
         """Test that transition probabilities sum to 1."""
@@ -134,17 +135,17 @@ class TestStatsBombIntegration:
                 assert abs(row_sum - 1.0) < 0.001, f"Row {idx} sums to {row_sum}, not 1"
 
     def test_corner_specific_analysis(self):
-        """Test corner-specific transition tracking."""
+        """Test corner-specific transition tracking (SDK format)."""
         from src.statsbomb_raw_analyzer import TransitionMatrixBuilder
 
         events = [
-            {"type": {"name": "Pass"}, "pass": {"type": {"name": "Corner"}}},
-            {"type": {"name": "Ball Receipt*"}},
-            {"type": {"name": "Shot"}},
-            {"type": {"name": "Pass"}, "pass": {}},  # Regular pass
-            {"type": {"name": "Ball Receipt*"}},
-            {"type": {"name": "Pass"}, "pass": {"type": {"name": "Corner"}}},
-            {"type": {"name": "Clearance"}}
+            {"type": "Pass", "pass_type": "Corner"},  # SDK format
+            {"type": "Ball Receipt*"},
+            {"type": "Shot"},
+            {"type": "Pass", "pass_type": "Normal"},  # Regular pass
+            {"type": "Ball Receipt*"},
+            {"type": "Pass", "pass_type": "Corner"},
+            {"type": "Clearance"}
         ]
 
         builder = TransitionMatrixBuilder()
@@ -158,39 +159,33 @@ class TestStatsBombIntegration:
         assert corner_trans['Clearance'] == 0.5
 
     def test_feature_extraction_completeness(self):
-        """Test that all feature types are properly extracted."""
+        """Test that all feature types are properly extracted (SDK format)."""
         from src.statsbomb_raw_analyzer import FeatureExtractor
 
         events = [
             {
-                "type": {"name": "Pass"},
+                "type": "Pass",  # SDK flattens
                 "location": [60, 40],
                 "timestamp": "00:00:15",
                 "under_pressure": True,
-                "pass": {
-                    "length": 25.5,
-                    "angle": 1.57,
-                    "height": {"name": "High Pass"}
-                }
+                "pass_length": 25.5,  # SDK uses pass_*
+                "pass_angle": 1.57,
+                "pass_height": "High Pass"
             },
             {
-                "type": {"name": "Shot"},
+                "type": "Shot",
                 "location": [100, 40],
                 "timestamp": "00:00:20",
-                "shot": {
-                    "statsbomb_xg": 0.25,
-                    "outcome": {"name": "Goal"},
-                    "technique": {"name": "Normal"}
-                }
+                "shot_statsbomb_xg": 0.25,  # SDK uses shot_*
+                "shot_outcome": "Goal",
+                "shot_technique": "Normal"
             },
             {
-                "type": {"name": "Clearance"},
+                "type": "Clearance",
                 "location": [30, 40],
                 "timestamp": "00:00:25",
-                "clearance": {
-                    "aerial_won": True,
-                    "head": True
-                }
+                "clearance_aerial_won": True,  # SDK uses clearance_*
+                "clearance_head": True
             }
         ]
 
@@ -206,10 +201,10 @@ class TestStatsBombIntegration:
         assert summary['timestamp_coverage'] == 1.0
         assert summary['pressure_rate'] == 1/3
 
-        # Check type-specific features
-        assert 'length' in summary['type_specific_features']['pass']
-        assert 'statsbomb_xg' in summary['type_specific_features']['shot']
-        assert 'aerial_won' in summary['type_specific_features']['clearance']
+        # Check type-specific features (SDK uses pass_*, shot_*, etc.)
+        assert 'pass_length' in summary['type_specific_features']['pass']
+        assert 'shot_statsbomb_xg' in summary['type_specific_features']['shot']
+        assert 'clearance_aerial_won' in summary['type_specific_features']['clearance']
 
 
 if __name__ == "__main__":
