@@ -10,10 +10,16 @@ Usage:
 """
 
 import json
-import os
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from tqdm import tqdm
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 
 # File paths
@@ -54,8 +60,12 @@ def extract_corners_from_match(match_id: str) -> List[Dict[str, Any]]:
     if not event_file.exists():
         return []
 
-    with open(event_file) as f:
-        events = json.load(f)
+    try:
+        with open(event_file) as f:
+            events = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logging.warning(f"Failed to load match {match_id}: {e}")
+        return []
 
     corners = [event for event in events if is_corner_kick(event)]
 
@@ -78,22 +88,19 @@ def match_corners_with_freeze_frames(
     Returns:
         List of matched corner-freeze frame pairs
     """
-    # Create lookup dict for faster matching
-    freeze_frame_lookup = {ff["event_uuid"]: ff for ff in freeze_frames}
+    # Create lookup dict for O(1) matching instead of O(n) search
+    freeze_frame_lookup = {ff["event_uuid"]: ff["freeze_frame"] for ff in freeze_frames}
 
-    matched_corners = []
-
-    for corner in corners:
-        corner_uuid = corner["id"]
-
-        if corner_uuid in freeze_frame_lookup:
-            matched_corners.append(
-                {
-                    "match_id": match_id,
-                    "event": corner,
-                    "freeze_frame": freeze_frame_lookup[corner_uuid]["freeze_frame"],
-                }
-            )
+    # Use list comprehension for efficiency
+    matched_corners = [
+        {
+            "match_id": match_id,
+            "event": corner,
+            "freeze_frame": freeze_frame_lookup[corner["id"]],
+        }
+        for corner in corners
+        if corner["id"] in freeze_frame_lookup
+    ]
 
     return matched_corners
 
@@ -153,8 +160,12 @@ def process_all_matches(
         stats["matches_with_freeze_frames"] += 1
 
         # Load freeze frames
-        with open(freeze_frame_file) as f:
-            freeze_frames = json.load(f)
+        try:
+            with open(freeze_frame_file) as f:
+                freeze_frames = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logging.warning(f"Failed to load freeze frames for match {match_id}: {e}")
+            continue
 
         # Match corners with freeze frames
         matched = match_corners_with_freeze_frames(corners, freeze_frames, match_id)
