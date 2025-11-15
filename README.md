@@ -1,22 +1,18 @@
-# CornerTactics
+# StatsBomb Corner Data Downloader
 
-A soccer analytics research project for analyzing and predicting corner kick outcomes using StatsBomb open data.
+A simple utility for downloading StatsBomb corner kick data with 360-degree player positioning from their open dataset.
 
 ## Overview
 
-CornerTactics analyzes corner kick outcomes using StatsBomb's open data, combining event data with 360-degree player positioning freeze frames to understand what happens after corner kicks in professional soccer.
-
-**Key Data**: StatsBomb Open Data provides event data with 360 freeze frames showing exact player positions at the moment of corner kicks
+This project downloads corner kick events and freeze frame data (360-degree player positions) from StatsBomb's open data API, focusing on professional men's soccer competitions.
 
 ## Features
 
-- Download and process StatsBomb corner kick data with 360 player positions
-- Extract corner kick outcomes (shots, clearances, goals, etc.)
-- Visualize player positioning during corner kicks
-- Analyze transition probabilities from raw StatsBomb data
-- Build complete transition matrices for all event types
-- Document all available features in StatsBomb raw data
-- SLURM cluster integration for large-scale data processing
+- Download corner kicks from all available StatsBomb open data competitions
+- Extract 360-degree freeze frame player positions at the moment of corner kicks
+- Filter for professional men's competitions only
+- Priority-based download order (Champions League, La Liga, Premier League, etc.)
+- Save data in CSV format for further analysis
 
 ## Installation
 
@@ -24,7 +20,6 @@ CornerTactics analyzes corner kick outcomes using StatsBomb's open data, combini
 
 - Python 3.8+
 - Conda (recommended for environment management)
-- Access to SLURM cluster (optional, for large-scale processing)
 
 ### Setup
 
@@ -45,53 +40,19 @@ conda activate robo
 pip install -r requirements.txt
 ```
 
-## Quick Start
-
-### Analyze Raw StatsBomb Data
-
-Analyze transition probabilities and document features from raw StatsBomb data:
-
-```bash
-# Analyze 10 matches (default)
-python scripts/analyze_statsbomb_raw.py
-
-# Analyze specific number of matches
-python scripts/analyze_statsbomb_raw.py --matches 20
-
-# With verbose output
-python scripts/analyze_statsbomb_raw.py --matches 5 --verbose
-
-# Custom output directory
-python scripts/analyze_statsbomb_raw.py --output-dir results/analysis
-```
-
-This will generate:
-- `transition_matrix_complete.csv`: Full transition probability matrix
-- `corner_transitions.json`: Corner-specific transition probabilities
-- `feature_summary.json`: Documentation of all available features
-- `statsbomb_raw_analysis_report.md`: Comprehensive analysis report
+## Usage
 
 ### Download StatsBomb Corner Data
 
-**Local execution:**
 ```bash
-python scripts/download_statsbomb_corners.py
+python scripts/download_statsbomb_raw_jsons.py
 ```
 
-**SLURM cluster:**
-```bash
-sbatch scripts/slurm/download_statsbomb_corners.sh
-```
-
-This downloads all professional men's corner kicks with 360 player position data from StatsBomb's open dataset. Output is saved to `data/statsbomb/corners_360.csv`.
-
-### Visualize Corner Kicks
-
-```bash
-python scripts/visualize_corners_with_players.py
-```
-
-Creates a 2x2 grid visualization showing corner kicks with player positions (attacking team in blue, defending team in orange).
+This will:
+- Fetch all available competitions from StatsBomb open data
+- Filter for professional men's competitions
+- Download corner kick events with 360 player freeze frame data
+- Save raw JSON files to `data/statsbomb/raw/`
 
 ### Using the StatsBomb Loader
 
@@ -119,64 +80,42 @@ loader.save_dataset(df, "corners_epl_2019.csv")
 
 ## Data Structure
 
-### StatsBomb Corner Dataset
-
-The corner dataset (`corners_360.csv`) includes:
-
-- **Match Info**: `match_id`, `competition`, `season`, `home_team`, `away_team`, `match_date`
-- **Corner Event**: `minute`, `second`, `team`, `player`
-- **Location**: `location_x`, `location_y`, `end_x`, `end_y` (StatsBomb 120x80 pitch)
-- **Player Positions**: `num_attacking_players`, `num_defending_players`, `attacking_positions`, `defending_positions` (JSON format)
-- **Outcome**: Analysis of what happened after the corner (shot, clearance, etc.)
-
-### Directory Structure
+### Output Directory
 
 ```
-CornerTactics/
-├── scripts/
-│   ├── download_statsbomb_corners.py    # Download StatsBomb 360 data
-│   ├── visualize_corners_with_players.py # Create visualizations
-│   ├── analyze_statsbomb_raw.py         # Analyze raw StatsBomb data
-│   └── slurm/                            # SLURM job scripts
-│       ├── download_statsbomb_corners.sh
-│       └── visualize_corners_players.sh
-├── src/
-│   ├── statsbomb_loader.py               # StatsBomb data loader
-│   └── statsbomb_raw_analyzer.py         # Raw data analyzer
-├── tests/
-│   ├── test_statsbomb_raw_analyzer.py    # Unit tests
-│   └── test_statsbomb_integration.py     # Integration tests
-├── data/                                  # Data directory (gitignored)
-│   ├── statsbomb/                        # StatsBomb data
-│   ├── analysis/                         # Analysis outputs
-│   └── datasets/                         # Other datasets
-├── docs/                                  # Documentation
-│   └── CORNER_ANALYSIS_COMPLETE_CONTEXT.md # Analysis context
-├── requirements.txt
-├── CLAUDE.md                             # Development guide for Claude Code
-└── README.md
+data/
+└── statsbomb/
+    └── raw/
+        ├── competitions.json
+        ├── matches/
+        │   └── <competition_id>_<season_id>.json
+        └── events/
+            └── <match_id>.json
 ```
 
-## SLURM Cluster Usage
+### Corner Event Data
 
-For large-scale data processing, submit jobs to the SLURM cluster:
+Each corner kick includes:
+- **Match Info**: competition, season, home team, away team, date
+- **Corner Event**: minute, second, team, player
+- **Location**: x, y coordinates (StatsBomb 120x80 pitch)
+- **360 Freeze Frame**: All player positions at the moment of the corner kick
 
-```bash
-# Submit job
-sbatch scripts/slurm/<script_name>.sh
+## Coordinate System
 
-# Check job status
-squeue -u $USER
+**StatsBomb Pitch**: 120 units wide × 80 units tall
+- X-axis: 0 (defensive goal) to 120 (attacking goal)
+- Y-axis: 0 (bottom sideline) to 80 (top sideline)
+- Corners typically at (120, 0) or (120, 80)
 
-# View logs
-tail -f logs/<job_name>_<job_id>.out
-```
+## Dependencies
 
-All SLURM scripts automatically:
-- Activate the `robo` conda environment
-- Install required dependencies
-- Set up Python path
-- Save logs to `logs/` at project root
+- `pandas`: Data processing
+- `statsbombpy`: StatsBomb API client
+- `tqdm`: Progress bars
+- `requests`: HTTP requests
+
+See `requirements.txt` for complete list with versions.
 
 ## Data Sources
 
@@ -191,54 +130,10 @@ Free access to event data and 360 freeze frames for select competitions:
 
 Documentation: https://github.com/statsbomb/open-data
 
-## Development
-
-### Code Philosophy
-
-This project follows a data-oriented approach:
-- Efficient pandas operations over loops
-- Batch processing for large datasets
-- Clear, straightforward code
-- Minimal abstraction
-
-See `CLAUDE.md` for detailed development guidelines.
-
-### Adding New Features
-
-1. Test locally with small data samples
-2. Create corresponding SLURM script for cluster execution
-3. Add documentation to `CLAUDE.md`
-4. Never commit large data files (already in `.gitignore`)
-
-## Coordinate Systems
-
-**StatsBomb Pitch**: 120 units wide × 80 units tall
-- X-axis: 0 (defensive goal) to 120 (attacking goal)
-- Y-axis: 0 (bottom sideline) to 80 (top sideline)
-- Corners typically at (120, 0) or (120, 80)
-
-## Dependencies
-
-Core dependencies:
-- `pandas`: Data processing and analysis
-- `statsbombpy`: StatsBomb API client
-- `matplotlib`: Plotting
-- `mplsoccer`: Soccer-specific visualizations
-- `tqdm`: Progress bars
-- `requests`: HTTP requests
-
-See `requirements.txt` for complete list with versions.
-
 ## License
 
 This project uses StatsBomb's open data, which is freely available for research and non-commercial use. Please review StatsBomb's [license terms](https://github.com/statsbomb/open-data/blob/master/LICENSE.pdf) before use.
 
-## Contributing
-
-This is a research project. For questions or collaboration inquiries, please open an issue.
-
 ## Acknowledgments
 
 - **StatsBomb** for providing open event and 360 data
-- **SoccerNet** for video and tracking datasets
-- **mplsoccer** for soccer pitch visualization tools
