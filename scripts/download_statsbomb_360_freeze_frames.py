@@ -44,7 +44,7 @@ def main():
     BASE_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
 
     # Create output directory
-    output_dir = Path("data/raw/statsbomb/three-sixty")
+    output_dir = Path("data/statsbomb/freeze-frames")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
@@ -53,7 +53,7 @@ def main():
 
     # Load competitions to find which ones have 360 data
     print("\n📥 Loading competitions...")
-    competitions_file = Path("data/raw/statsbomb/json_events/competitions.json")
+    competitions_file = Path("data/statsbomb/competitions.json")
 
     if not competitions_file.exists():
         print("❌ Error: competitions.json not found!")
@@ -101,7 +101,7 @@ def main():
     total_corners_with_360 = 0
 
     # Build event data path
-    events_dir = Path("data/raw/statsbomb/json_events/events")
+    events_dir = Path("data/statsbomb/events")
 
     for match in tqdm(matches_with_360, desc="Downloading 360 data"):
         match_id = match['match_id']

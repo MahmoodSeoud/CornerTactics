@@ -34,7 +34,7 @@ def main():
     BASE_URL = "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
 
     # Create output directory
-    output_dir = Path("data/raw/statsbomb/json_events")
+    output_dir = Path("data/statsbomb")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)

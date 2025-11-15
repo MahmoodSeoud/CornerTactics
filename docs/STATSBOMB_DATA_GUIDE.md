@@ -5,7 +5,7 @@
 
 ## Overview
 
-This guide documents the StatsBomb corner kick data downloaded and stored in `data/raw/statsbomb/json_events/`. The data includes detailed event information, 360-degree freeze frames showing player positions at corner kick moments, and contextual events surrounding each corner.
+This guide documents the StatsBomb corner kick data downloaded and stored in `data/statsbomb/`. The data includes detailed event information and 360-degree freeze frames showing player positions at corner kick moments.
 
 ## Dataset Statistics
 
@@ -21,12 +21,18 @@ Matches with Corners:   3,464 (100%)
 ## Directory Structure
 
 ```
-data/raw/statsbomb/json_events/
-├── competitions.json           # Competition metadata (75 competitions)
-├── event_sequences.json        # Event context around corners (366,281 events)
-├── <match_id>.json            # Full match events (3,464 files)
-├── <match_id>.json
-└── ...
+data/
+├── misc/
+│   ├── soccernet/
+│   ├── soccersynth/
+│   └── ussf_data_sample.pkl
+└── statsbomb/
+    ├── competitions.json        # Competition metadata
+    ├── match_index.csv          # Match metadata index
+    ├── events/                  # Match event files
+    │   └── <match_id>.json     # Full match events (one per match)
+    └── freeze-frames/           # 360 freeze frame data
+        └── <match_id>.json     # Player positions at set piece moments
 ```
 
 ## File Formats
@@ -259,11 +265,46 @@ The `freeze_frame` array contains positions of all visible players at the moment
 
 **Typical Freeze Frame Size**: 15-22 players (outfield players from both teams)
 
-### 5. Event Sequences (`event_sequences.json`)
+### 5. 360 Freeze Frame Files (`freeze-frames/<match_id>.json`)
 
-Contains 366,281 events that occur before and after corner kicks, providing context for analysis.
+StatsBomb 360 freeze frame data provides complete player positioning at the exact moment of set pieces (corners, free kicks, etc.). This data is stored separately from event data.
 
-**Structure**: Same as match event files, but filtered to only include events in temporal proximity to corner kicks (typically ±20 seconds).
+**Structure**:
+```json
+[
+  {
+    "event_uuid": "12345678-1234-5678-1234-567812345678",
+    "visible_area": [[0, 0], [120, 80]],
+    "freeze_frame": [
+      {
+        "location": [102.5, 38.2],
+        "player": {
+          "id": 6374,
+          "name": "Gerard Piqué Bernabéu"
+        },
+        "position": {
+          "id": 3,
+          "name": "Center Back"
+        },
+        "teammate": true
+      }
+    ]
+  }
+]
+```
+
+**Fields**:
+- `event_uuid`: UUID linking to the corner event in the events file
+- `visible_area`: Visible pitch area captured by cameras
+- `freeze_frame`: Array of all visible player positions at the moment of the corner
+
+**Coverage**:
+- ~62.6% of corners in matches with 360 data have freeze frames
+- ~57.5% of corners with freeze frames also have recipients
+- Typical freeze frame contains 15-22 players
+
+**Matching with Events**:
+To link 360 data with corner events, match the `event_uuid` from the freeze frame file with the `id` field from corner events in the events file.
 
 ## Coordinate System
 
@@ -360,7 +401,7 @@ The dataset includes professional men's competitions only:
 import json
 
 # Load single match
-with open('data/raw/statsbomb/json_events/123456.json', 'r') as f:
+with open('data/statsbomb/events/123456.json', 'r') as f:
     events = json.load(f)
 
 # Filter for corner kicks
@@ -397,7 +438,7 @@ defending_positions = [p['location'] for p in defending_players]
 from src.statsbomb_loader import StatsBombCornerLoader
 
 # Initialize loader
-loader = StatsBombCornerLoader(output_dir="data/raw/statsbomb")
+loader = StatsBombCornerLoader(output_dir="data/statsbomb")
 
 # Get available competitions
 competitions = loader.get_available_competitions()
@@ -412,6 +453,37 @@ df = loader.build_corner_dataset(
 
 print(f"Loaded {len(df)} corners")
 print(df.columns)
+```
+
+### Loading 360 Freeze Frame Data
+
+```python
+import json
+from pathlib import Path
+
+# Load match events
+match_id = "123456"
+with open(f'data/statsbomb/events/{match_id}.json', 'r') as f:
+    events = json.load(f)
+
+# Load 360 freeze frames for same match
+freeze_path = Path(f'data/statsbomb/freeze-frames/{match_id}.json')
+if freeze_path.exists():
+    with open(freeze_path, 'r') as f:
+        freeze_data = json.load(f)
+
+    # Create lookup dict: event_uuid -> freeze_frame
+    freeze_lookup = {item['event_uuid']: item['freeze_frame'] for item in freeze_data}
+
+    # Find corners and match with freeze frames
+    for event in events:
+        if (event.get('type', {}).get('name') == 'Pass' and
+            event.get('pass', {}).get('type', {}).get('name') == 'Corner'):
+
+            event_id = event['id']
+            if event_id in freeze_lookup:
+                freeze_frame = freeze_lookup[event_id]
+                print(f"Corner by {event['player']['name']} has {len(freeze_frame)} players")
 ```
 
 ## Analysis Examples
