@@ -14,9 +14,52 @@ Total Competitions:     75
 Total Matches:          3,464
 Total Events:           12,188,949
 Total Corners:          34,049
+Corners with 360 Data:  1,933 (5.7%)
 Context Events:         366,281
 Matches with Corners:   3,464 (100%)
 ```
+
+## Corner Outcome Distribution
+
+Analysis of 1,933 corners with 360 freeze frame data shows the following distribution of immediate next events:
+
+```
+Event Type                Count    Percentage
+------------------------------------------------------------
+Ball Receipt*             1,050     54.3%
+Clearance                 453       23.4%
+Goal Keeper               196       10.1%
+Duel                      73         3.8%
+Pressure                  57         2.9%
+Pass                      41         2.1%
+Foul Committed            27         1.4%
+Ball Recovery             18         0.9%
+Block                     9          0.5%
+Other (rare events)       9          0.5%
+```
+
+**Key Findings**:
+- Ball Receipt is the most common outcome (54.3%)
+- Defensive actions (Clearance + Goal Keeper) account for 33.5%
+- Top 3 event types cover 87.8% of all corner outcomes
+- Top 6 event types cover 96.6% of all corner outcomes
+
+**Recommended Classification Approaches**:
+
+1. **4-Class System** (Recommended for balanced classification):
+   - Ball Receipt (54.3%)
+   - Clearance (23.4%)
+   - Goalkeeper (10.1%)
+   - Other (12.2%)
+
+2. **3-Class Tactical System** (For tactical analysis):
+   - Offensive Retention: Ball Receipt + Pass (56.4%)
+   - Defensive Action: Clearance + Goal Keeper + Block (33.9%)
+   - Contest: Duel + Pressure + Foul (9.7%)
+
+3. **6-Class Fine-Grained** (For detailed analysis, accepts class imbalance):
+   - Ball Receipt (54.3%), Clearance (23.4%), Goal Keeper (10.1%), Duel (3.8%), Pressure (2.9%), Pass (2.1%)
+   - Other: All remaining events (3.4%)
 
 ## Directory Structure
 
