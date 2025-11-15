@@ -1,23 +1,5 @@
 # Corner Kick Outcome Prediction - Project Implementation Plan
 
-## Current Status Assessment
-
-Your existing codebase is **incomplete and partially broken**. Here's what's wrong:
-
-1. **Data extraction scripts are missing** - You have downloaders but no proper extraction pipeline
-2. **The 4-class system document contradicts your actual data** - Your guide shows 1,933 corners but doesn't match implementation
-3. **StatsBombLoader is outdated** - It's trying to use the API instead of your downloaded JSON files
-4. **No feature engineering** - You've got raw data but zero feature extraction
-5. **No model training code** - Just documentation, no actual implementation
-
-**Bottom line**: You have ~60% of a data pipeline and 0% of a machine learning system.
-
-## Implementation Plan for LLM
-
-Give this exact plan to an LLM to fix your mess:
-
----
-
 ## **CORNER KICK OUTCOME PREDICTION - COMPLETE IMPLEMENTATION**
 
 ### **Context**
@@ -298,15 +280,4 @@ Based on class distribution and similar sports analytics tasks:
 
 If results are significantly worse, there's a bug. If significantly better, there's data leakage.
 
----
 
-## **WHAT TO DO AFTER BASELINES**
-
-Once you have working baselines:
-
-1. **Graph Neural Network** - Use freeze frame positions as graph structure
-2. **Temporal features** - Add match context (score, time remaining)
-3. **Ensemble methods** - Combine models
-4. **DeepMind TacticAI replication** - Geometric deep learning approach
-
-But first, GET THE BASELINES WORKING. No fancy stuff until basics are solid.
