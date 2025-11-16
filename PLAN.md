@@ -234,8 +234,8 @@ After implementation, I should have:
 - [x] `scripts/02_extract_outcome_labels.py`
 - [x] `scripts/03_extract_features.py`
 - [x] `scripts/04_create_splits.py`
-- [ ] `scripts/05_train_baseline_models.py`
-- [ ] `scripts/06_evaluate_models.py`
+- [x] `scripts/05_train_baseline_models.py`
+- [x] `scripts/06_evaluate_models.py`
 
 **Data files**:
 - [x] `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
@@ -246,17 +246,17 @@ After implementation, I should have:
 - [x] `data/processed/test_indices.csv` (407 test samples, 21.1%)
 
 **Models**:
-- [ ] `models/random_forest.pkl`
-- [ ] `models/xgboost.pkl`
-- [ ] `models/mlp.pkl`
-- [ ] `models/label_encoder.pkl`
-- [ ] `models/feature_scaler.pkl` (for MLP)
+- [x] `models/random_forest.pkl`
+- [x] `models/xgboost.pkl`
+- [x] `models/mlp.pkl`
+- [x] `models/label_encoder.pkl`
+- [x] `models/feature_scaler.pkl` (for MLP)
 
 **Results**:
-- [ ] `results/baseline_metrics.json`
-- [ ] `results/confusion_matrices/` (3 PNG files)
-- [ ] `results/feature_importance.png`
-- [ ] `results/evaluation_report.md`
+- [x] `results/baseline_metrics.json`
+- [x] `results/confusion_matrices/` (3 PNG files)
+- [x] `results/feature_importance.png`
+- [x] `results/evaluation_report.md`
 
 ---
 
@@ -282,4 +282,113 @@ Based on class distribution and similar sports analytics tasks:
 
 If results are significantly worse, there's a bug. If significantly better, there's data leakage.
 
+---
+
+## **FUTURE WORK: BINARY SHOT PREDICTION**
+
+The following tasks extend the project to predict shot occurrence (binary classification) rather than outcome categories.
+
+### **TASK 7: Shot Label Extraction**
+
+Create `scripts/07_extract_shot_labels.py`:
+
+**Requirements**:
+1. Load `corners_with_freeze_frames.json`
+2. For each corner:
+   - Find corner in match event sequence by UUID
+   - Look ahead at next N events (window size: 5 events, following TacticAI)
+   - Check if any subsequent event has type="Shot"
+   - Assign binary label: 1 (Shot) or 0 (No Shot)
+3. Save to `data/processed/corners_with_shot_labels.json`
+4. Print class distribution and imbalance analysis
+
+**Output format**:
+```json
+[
+  {
+    "match_id": "123456",
+    "event": { /* full corner event */ },
+    "freeze_frame": [ /* player positions */ ],
+    "shot_outcome": 1  // Binary: 1=Shot, 0=No Shot
+  }
+]
+```
+
+**Expected distribution**:
+- Shot: ~15% (based on soccer analytics literature: 10-20%)
+- No Shot: ~85%
+- Class imbalance: ~5.7:1 (moderate - requires class weighting)
+
+**Validation**:
+- Shot conversion rate should be 10-20%
+- If <10%: increase lookahead window
+- If >25%: decrease lookahead window
+
+---
+
+### **TASK 8: Binary Classification Models**
+
+Create `scripts/08_train_binary_models.py`:
+
+**Requirements**: Train binary classifiers for shot prediction using same features from Task 3.
+
+**Models** (same architecture as Task 5):
+
+1. **Random Forest**:
+   ```python
+   RandomForestClassifier(
+       n_estimators=100,
+       max_depth=10,
+       class_weight='balanced',  # Handle 5.7:1 imbalance
+       random_state=42
+   )
+   ```
+
+2. **XGBoost**:
+   ```python
+   XGBClassifier(
+       n_estimators=100,
+       max_depth=6,
+       scale_pos_weight=5.7,  # Based on imbalance ratio
+       random_state=42
+   )
+   ```
+
+3. **MLP**:
+   ```python
+   MLPClassifier(
+       hidden_layers=(64, 32),
+       activation='relu',
+       alpha=0.001,
+       max_iter=500,
+       random_state=42
+   )
+   # Note: MLP may struggle with imbalance - use class_weight or SMOTE
+   ```
+
+**Data preparation**:
+1. Load `corners_with_features.csv`
+2. Merge with `corners_with_shot_labels.json` by event_id
+3. Use same match-based train/val/test splits from Task 4
+4. Target variable: `shot_outcome` (binary)
+
+**Evaluation metrics**:
+- Accuracy
+- Precision, Recall, F1 (for both classes)
+- ROC-AUC
+- Precision-Recall curve (important for imbalanced data)
+- Confusion matrix
+
+**Expected performance**:
+- **Naive baseline** (always predict majority): ~85% accuracy (but 0% recall for minority class)
+- **Random Forest**: ~70-75% accuracy, F1 ~0.35-0.45 for Shot class
+- **XGBoost**: ~72-77% accuracy, F1 ~0.40-0.50 for Shot class
+- **MLP**: ~68-73% accuracy, F1 ~0.30-0.40 for Shot class
+
+**Output**:
+- Save models to `models/binary/`
+- Save metrics to `results/binary_metrics.json`
+- Generate confusion matrices and ROC curves
+
+**Note**: Binary classification typically performs better than 4-class due to simpler decision boundary. Focus on recall for Shot class (minimizing false negatives is important in soccer analytics).
 
