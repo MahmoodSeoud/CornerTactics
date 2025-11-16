@@ -232,7 +232,7 @@ After implementation, I should have:
 - [x] `scripts/01_extract_corners_with_freeze_frames.py`
 - [x] `scripts/02_extract_outcome_labels.py`
 - [x] `scripts/03_extract_features.py`
-- [ ] `scripts/04_create_splits.py`
+- [x] `scripts/04_create_splits.py`
 - [ ] `scripts/05_train_baseline_models.py`
 - [ ] `scripts/06_evaluate_models.py`
 
@@ -240,8 +240,8 @@ After implementation, I should have:
 - [x] `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
 - [x] `data/processed/corners_with_labels.json` (~1,933 samples)
 - [x] `data/processed/corners_with_features.csv` (1,933 × 30 columns)
-- [ ] `data/processed/train_indices.csv`
-- [ ] `data/processed/test_indices.csv`
+- [x] `data/processed/train_indices.csv` (1,535 train samples)
+- [x] `data/processed/test_indices.csv` (398 test samples)
 
 **Models**:
 - [ ] `models/random_forest.pkl`
