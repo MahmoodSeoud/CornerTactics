@@ -39,3 +39,20 @@ Create `scripts/07_extract_shot_labels.py` to extract binary shot labels for cor
 - Window size: 5 events (as per TacticAI paper)
 - Based on script 02 structure
 - Need to check event type="Shot" in lookahead window
+
+## Results
+- Total corners processed: 1,933
+- Shot outcomes: 560 (29.0%)
+- No shot outcomes: 1,373 (71.0%)
+- Imbalance ratio: 2.45:1
+- Output file size: 9.2MB
+
+## Observations
+- Shot percentage (29.0%) is higher than expected range (10-20%)
+- This is likely because:
+  1. StatsBomb data includes all shots (on/off target, blocked)
+  2. Corner kicks naturally lead to more shot opportunities
+  3. 5-event window may be appropriate for this dataset
+- The 2.45:1 imbalance is more balanced than the original 4-class problem
+- All 12 tests passing
+- No missing event files
