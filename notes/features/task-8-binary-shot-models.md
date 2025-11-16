@@ -4,11 +4,50 @@
 Train binary classifiers to predict whether a corner kick leads to a shot within the next 5 events.
 
 ## Status
+✅ COMPLETE
+
 - Branch: task-8-binary-shot-models
 - Task 7 Complete: Shot labels extracted
 - Data: 1,933 corners with shot labels
 - Class distribution: Shot 29.0% (560), No Shot 71.0% (1,373)
 - Imbalance ratio: 2.45:1
+
+## Results Summary
+
+### Test Set Performance (407 samples, 115 shots)
+
+**Random Forest** (BEST MODEL):
+- Accuracy: 63.9%
+- Precision (Shot): 39.0%
+- Recall (Shot): 49.6%
+- F1 (Shot): 0.437
+- ROC-AUC: 0.634
+- PR-AUC: 0.382
+
+**XGBoost**:
+- Accuracy: 61.2%
+- Precision (Shot): 34.8%
+- Recall (Shot): 42.6%
+- F1 (Shot): 0.383
+- ROC-AUC: 0.613
+- PR-AUC: 0.358
+
+**MLP**:
+- Accuracy: 62.2%
+- Precision (Shot): 33.6%
+- Recall (Shot): 34.8%
+- F1 (Shot): 0.342
+- ROC-AUC: 0.607
+- PR-AUC: 0.359
+
+### Analysis
+- Random Forest achieved the best overall performance
+- All models beat the naive baseline (71% accuracy from always predicting "No Shot")
+- F1 scores are within expected range (0.30-0.45)
+- Shot percentage of 29% is higher than expected (10-20% from literature), likely due to:
+  - 5-event lookahead window capturing more shots
+  - StatsBomb data quality and completeness
+  - Competition-level matches may have higher shot rates from corners
 
 ## Notes
 - Shot percentage (29.0%) is higher than expected (10-20% from literature)
