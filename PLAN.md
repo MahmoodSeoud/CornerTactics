@@ -231,7 +231,7 @@ After implementation, I should have:
 **Scripts** (in order):
 - [x] `scripts/01_extract_corners_with_freeze_frames.py`
 - [x] `scripts/02_extract_outcome_labels.py`
-- [ ] `scripts/03_extract_features.py`
+- [x] `scripts/03_extract_features.py`
 - [ ] `scripts/04_create_splits.py`
 - [ ] `scripts/05_train_baseline_models.py`
 - [ ] `scripts/06_evaluate_models.py`
@@ -239,7 +239,7 @@ After implementation, I should have:
 **Data files**:
 - [x] `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
 - [x] `data/processed/corners_with_labels.json` (~1,933 samples)
-- [ ] `data/processed/corners_with_features.csv` (1,933 × ~30 columns)
+- [x] `data/processed/corners_with_features.csv` (1,933 × 30 columns)
 - [ ] `data/processed/train_indices.csv`
 - [ ] `data/processed/test_indices.csv`
 
