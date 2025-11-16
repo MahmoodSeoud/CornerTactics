@@ -2,10 +2,16 @@
 """
 Extract binary shot labels for corner kicks.
 
+Following TacticAI methodology:
+- Look ahead at next 5 events after corner kick
+- Check for THREATENING shots from ATTACKING team only
+- Threatening shots: Goal, Saved, Post, Off Target, Wayward
+- Exclude: Blocked shots, shots from defending team
+
 This script:
 1. Loads corners_with_freeze_frames.json from Task 1
 2. For each corner, looks ahead at next 5 events
-3. Checks if any event is a Shot
+3. Checks if any event is a threatening Shot from attacking team
 4. Assigns binary label: 1 (Shot) or 0 (No Shot)
 5. Saves corners_with_shot_labels.json with shot_outcome field added
 """
@@ -34,27 +40,54 @@ def find_event_index(events: List[Dict], event_uuid: str) -> Optional[int]:
 def check_shot_in_lookahead(
     events: List[Dict],
     corner_index: int,
-    window_size: int
+    window_size: int,
+    attacking_team_id: int
 ) -> bool:
-    """Check if any event in lookahead window is a Shot.
+    """Check if any event in lookahead window is a threatening Shot by attacking team.
+
+    Following TacticAI methodology:
+    - Only count shots from the attacking team (corner-taking team)
+    - Only count "threatening shots": Goal, Saved, Post, Off Target, Wayward
+    - Exclude blocked shots and shots from defending team
 
     Args:
         events: List of event dictionaries
         corner_index: Index of corner event
         window_size: Number of events to look ahead
+        attacking_team_id: ID of corner-taking team
 
     Returns:
-        True if shot found in window, False otherwise
+        True if threatening shot found in window, False otherwise
     """
+    # Threatening shot outcomes (following TacticAI)
+    THREATENING_OUTCOMES = {
+        "Goal",           # Direct goal
+        "Saved",          # Shot saved by goalkeeper
+        "Post",           # Hit the post/crossbar
+        "Off T",          # Off target (but clear attempt)
+        "Wayward",        # Missing target (but clear attempt)
+    }
+
     # Calculate end of lookahead window
     start_idx = corner_index + 1
     end_idx = min(start_idx + window_size, len(events))
 
     # Check each event in window
     for i in range(start_idx, end_idx):
-        event_type = events[i].get("type", {}).get("name", "")
+        event = events[i]
+        event_type = event.get("type", {}).get("name", "")
+
+        # Check if it's a Shot event
         if event_type == "Shot":
-            return True
+            # Check if shot is from attacking team
+            shot_team_id = event.get("team", {}).get("id")
+            if shot_team_id != attacking_team_id:
+                continue  # Skip shots from defending team
+
+            # Check if shot outcome is threatening
+            shot_outcome = event.get("shot", {}).get("outcome", {}).get("name", "")
+            if shot_outcome in THREATENING_OUTCOMES:
+                return True
 
     return False
 
@@ -109,7 +142,15 @@ def add_shot_label(
         corner["shot_outcome"] = 0  # Default to no shot
         return corner
 
-    has_shot = check_shot_in_lookahead(match_events, corner_index, window_size)
+    # Get attacking team ID from corner event
+    attacking_team_id = corner["event"].get("team", {}).get("id")
+    if attacking_team_id is None:
+        corner["shot_outcome"] = 0
+        return corner
+
+    has_shot = check_shot_in_lookahead(
+        match_events, corner_index, window_size, attacking_team_id
+    )
     corner["shot_outcome"] = 1 if has_shot else 0
 
     return corner
@@ -221,16 +262,16 @@ def main():
     print(f"Imbalance:   {distribution['imbalance_ratio']:.2f}:1")
     print(f"Missing event files: {missing_events}")
 
-    # Validate expected range
+    # Validate expected range (TacticAI reported ~24%)
     shot_pct = distribution['shot_percentage']
-    if shot_pct < 10:
-        print(f"\n⚠️  WARNING: Shot percentage ({shot_pct:.1f}%) is below expected range (10-20%)")
+    if shot_pct < 15:
+        print(f"\n⚠️  WARNING: Shot percentage ({shot_pct:.1f}%) is below expected range (15-30%)")
         print("    Consider increasing lookahead window size")
-    elif shot_pct > 25:
-        print(f"\n⚠️  WARNING: Shot percentage ({shot_pct:.1f}%) is above expected range (10-20%)")
+    elif shot_pct > 35:
+        print(f"\n⚠️  WARNING: Shot percentage ({shot_pct:.1f}%) is above expected range (15-30%)")
         print("    Consider decreasing lookahead window size")
     else:
-        print(f"\n✓ Shot percentage ({shot_pct:.1f}%) is within expected range (10-20%)")
+        print(f"\n✓ Shot percentage ({shot_pct:.1f}%) is within expected range (15-30%)")
 
     print("\n✓ Task 7 complete!")
     print(f"Output saved to: {output_file}")
