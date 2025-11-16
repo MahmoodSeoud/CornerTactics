@@ -351,7 +351,15 @@ def generate_evaluation_report(models, X_test, y_test, label_encoder, feature_na
         # Feature Importance
         f.write("## Feature Importance\n\n")
 
-        importance_dict = extract_feature_importance(models, feature_names)
+        # Extract from the underlying models, not wrapped ones
+        actual_models = {}
+        for model_name, wrapped_model in models.items():
+            if hasattr(wrapped_model, 'model'):
+                actual_models[model_name] = wrapped_model.model
+            else:
+                actual_models[model_name] = wrapped_model
+
+        importance_dict = extract_feature_importance(actual_models, feature_names)
         if importance_dict:
             f.write("See feature importance plot in `results/feature_importance.png`\n\n")
 
