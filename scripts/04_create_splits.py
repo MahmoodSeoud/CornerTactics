@@ -13,15 +13,39 @@ Output: data/processed/train_indices.csv
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from collections import Counter
+from typing import Tuple
 
 
-def stratified_group_split(df, group_col, stratify_col, test_size=0.2, random_state=42):
+def _extract_group_info(group_df: pd.DataFrame, stratify_col: str) -> dict:
+    """
+    Extract information about a group.
+
+    Args:
+        group_df: DataFrame for a single group
+        stratify_col: Column name for stratification
+
+    Returns:
+        Dictionary with group information
+    """
+    return {
+        'indices': group_df.index.tolist(),
+        'dominant_class': group_df[stratify_col].mode()[0]
+    }
+
+
+def stratified_group_split(
+    df: pd.DataFrame,
+    group_col: str,
+    stratify_col: str,
+    test_size: float = 0.2,
+    random_state: int = 42
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform stratified split on grouped data.
 
     Splits data by groups (e.g., matches) while maintaining stratification
-    on a target variable (e.g., outcome classes).
+    on a target variable (e.g., outcome classes). This prevents data leakage
+    by ensuring entire groups stay together in either train or test.
 
     Args:
         df: DataFrame to split
@@ -31,57 +55,37 @@ def stratified_group_split(df, group_col, stratify_col, test_size=0.2, random_st
         random_state: Random seed for reproducibility
 
     Returns:
-        train_indices, test_indices: Arrays of row indices for train and test sets
+        Tuple of (train_indices, test_indices) as numpy arrays
     """
     np.random.seed(random_state)
 
-    # Get unique groups and their class distributions
+    # Extract group information with dominant class for stratification
     groups = df.groupby(group_col)
-    group_data = []
+    group_data = [_extract_group_info(group_df, stratify_col)
+                  for _, group_df in groups]
 
-    for group_id, group_df in groups:
-        # Count classes in this group
-        class_counts = group_df[stratify_col].value_counts().to_dict()
-        group_data.append({
-            'group_id': group_id,
-            'indices': group_df.index.tolist(),
-            'size': len(group_df),
-            'class_counts': class_counts,
-            'dominant_class': group_df[stratify_col].mode()[0]  # Most common class
-        })
-
-    # Sort groups by dominant class for stratification
-    group_data.sort(key=lambda x: x['dominant_class'])
-
-    # Calculate target test size
-    total_samples = len(df)
-    target_test_samples = int(total_samples * test_size)
-
-    # Distribute groups to train and test sets
-    train_indices = []
-    test_indices = []
-    test_count = 0
-
-    # Use stratified sampling: iterate through groups and assign to test
-    # until we reach target test size, ensuring class balance
+    # Organize groups by their dominant class
     groups_by_class = {}
     for group in group_data:
-        cls = group['dominant_class']
-        if cls not in groups_by_class:
-            groups_by_class[cls] = []
-        groups_by_class[cls].append(group)
+        dominant_class = group['dominant_class']
+        if dominant_class not in groups_by_class:
+            groups_by_class[dominant_class] = []
+        groups_by_class[dominant_class].append(group)
 
-    # For each class, take approximately test_size fraction
-    for cls, cls_groups in groups_by_class.items():
-        # Shuffle groups within class
-        np.random.shuffle(cls_groups)
+    # Split each class proportionally
+    train_indices = []
+    test_indices = []
 
-        # Calculate how many from this class should go to test
-        cls_test_count = int(len(cls_groups) * test_size)
+    for class_groups in groups_by_class.values():
+        # Shuffle to randomize group assignment
+        np.random.shuffle(class_groups)
+
+        # Calculate split point for this class
+        n_test_groups = int(len(class_groups) * test_size)
 
         # Assign groups to test and train
-        for i, group in enumerate(cls_groups):
-            if i < cls_test_count:
+        for i, group in enumerate(class_groups):
+            if i < n_test_groups:
                 test_indices.extend(group['indices'])
             else:
                 train_indices.extend(group['indices'])
@@ -89,20 +93,37 @@ def stratified_group_split(df, group_col, stratify_col, test_size=0.2, random_st
     return np.array(train_indices), np.array(test_indices)
 
 
-def print_split_statistics(df, train_indices, test_indices):
-    """Print statistics about the train/test split."""
+def print_split_statistics(
+    df: pd.DataFrame,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray
+) -> None:
+    """
+    Print comprehensive statistics about the train/test split.
+
+    Args:
+        df: Full DataFrame
+        train_indices: Row indices for training set
+        test_indices: Row indices for test set
+    """
+    train_df = df.iloc[train_indices]
+    test_df = df.iloc[test_indices]
+
+    # Print header
     print("\n" + "="*60)
     print("TRAIN/TEST SPLIT STATISTICS")
     print("="*60)
 
-    train_df = df.iloc[train_indices]
-    test_df = df.iloc[test_indices]
+    # Sample counts
+    total_samples = len(df)
+    train_pct = len(train_indices) / total_samples * 100
+    test_pct = len(test_indices) / total_samples * 100
 
-    print(f"\nTotal samples: {len(df)}")
-    print(f"Train samples: {len(train_indices)} ({len(train_indices)/len(df)*100:.1f}%)")
-    print(f"Test samples:  {len(test_indices)} ({len(test_indices)/len(df)*100:.1f}%)")
+    print(f"\nTotal samples: {total_samples}")
+    print(f"Train samples: {len(train_indices)} ({train_pct:.1f}%)")
+    print(f"Test samples:  {len(test_indices)} ({test_pct:.1f}%)")
 
-    # Check match overlap
+    # Match overlap verification
     train_matches = set(train_df['match_id'].unique())
     test_matches = set(test_df['match_id'].unique())
     overlap = train_matches & test_matches
@@ -111,7 +132,7 @@ def print_split_statistics(df, train_indices, test_indices):
     print(f"Test matches:  {len(test_matches)}")
     print(f"Match overlap: {len(overlap)} (should be 0)")
 
-    # Class distributions
+    # Class distribution comparison
     print("\n" + "-"*60)
     print("CLASS DISTRIBUTION")
     print("-"*60)
@@ -129,21 +150,27 @@ def print_split_statistics(df, train_indices, test_indices):
         test_pct = test_dist.get(outcome_class, 0) * 100
         diff = abs(train_pct - overall_pct)
 
-        print(f"{outcome_class:<20} {overall_pct:>9.1f}% {train_pct:>9.1f}% {test_pct:>9.1f}% {diff:>9.1f}%")
+        print(f"{outcome_class:<20} {overall_pct:>9.1f}% "
+              f"{train_pct:>9.1f}% {test_pct:>9.1f}% {diff:>9.1f}%")
 
     print("="*60)
 
 
-def main():
-    # Paths
+def main() -> None:
+    """
+    Main execution function.
+
+    Loads corner features, creates match-based stratified splits,
+    and saves train/test indices to CSV files.
+    """
+    # Define file paths
     base_dir = Path(__file__).parent.parent
     features_file = base_dir / 'data/processed/corners_with_features.csv'
     train_output = base_dir / 'data/processed/train_indices.csv'
     test_output = base_dir / 'data/processed/test_indices.csv'
 
-    print(f"Loading features from {features_file}...")
-
     # Load features
+    print(f"Loading features from {features_file}...")
     df = pd.read_csv(features_file)
     print(f"Loaded {len(df)} corners from {df['match_id'].nunique()} matches")
 
@@ -157,17 +184,16 @@ def main():
         random_state=42
     )
 
-    # Print statistics
+    # Display split statistics
     print_split_statistics(df, train_indices, test_indices)
 
-    # Save indices
+    # Save train indices
     print(f"\nSaving train indices to {train_output}...")
-    train_df = pd.DataFrame({'index': train_indices})
-    train_df.to_csv(train_output, index=False)
+    pd.DataFrame({'index': train_indices}).to_csv(train_output, index=False)
 
+    # Save test indices
     print(f"Saving test indices to {test_output}...")
-    test_df = pd.DataFrame({'index': test_indices})
-    test_df.to_csv(test_output, index=False)
+    pd.DataFrame({'index': test_indices}).to_csv(test_output, index=False)
 
     print("\nDone! Train/test splits created successfully.")
 
