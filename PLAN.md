@@ -234,8 +234,8 @@ After implementation, I should have:
 - [x] `scripts/02_extract_outcome_labels.py`
 - [x] `scripts/03_extract_features.py`
 - [x] `scripts/04_create_splits.py`
-- [ ] `scripts/05_train_baseline_models.py`
-- [ ] `scripts/06_evaluate_models.py`
+- [x] `scripts/05_train_baseline_models.py`
+- [x] `scripts/06_evaluate_models.py`
 
 **Data files**:
 - [x] `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
@@ -246,17 +246,17 @@ After implementation, I should have:
 - [x] `data/processed/test_indices.csv` (407 test samples, 21.1%)
 
 **Models**:
-- [ ] `models/random_forest.pkl`
-- [ ] `models/xgboost.pkl`
-- [ ] `models/mlp.pkl`
-- [ ] `models/label_encoder.pkl`
-- [ ] `models/feature_scaler.pkl` (for MLP)
+- [x] `models/random_forest.pkl`
+- [x] `models/xgboost.pkl`
+- [x] `models/mlp.pkl`
+- [x] `models/label_encoder.pkl`
+- [x] `models/feature_scaler.pkl` (for MLP)
 
 **Results**:
-- [ ] `results/baseline_metrics.json`
-- [ ] `results/confusion_matrices/` (3 PNG files)
-- [ ] `results/feature_importance.png`
-- [ ] `results/evaluation_report.md`
+- [x] `results/baseline_metrics.json`
+- [x] `results/confusion_matrices/` (3 PNG files)
+- [x] `results/feature_importance.png`
+- [x] `results/evaluation_report.md`
 
 ---
 
