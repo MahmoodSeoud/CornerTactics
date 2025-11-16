@@ -132,21 +132,22 @@ Create `scripts/03_extract_features.py`:
 
 ---
 
-### **TASK 4: Train/Test Split**
+### **TASK 4: Train/Val/Test Split**
 
 Create `scripts/04_create_splits.py`:
 
 **Requirements**:
 1. Load `corners_with_features.csv`
-2. Create **match-based** stratified split (80/20):
+2. Create **match-based** stratified split (60/20/20):
    - Group by match_id
-   - Ensure train and test have similar outcome distributions
-   - Use `sklearn.model_selection.StratifiedGroupKFold` or manual implementation
+   - Ensure train, val, and test have similar outcome distributions
+   - Use custom stratified group split implementation
 3. Save indices:
    - `data/processed/train_indices.csv`
+   - `data/processed/val_indices.csv`
    - `data/processed/test_indices.csv`
 
-**Validation**: Print class distributions for train and test - should be similar.
+**Validation**: Print class distributions for train/val/test - should be similar.
 
 ---
 
@@ -240,8 +241,9 @@ After implementation, I should have:
 - [x] `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
 - [x] `data/processed/corners_with_labels.json` (~1,933 samples)
 - [x] `data/processed/corners_with_features.csv` (1,933 × 30 columns)
-- [x] `data/processed/train_indices.csv` (1,535 train samples)
-- [x] `data/processed/test_indices.csv` (398 test samples)
+- [x] `data/processed/train_indices.csv` (1,155 train samples, 59.8%)
+- [x] `data/processed/val_indices.csv` (371 val samples, 19.2%)
+- [x] `data/processed/test_indices.csv` (407 test samples, 21.1%)
 
 **Models**:
 - [ ] `models/random_forest.pkl`

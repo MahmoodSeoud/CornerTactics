@@ -1,16 +1,17 @@
-# Task 4: Create Train/Test Splits
+# Task 4: Create Train/Val/Test Splits
 
 ## Objective
-Create match-based stratified train/test splits (80/20) to prevent data leakage while maintaining similar outcome distributions.
+Create match-based stratified train/val/test splits (60/20/20) to prevent data leakage while maintaining similar outcome distributions across all three sets.
 
 ## Requirements
 1. Load `data/processed/corners_with_features.csv` (1,933 corners with 27 features)
 2. Create **match-based** stratified split:
-   - Group by match_id to ensure no match appears in both train and test
-   - 80/20 split ratio
+   - Group by match_id to ensure no match appears in multiple splits
+   - 60/20/20 split ratio (train/val/test)
    - Stratify to maintain similar outcome class distributions
 3. Save split indices to CSV files:
    - `data/processed/train_indices.csv`
+   - `data/processed/val_indices.csv`
    - `data/processed/test_indices.csv`
 
 ## Key Constraints
@@ -35,9 +36,9 @@ Create match-based stratified train/test splits (80/20) to prevent data leakage 
 5. Test output CSV files are created with correct format
 
 ## Success Criteria
-- Train/test sets have no overlapping match_ids
-- Split ratio close to 80/20
-- Class distributions in train and test are within ±2% of overall distribution
+- Train/val/test sets have no overlapping match_ids
+- Split ratio close to 60/20/20
+- Class distributions in all three sets are within ±5% of overall distribution
 - CSV files contain correct row indices
 
 ---
@@ -52,32 +53,35 @@ Create match-based stratified train/test splits (80/20) to prevent data leakage 
   - Groups corners by match_id
   - Identifies dominant class for each match
   - Splits matches proportionally by class to maintain stratification
-  - Returns row indices for train and test sets
+  - Returns row indices for train, val, and test sets
 - Added comprehensive statistics reporting
-- All 17 tests passing
+- All 23 tests passing
 
 **Output Statistics**:
 - Total samples: 1,933
-- Train samples: 1,535 (79.4%)
-- Test samples: 398 (20.6%)
-- Train matches: 258
+- Train samples: 1,155 (59.8%)
+- Val samples: 371 (19.2%)
+- Test samples: 407 (21.1%)
+- Train matches: 195
+- Val matches: 63
 - Test matches: 63
-- Match overlap: 0 ✓
+- All overlaps: 0 ✓
 
 **Class Distribution Validation**:
-Class                Overall      Train       Test       Diff
-Ball Receipt         54.3%       54.5%       53.5%      0.2%
-Clearance            23.4%       23.4%       23.6%      0.0%
-Goalkeeper           10.1%        9.9%       11.1%      0.2%
-Other                12.1%       12.2%       11.8%      0.1%
+Class              Overall      Train        Val       Test   Max Diff
+Ball Receipt         54.3%      55.0%      53.6%      53.1%       1.2%
+Clearance            23.4%      23.2%      23.7%      23.8%       0.4%
+Goalkeeper           10.1%      10.0%       9.7%      10.8%       0.7%
+Other                12.1%      11.8%      12.9%      12.3%       0.8%
 
-All class distributions within ±0.2% of overall distribution ✓
+All class distributions within ±1.2% of overall distribution ✓
 
 **Files Created**:
 - `scripts/04_create_splits.py` - Main split creation script
-- `tests/test_create_splits.py` - 17 comprehensive tests
-- `data/processed/train_indices.csv` - 1,535 train indices
-- `data/processed/test_indices.csv` - 398 test indices
+- `tests/test_create_splits.py` - 23 comprehensive tests
+- `data/processed/train_indices.csv` - 1,155 train indices
+- `data/processed/val_indices.csv` - 371 validation indices
+- `data/processed/test_indices.csv` - 407 test indices
 
 **Key Features**:
 - Type hints for all functions
@@ -85,3 +89,4 @@ All class distributions within ±0.2% of overall distribution ✓
 - Clean, readable code structure
 - Helper function for group extraction
 - Detailed statistics reporting
+- Proper three-way split for ML pipeline (train/val/test)
