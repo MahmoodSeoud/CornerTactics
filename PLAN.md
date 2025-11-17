@@ -89,46 +89,190 @@ Create `scripts/02_extract_outcome_labels.py`:
 
 Create `scripts/03_extract_features.py`:
 
-**Requirements**: Extract features from each corner's freeze frame data.
+**Requirements**: Extract ALL available features from StatsBomb corner kick data.
 
-**Feature categories**:
+**COMPLETE FEATURE SET (45+ features across 10 categories):**
 
-1. **Basic corner metadata** (5 features):
-   - Corner side (left=0, right=1) - from location[1] < 40
-   - Period (1 or 2)
-   - Minute
-   - Corner x, y coordinates
+---
 
-2. **Player count features** (6 features):
-   - Total attacking players in freeze frame
-   - Total defending players in freeze frame
-   - Attacking players in penalty box (x > 102, 18 < y < 62)
-   - Defending players in penalty box
-   - Attacking players near goal (x > 108, 30 < y < 50)
-   - Defending players near goal
+#### **1. Basic Corner Metadata** (5 features) ✅ IMPLEMENTED
+- `corner_side`: Left (0) or Right (1) - from location[1] < 40
+- `period`: Match period (1 or 2)
+- `minute`: Minute of match
+- `corner_x`: Corner kick x-coordinate
+- `corner_y`: Corner kick y-coordinate
 
-3. **Spatial density features** (4 features):
-   - Attacking player density in penalty box (count / box_area)
-   - Defending player density in penalty box
-   - Numerical advantage in box (attacking - defending)
-   - Ratio of attackers to defenders in box
+**Source**: `event.location`, `event.period`, `event.minute`
 
-4. **Positional features** (8 features):
-   - Attacking centroid x, y (average position)
-   - Defending centroid x, y
-   - Defending line compactness (std of y positions)
-   - Defending depth (max x - min x of defenders)
-   - Distance from attacking centroid to goal center
-   - Distance from defending centroid to goal center
+---
 
-5. **Pass trajectory features** (if available from event data) (4 features):
-   - Pass end_location x, y
-   - Pass length
-   - Pass height (Ground=0, Low=1, High=2)
+#### **2. Temporal Features** (3 features) ⚠️ PARTIALLY IMPLEMENTED
+- `second`: Second within the minute ❌ NOT EXTRACTED
+- `timestamp_seconds`: Total seconds from period start (convert HH:MM:SS.mmm) ❌ NOT EXTRACTED
+- `duration`: Event duration in seconds ❌ NOT EXTRACTED
+
+**Source**: `event.second`, `event.timestamp`, `event.duration`
+
+---
+
+#### **3. Player Count Features** (6 features) ✅ IMPLEMENTED
+- `total_attacking`: Total attacking players in freeze frame
+- `total_defending`: Total defending players in freeze frame
+- `attacking_in_box`: Attacking players in penalty box (x > 102, 18 < y < 62)
+- `defending_in_box`: Defending players in penalty box
+- `attacking_near_goal`: Attacking players near goal (x > 108, 30 < y < 50)
+- `defending_near_goal`: Defending players near goal
+
+**Source**: `freeze_frame` (aggregate counts using `teammate` boolean)
+
+---
+
+#### **4. Spatial Density Features** (4 features) ✅ IMPLEMENTED
+- `attacking_density`: Attacking player density in penalty box (count / box_area)
+- `defending_density`: Defending player density in penalty box
+- `numerical_advantage`: Numerical advantage in box (attacking - defending)
+- `attacker_defender_ratio`: Ratio of attackers to defenders in box
+
+**Source**: `freeze_frame` (spatial calculations)
+
+---
+
+#### **5. Positional Features** (8 features) ✅ IMPLEMENTED
+- `attacking_centroid_x`: Attacking team centroid x-coordinate
+- `attacking_centroid_y`: Attacking team centroid y-coordinate
+- `defending_centroid_x`: Defending team centroid x-coordinate
+- `defending_centroid_y`: Defending team centroid y-coordinate
+- `defending_compactness`: Defending line compactness (std of y positions)
+- `defending_depth`: Defending depth (max x - min x of defenders)
+- `attacking_to_goal_dist`: Distance from attacking centroid to goal center
+- `defending_to_goal_dist`: Distance from defending centroid to goal center
+
+**Source**: `freeze_frame` (geometric computations)
+
+---
+
+#### **6. Pass Trajectory Features** (4 features) ✅ IMPLEMENTED
+- `pass_end_x`: Pass landing x-coordinate
+- `pass_end_y`: Pass landing y-coordinate
+- `pass_length`: Euclidean distance from corner to landing (meters)
+- `pass_height`: Ground Pass (0), Low Pass (1), High Pass (2)
+
+**Source**: `event.pass.end_location`, `event.pass.length`, `event.pass.height.name`
+
+---
+
+#### **7. Pass Technique & Body Part** (5 features) ❌ NOT IMPLEMENTED
+- `pass_angle`: Pass angle in radians (-π to π)
+- `pass_body_part`: Kicking body part (Right Foot=0, Left Foot=1, Head=2, Other=3)
+- `pass_technique`: Inswinging (0), Outswinging (1), Straight (2)
+- `is_inswinging`: Boolean (1 if inswinging, 0 otherwise)
+- `is_outswinging`: Boolean (1 if outswinging, 0 otherwise)
+
+**Source**: `event.pass.angle`, `event.pass.body_part.name`, `event.pass.technique.name`, `event.pass.inswinging`, `event.pass.outswinging`
+
+---
+
+#### **8. Pass Outcome & Context** (4 features) ❌ NOT IMPLEMENTED
+- `pass_outcome`: Complete (0), Incomplete (1), Out (2), Injury Clearance (3), Unknown (4)
+- `is_cross_field_switch`: Boolean (1 if switch pass, 0 otherwise)
+- `has_recipient`: Boolean (1 if recipient identified, 0 otherwise)
+- `is_shot_assist`: Boolean (1 if led to shot, 0 otherwise)
+
+**Source**: `event.pass.outcome.name`, `event.pass.switch`, `event.pass.recipient`, `event.pass.shot_assist`
+
+---
+
+#### **9. Goalkeeper & Special Player Features** (3 features) ❌ NOT IMPLEMENTED
+- `num_attacking_keepers`: Count of attacking goalkeepers in freeze frame (usually 0)
+- `num_defending_keepers`: Count of defending goalkeepers (usually 1)
+- `keeper_distance_to_goal`: Distance from defending keeper to goal center
+
+**Source**: `freeze_frame` (filter by `keeper == true`)
+
+---
+
+#### **10. Match Context - Score State** (4 features) ❌ NOT IMPLEMENTED
+- `attacking_team_goals`: Goals scored by corner-taking team before this corner
+- `defending_team_goals`: Goals scored by defending team before this corner
+- `score_difference`: Score difference (attacking_goals - defending_goals)
+- `match_situation`: Winning (1), Drawing (0), Losing (-1)
+
+**Source**: Track Shot events with `shot.outcome.name == "Goal"` in match event sequence before corner
+
+**Implementation**:
+```python
+# Track all goals before corner by index
+goals_before = [e for e in match_events
+                if e['index'] < corner_index
+                and e.get('type', {}).get('name') == 'Shot'
+                and e.get('shot', {}).get('outcome', {}).get('name') == 'Goal']
+
+attacking_goals = sum(1 for g in goals_before if g['team']['id'] == corner_team_id)
+defending_goals = len(goals_before) - attacking_goals
+```
+
+---
+
+#### **11. Match Context - Substitution Patterns** (3 features) ❌ NOT IMPLEMENTED
+- `total_subs_before`: Total substitutions before this corner (both teams)
+- `recent_subs_5min`: Recent substitutions in last 5 minutes (both teams)
+- `minutes_since_last_sub`: Minutes since last substitution (999 if no prior subs)
+
+**Source**: Track Substitution events (`type.name == "Substitution"`) before corner
+
+**Implementation**:
+```python
+# Track all substitutions before corner
+subs_before = [e for e in match_events
+               if e['index'] < corner_index
+               and e.get('type', {}).get('name') == 'Substitution']
+
+total_subs = len(subs_before)
+recent_subs = sum(1 for s in subs_before if corner_minute - s['minute'] <= 5)
+
+if subs_before:
+    last_sub = max(subs_before, key=lambda x: x['index'])
+    minutes_since = corner_minute - last_sub['minute']
+else:
+    minutes_since = 999
+```
+
+---
+
+### **FEATURE SUMMARY**
+
+**Total Features**: 49 features
+
+**Currently Implemented**: 27 features (55%)
+- ✅ Basic metadata (5)
+- ✅ Player counts (6)
+- ✅ Spatial density (4)
+- ✅ Positional (8)
+- ✅ Pass trajectory (4)
+
+**Missing from Raw Data**: 22 features (45%)
+- ❌ Temporal (3)
+- ❌ Pass technique & body part (5)
+- ❌ Pass outcome & context (4)
+- ❌ Goalkeeper features (3)
+- ❌ Score state (4)
+- ❌ Substitution patterns (3)
 
 **Output**: `data/processed/corners_with_features.csv`
 
-**Columns**: match_id, event_id, outcome, [27 feature columns]
+**Columns**: match_id, event_id, outcome, [49 feature columns]
+
+---
+
+### **RATIONALE FOR ADDITIONAL FEATURES**
+
+1. **Temporal features**: Capture fatigue effects (late-game corners may differ)
+2. **Pass technique**: Inswinging vs outswinging affects defensive positioning
+3. **Body part**: Right-footed vs left-footed corners affect ball trajectory
+4. **Pass outcome**: Immediate feedback on corner quality
+5. **Goalkeeper positioning**: Critical for aerial duels
+6. **Score state**: Teams trailing commit more attackers (tactical urgency)
+7. **Substitutions**: Fresh players or tactical changes affect set-piece execution
 
 ---
 

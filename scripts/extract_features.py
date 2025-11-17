@@ -1,10 +1,25 @@
 """
 Task 3: Feature Engineering
 
-Extracts 27 features from corner kick freeze frame data.
+Extracts 49 features from corner kick freeze frame data and match context.
+
+Feature Categories:
+- Basic metadata (5)
+- Temporal (3)
+- Player counts (6)
+- Spatial density (4)
+- Positional (8)
+- Pass trajectory (4)
+- Pass technique & body part (5)
+- Pass outcome & context (4)
+- Goalkeeper features (3)
+- Score state (4)
+- Substitution patterns (3)
 """
 
 import numpy as np
+import json
+from pathlib import Path
 
 
 # StatsBomb pitch dimensions and zones
@@ -185,6 +200,31 @@ def extract_positional_features(freeze_frame):
     }
 
 
+def extract_temporal_features(event):
+    """
+    Extract temporal features (3 features)
+
+    Args:
+        event: Corner event dictionary
+
+    Returns:
+        dict: 3 features (second, timestamp_seconds, duration)
+    """
+    # Convert timestamp HH:MM:SS.mmm to total seconds
+    timestamp_str = event['timestamp']
+    time_parts = timestamp_str.split(':')
+    hours = int(time_parts[0])
+    minutes = int(time_parts[1])
+    seconds = float(time_parts[2])
+    timestamp_seconds = hours * 3600 + minutes * 60 + seconds
+
+    return {
+        'second': event['second'],
+        'timestamp_seconds': float(timestamp_seconds),
+        'duration': event['duration']
+    }
+
+
 def extract_pass_trajectory(event):
     """
     Extract pass trajectory features (4 features)
@@ -215,20 +255,265 @@ def extract_pass_trajectory(event):
     }
 
 
-def extract_all_features(corner):
+def extract_pass_technique_features(event):
     """
-    Extract all 27 features from a corner
+    Extract pass technique and body part features (5 features)
 
     Args:
-        corner: Dictionary with 'event' and 'freeze_frame' keys
+        event: Corner event dictionary
 
     Returns:
-        dict: All 27 features
+        dict: 5 features (angle, body_part, technique, is_inswinging, is_outswinging)
+    """
+    pass_data = event['pass']
+
+    # Pass angle (already in radians)
+    pass_angle = pass_data['angle']
+
+    # Body part encoding: Right Foot=0, Left Foot=1
+    # Note: Only these 2 values observed in corners
+    body_part_mapping = {
+        'Right Foot': 0,
+        'Left Foot': 1
+    }
+    body_part_name = pass_data['body_part']['name']
+    pass_body_part = body_part_mapping.get(body_part_name, 0)
+
+    # Technique encoding: Inswinging=0, Outswinging=1, Straight=2, null=3
+    technique_mapping = {
+        'Inswinging': 0,
+        'Outswinging': 1,
+        'Straight': 2
+    }
+    technique_obj = pass_data.get('technique', None)
+    if technique_obj and 'name' in technique_obj:
+        pass_technique = technique_mapping.get(technique_obj['name'], 3)
+    else:
+        pass_technique = 3  # null/unknown
+
+    # Boolean flags (only present when true)
+    is_inswinging = 1 if pass_data.get('inswinging', False) else 0
+    is_outswinging = 1 if pass_data.get('outswinging', False) else 0
+
+    return {
+        'pass_angle': float(pass_angle),
+        'pass_body_part': pass_body_part,
+        'pass_technique': pass_technique,
+        'is_inswinging': is_inswinging,
+        'is_outswinging': is_outswinging
+    }
+
+
+def extract_pass_outcome_features(event):
+    """
+    Extract pass outcome and context features (4 features)
+
+    Args:
+        event: Corner event dictionary
+
+    Returns:
+        dict: 4 features (outcome, is_switch, has_recipient, is_shot_assist)
+    """
+    pass_data = event['pass']
+
+    # Outcome encoding: Incomplete=0, Out=1, Pass Offside=2, Unknown=3, null=4
+    outcome_mapping = {
+        'Incomplete': 0,
+        'Out': 1,
+        'Pass Offside': 2,
+        'Unknown': 3
+    }
+    outcome_obj = pass_data.get('outcome', None)
+    if outcome_obj and 'name' in outcome_obj:
+        pass_outcome = outcome_mapping.get(outcome_obj['name'], 4)
+    else:
+        pass_outcome = 4  # null
+
+    # Boolean flags (only present when true)
+    is_cross_field_switch = 1 if pass_data.get('switch', False) else 0
+    has_recipient = 1 if pass_data.get('recipient', None) is not None else 0
+    is_shot_assist = 1 if pass_data.get('shot_assist', False) else 0
+
+    return {
+        'pass_outcome': pass_outcome,
+        'is_cross_field_switch': is_cross_field_switch,
+        'has_recipient': has_recipient,
+        'is_shot_assist': is_shot_assist
+    }
+
+
+def extract_goalkeeper_features(freeze_frame):
+    """
+    Extract goalkeeper and special player features (3 features)
+
+    Args:
+        freeze_frame: List of player positions
+
+    Returns:
+        dict: 3 features (num_attacking_keepers, num_defending_keepers, keeper_distance_to_goal)
+    """
+    attacking_keepers = [p for p in freeze_frame if p['teammate'] and p['keeper']]
+    defending_keepers = [p for p in freeze_frame if not p['teammate'] and p['keeper']]
+
+    num_attacking_keepers = len(attacking_keepers)
+    num_defending_keepers = len(defending_keepers)
+
+    # Calculate distance from defending keeper to goal center
+    if defending_keepers:
+        keeper_location = defending_keepers[0]['location']  # Usually only 1 keeper
+        keeper_distance = np.sqrt(
+            (keeper_location[0] - GOAL_CENTER[0])**2 +
+            (keeper_location[1] - GOAL_CENTER[1])**2
+        )
+    else:
+        keeper_distance = 0.0  # No keeper found (rare)
+
+    return {
+        'num_attacking_keepers': num_attacking_keepers,
+        'num_defending_keepers': num_defending_keepers,
+        'keeper_distance_to_goal': float(keeper_distance)
+    }
+
+
+def extract_match_context_score(corner, match_events=None):
+    """
+    Extract score state features (4 features)
+
+    Args:
+        corner: Dictionary with 'event', 'freeze_frame', and 'match_id' keys
+        match_events: List of all events in the match (optional, loaded if not provided)
+
+    Returns:
+        dict: 4 features (attacking_team_goals, defending_team_goals, score_difference, match_situation)
+    """
+    if match_events is None:
+        # Load match events if not provided
+        match_id = corner['match_id']
+        base_dir = Path(__file__).parent.parent
+        events_file = base_dir / f'data/statsbomb/events/events/{match_id}.json'
+
+        if not events_file.exists():
+            # Return zeros if match file not found
+            return {
+                'attacking_team_goals': 0,
+                'defending_team_goals': 0,
+                'score_difference': 0,
+                'match_situation': 0
+            }
+
+        with open(events_file, 'r') as f:
+            match_events = json.load(f)
+
+    corner_event = corner['event']
+    corner_index = corner_event['index']
+    corner_team_id = corner_event['team']['id']
+
+    # Find all goals before this corner
+    goals_before = [
+        e for e in match_events
+        if e['index'] < corner_index
+        and e.get('type', {}).get('name') == 'Shot'
+        and e.get('shot', {}).get('outcome', {}).get('name') == 'Goal'
+    ]
+
+    # Count goals by team
+    attacking_team_goals = sum(1 for g in goals_before if g['team']['id'] == corner_team_id)
+    defending_team_goals = len(goals_before) - attacking_team_goals
+
+    score_difference = attacking_team_goals - defending_team_goals
+
+    # Match situation: winning=1, drawing=0, losing=-1
+    if score_difference > 0:
+        match_situation = 1
+    elif score_difference < 0:
+        match_situation = -1
+    else:
+        match_situation = 0
+
+    return {
+        'attacking_team_goals': attacking_team_goals,
+        'defending_team_goals': defending_team_goals,
+        'score_difference': score_difference,
+        'match_situation': match_situation
+    }
+
+
+def extract_match_context_substitutions(corner, match_events=None):
+    """
+    Extract substitution pattern features (3 features)
+
+    Args:
+        corner: Dictionary with 'event', 'freeze_frame', and 'match_id' keys
+        match_events: List of all events in the match (optional, loaded if not provided)
+
+    Returns:
+        dict: 3 features (total_subs_before, recent_subs_5min, minutes_since_last_sub)
+    """
+    if match_events is None:
+        # Load match events if not provided
+        match_id = corner['match_id']
+        base_dir = Path(__file__).parent.parent
+        events_file = base_dir / f'data/statsbomb/events/events/{match_id}.json'
+
+        if not events_file.exists():
+            # Return defaults if match file not found
+            return {
+                'total_subs_before': 0,
+                'recent_subs_5min': 0,
+                'minutes_since_last_sub': 999.0
+            }
+
+        with open(events_file, 'r') as f:
+            match_events = json.load(f)
+
+    corner_event = corner['event']
+    corner_index = corner_event['index']
+    corner_minute = corner_event['minute']
+
+    # Find all substitutions before this corner
+    subs_before = [
+        e for e in match_events
+        if e['index'] < corner_index
+        and e.get('type', {}).get('name') == 'Substitution'
+    ]
+
+    total_subs_before = len(subs_before)
+
+    # Recent substitutions (last 5 minutes)
+    recent_subs_5min = sum(1 for s in subs_before if corner_minute - s['minute'] <= 5)
+
+    # Minutes since last substitution
+    if subs_before:
+        last_sub = max(subs_before, key=lambda x: x['index'])
+        minutes_since_last_sub = float(corner_minute - last_sub['minute'])
+    else:
+        minutes_since_last_sub = 999.0  # No prior substitutions
+
+    return {
+        'total_subs_before': total_subs_before,
+        'recent_subs_5min': recent_subs_5min,
+        'minutes_since_last_sub': minutes_since_last_sub
+    }
+
+
+def extract_all_features(corner, match_events=None):
+    """
+    Extract all 49 features from a corner
+
+    Args:
+        corner: Dictionary with 'event', 'freeze_frame', and 'match_id' keys
+        match_events: List of all events in the match (optional, for match context features)
+
+    Returns:
+        dict: All 49 features
     """
     features = {}
 
     # 5 basic metadata features
     features.update(extract_basic_metadata(corner['event']))
+
+    # 3 temporal features
+    features.update(extract_temporal_features(corner['event']))
 
     # 6 player count features
     features.update(extract_player_counts(corner['freeze_frame']))
@@ -241,5 +526,20 @@ def extract_all_features(corner):
 
     # 4 pass trajectory features
     features.update(extract_pass_trajectory(corner['event']))
+
+    # 5 pass technique & body part features
+    features.update(extract_pass_technique_features(corner['event']))
+
+    # 4 pass outcome & context features
+    features.update(extract_pass_outcome_features(corner['event']))
+
+    # 3 goalkeeper features
+    features.update(extract_goalkeeper_features(corner['freeze_frame']))
+
+    # 4 score state features
+    features.update(extract_match_context_score(corner, match_events))
+
+    # 3 substitution pattern features
+    features.update(extract_match_context_substitutions(corner, match_events))
 
     return features

@@ -2,11 +2,24 @@
 """
 Task 3: Extract Features from Corner Freeze Frames
 
-Reads corners_with_labels.json and extracts 27 features for each corner,
+Reads corners_with_labels.json and extracts 49 features for each corner,
 saving the result as a CSV file.
 
 Input:  data/processed/corners_with_labels.json
 Output: data/processed/corners_with_features.csv
+
+Features (49 total):
+- Basic metadata (5)
+- Temporal (3)
+- Player counts (6)
+- Spatial density (4)
+- Positional (8)
+- Pass trajectory (4)
+- Pass technique & body part (5)
+- Pass outcome & context (4)
+- Goalkeeper (3)
+- Score state (4)
+- Substitution patterns (3)
 """
 
 import json
@@ -29,6 +42,8 @@ def main():
 
     print(f"Loaded {len(corners)} corners")
     print(f"\nExtracting features...")
+    print("Note: Match context features (score state, substitutions) require loading match event files.")
+    print("      This may take some time...")
 
     # Extract features for each corner
     rows = []
@@ -36,7 +51,7 @@ def main():
         if i % 100 == 0:
             print(f"Processing corner {i}/{len(corners)}...")
 
-        # Extract all 27 features
+        # Extract all 49 features
         features = extract_all_features(corner)
 
         # Add metadata
