@@ -824,6 +824,7 @@ def main(data_path: str = None, output_dir: str = None, target_col: str = None):
     if data_path is None:
         # Try default locations
         possible_paths = [
+            project_root / 'data' / 'processed' / 'corners_features_with_shot.csv',
             project_root / 'data' / 'processed' / 'corner_features.csv',
             project_root / 'data' / 'processed' / 'corner_features.parquet',
             project_root / 'data' / 'processed' / 'corners_with_features.csv',
@@ -876,7 +877,7 @@ def main(data_path: str = None, output_dir: str = None, target_col: str = None):
 
         # Auto-detect target column if not specified
         if target_col is None:
-            possible_targets = ['shot_outcome', 'outcome', 'target', 'label']
+            possible_targets = ['leads_to_shot', 'shot_outcome', 'outcome', 'target', 'label']
             for col in possible_targets:
                 if col in df.columns:
                     target_col = col

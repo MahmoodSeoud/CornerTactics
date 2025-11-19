@@ -59,13 +59,16 @@ def check_shot_in_lookahead(
     Returns:
         True if threatening shot found in window, False otherwise
     """
-    # Threatening shot outcomes (following TacticAI)
+    # Threatening shot outcomes (including blocked shots)
     THREATENING_OUTCOMES = {
         "Goal",           # Direct goal
         "Saved",          # Shot saved by goalkeeper
         "Post",           # Hit the post/crossbar
         "Off T",          # Off target (but clear attempt)
         "Wayward",        # Missing target (but clear attempt)
+        "Blocked",        # Shot blocked by defender
+        "Saved Off Target",  # Saved but would have been off target
+        "Saved to Post",  # Saved onto post
     }
 
     # Calculate end of lookahead window
