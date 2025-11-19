@@ -5,7 +5,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
-#SBATCH --partition=batch
+#SBATCH --partition=scavenge
 
 # Data Leakage Analysis for Corner Kick Shot Prediction
 # This script runs comprehensive leakage detection on the feature set
@@ -26,6 +26,7 @@ mkdir -p reports/figures
 
 # Load required modules
 module purge
+module load GCC/14.2.0
 module load Anaconda3
 
 # Activate conda environment
