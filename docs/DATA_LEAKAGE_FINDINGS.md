@@ -28,16 +28,19 @@ Despite high MCC (0.649), only adds ~3% accuracy because:
 
 **Key insight**: Leakage ≠ high accuracy. The feature is still invalid because information isn't available at t=0.
 
-## Features to Verify
+## Features CONFIRMED as Leaked
 
-| Feature | MCC | Concern |
+| Feature | MCC | Evidence |
 |---------|-----|---------|
-| `pass_end_x` | -0.137 | Is this intended target or actual landing? |
-| `pass_end_y` | ~0 | Same concern |
-| `pass_length` | 0.126 | Computed from intent or actual? |
-| `pass_angle` | -0.085 | Computed from intent or actual? |
+| `pass_end_x` | -0.137 | **LEAKED** - Actual landing location (matches next event location) |
+| `pass_end_y` | ~0 | **LEAKED** - Actual landing location (matches next event location) |
+| `pass_length` | 0.126 | **LEAKED** - Computed from actual landing |
+| `pass_angle` | -0.085 | **LEAKED** - Computed from actual landing |
 
-**Recommendation**: Check StatsBomb documentation. If these represent intended target (where kicker aimed), they're safe. If actual landing position, they're leaked.
+**Verified via StatsBomb event analysis**:
+- Corner with outcome="Incomplete": pass.end_location doesn't match next event
+- Corner with recipient: pass.end_location EXACTLY matches Ball Receipt location
+- This proves pass_end is the actual outcome location, not intended target
 
 ## Safe Features (MCC < 0.1)
 
