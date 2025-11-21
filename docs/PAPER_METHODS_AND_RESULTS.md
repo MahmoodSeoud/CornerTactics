@@ -1,32 +1,15 @@
 # CornerTactics: Paper Methods and Results Summary
 
-**For LLM Comprehension - Updated November 19, 2025**
+**Updated November 21, 2025**
 
 ---
 
-## OUTDATED FILES TO IGNORE
+## CURRENT STATUS
 
-The following files contain outdated information and should NOT be used:
-
-### Completely Outdated (Different Results)
-- `docs/METHODS_AND_RESULTS_SUMMARY.md` - Old results with leaked features
-- `docs/DATA_LEAKAGE_FINDINGS.md` - Old numbers (422 shots, not 560)
-- `docs/FEATURE_IMPORTANCE_RESULTS.md` - Old results (78.8% not 68.2%)
-- `ABLATION_RESULTS.md` - All results used leaked features (86% accuracy is INVALID)
-- `ABLATION_STUDY_ANALYSIS_PROMPT.md` - Based on leaked results
-- `INDIVIDUAL_ABLATION_FINDINGS.md` - Based on leaked results
-- `COMPLETE_ABLATION_ANALYSIS_PROMPT.md` - Based on leaked results
-- `results/ablation/*` - All ablation results invalid
-- `results/evaluation_report.md` - Old 4-class results
-
-### Partially Outdated
-- `notes/features/task-7-shot-label-extraction.md` - Shot definition updated
-- `notes/features/task-8-binary-shot-models.md` - Results outdated
-
-### CURRENT/VALID Files
-- `docs/CLEAN_BASELINE_RESULTS.md` - **USE THIS** for model performance
-- `docs/SHOT_LABEL_VERIFICATION.md` - **USE THIS** for label methodology
-- `notes/features/data-leakage-analysis.md` - **USE THIS** for complete analysis
+Most previous results contained temporal data leakage and have been removed. The only valid results are:
+- **True performance**: 71% accuracy with 19 temporally valid features
+- **AUC**: 0.52 (barely better than random)
+- See `docs/DATA_LEAKAGE_FINDINGS.md` for details
 
 ---
 
@@ -135,35 +118,26 @@ This proves `pass_end` is the **actual landing location**, not intended target.
 
 ---
 
-## 5. MODEL PERFORMANCE (CLEAN BASELINE)
+## 5. MODEL PERFORMANCE (NO TEMPORAL LEAKAGE)
 
 ### Data Split
 - **Train**: 1,546 samples (80%)
 - **Test**: 387 samples (20%)
 - **Method**: Stratified random split
 
-### Results
+### Valid Results (19 Temporally Valid Features)
 
-| Model | Accuracy | AUC-ROC | MCC | F1 | Precision | Recall |
-|-------|----------|---------|-----|-----|-----------|--------|
-| **Random Forest** | 68.2% | **0.631** | 0.120 | 0.297 | 41.3% | 23.2% |
-| MLP | 70.8% | 0.604 | 0.071 | 0.096 | 46.2% | 5.4% |
-| XGBoost | 64.3% | 0.574 | 0.095 | 0.337 | 36.5% | 31.2% |
+| Model | Test Accuracy | Test AUC | CV Accuracy | CV AUC |
+|-------|---------------|----------|-------------|---------|
+| **MLP** | 71.32% | 0.521 | 59.85% ± 1.82% | 0.529 ± 0.018 |
+| Random Forest | 63.57% | 0.505 | - | - |
+| XGBoost | 60.47% | 0.509 | - | - |
 
-### Best Model: Random Forest
-- **Best AUC-ROC**: 0.631 (best discrimination between classes)
-- **Confusion Matrix**:
-  ```
-           Predicted
-           No   Yes
-  Actual No  238  37
-        Yes  86  26
-  ```
-- Specificity: 86.5%
-- Sensitivity: 23.2%
-
-### Cross-Validation
-- RF CV AUC: 0.579 ± 0.032
+### Key Insights
+- **Performance barely better than random** (AUC ~0.52)
+- **MLP performs best** but still limited predictive power
+- **Cross-validation lower than test** suggests some variance in test set
+- **Corner outcomes are inherently unpredictable** from pre-kick features alone
 - XGBoost CV AUC: 0.565 ± 0.032
 - MLP CV AUC: 0.565 ± 0.055
 

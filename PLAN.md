@@ -419,12 +419,13 @@ After implementation, I should have:
 
 Based on class distribution and similar sports analytics tasks:
 
-- **Naive baseline** (always predict majority class): ~54% accuracy
-- **Random Forest**: ~60-65% accuracy, macro F1 ~0.45-0.50
-- **XGBoost**: ~62-67% accuracy, macro F1 ~0.47-0.52
-- **MLP**: ~58-63% accuracy, macro F1 ~0.43-0.48
+- **Naive baseline** (always predict majority class): ~71% (for no-shot class)
+- **Random Forest**: ~60-65% accuracy
+- **XGBoost**: ~58-62% accuracy
+- **MLP**: ~65-71% accuracy
+- **Expected AUC**: 0.52-0.60 (barely better than random due to inherent unpredictability)
 
-If results are significantly worse, there's a bug. If significantly better, there's data leakage.
+**Important**: Only use temporally valid features available at corner kick time. Features like `pass_end_x/y` (actual landing position) or `is_shot_assist` (outcome) must not be used.
 
 ---
 

@@ -1,4 +1,8 @@
-# Clean Baseline Results (Without Leaked Features)
+# [ARCHIVED] Clean Baseline Results - November 19, 2025
+
+> **This document is archived. For current valid results, see [DATA_LEAKAGE_FINDINGS.md](DATA_LEAKAGE_FINDINGS.md)**
+>
+> This intermediate analysis removed 7 leaked features but missed additional leakage. True performance is 71% with 19 valid features.
 
 ## Summary
 
