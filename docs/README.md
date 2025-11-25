@@ -6,7 +6,7 @@
 
 ## Quick Start: What You Need to Know
 
-After discovering temporal data leakage in November 2025, all previous results have been invalidated and corrected. **True performance is 71% accuracy with 19 valid features** (not 88% with leaked features).
+After discovering temporal data leakage in November 2025, all previous results have been invalidated and corrected. **True performance is 71% accuracy with 22 valid features** (not 88% with leaked features).
 
 ---
 
@@ -16,8 +16,8 @@ After discovering temporal data leakage in November 2025, all previous results h
 **File:** `CURRENT_VALID_RESULTS.md`
 
 The single source of truth for model performance:
-- Valid performance: 71.32% accuracy, 0.52 AUC
-- 19 temporally valid features
+- Valid performance: 71.06% accuracy, 0.556 AUC
+- 22 temporally valid features
 - What can and cannot be predicted
 
 ### 2. Why Previous Results Were Wrong
@@ -112,13 +112,13 @@ docs/
 - Most egregious: `is_shot_assist` (literally the prediction target)
 
 ### The Fix
-- Removed 12 leaked features systematically
-- Kept only 19 temporally valid features
+- Removed 9 leaked features systematically
+- Kept 22 temporally valid features
 - Retrained all models from scratch
 
 ### The Reality
-- True performance: 71.32% accuracy
-- AUC: 0.52 (barely better than random)
+- True performance: 71.06% accuracy
+- AUC: 0.556 (limited predictive power)
 - Conclusion: Corner outcomes are largely unpredictable from pre-kick features
 
 ---
@@ -130,8 +130,8 @@ docs/
 - `scripts/15_retrain_without_leakage.py` - Train valid models
 
 ### Dataset Files
-- `data/processed/corners_features_temporal_valid.csv` - Clean dataset (19 features)
-- `data/processed/temporal_valid_features.json` - Feature metadata
+- `data/processed/corners_features_temporal_valid.csv` - Clean dataset (22 features)
+- `data/processed/temporal_valid_features.json` - Feature metadata (22 features)
 
 ---
 
@@ -168,8 +168,15 @@ Expect improvements of 2-5%, not 15%.
 ### Q: What happened to the optimal feature selection results?
 **A:** Deleted. They were based on leaked features and are completely invalid.
 
-### Q: Should I use 19 or 36 features?
-**A:** Use 19. The 36-feature dataset (`CLEAN_BASELINE_RESULTS.md`) was an intermediate step that may still contain subtle leakage.
+### Q: Why does the documentation mention different feature counts (19, 22, 36)?
+
+**Answer: Use 22 features only. This is the complete, corrected valid feature set.**
+
+- **22 features** = Correct, complete temporally valid features (71% accuracy)
+- **19 features** = OLD - was missing `attacking_team_goals`, `attacking_to_goal_dist`, `keeper_distance_to_goal`
+- **36 features** = INVALID, includes leaked features like `is_cross_field_switch`
+
+Always use the dataset at `data/processed/corners_features_temporal_valid.csv` with 22 features.
 
 ---
 

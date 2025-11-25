@@ -1,4 +1,14 @@
-# Data Leakage Analysis and Clean Baseline Retraining
+# ⚠️ [DEPRECATED - DO NOT USE] Data Leakage Analysis
+
+> **⚠️ THIS FILE CONTAINS INVALID RESULTS ⚠️**
+>
+> **Problem**: This analysis used 36 features including leaked features like `is_cross_field_switch`
+>
+> **Correct Analysis**: See `docs/FEATURE_REMOVAL_METHODOLOGY.md` for valid 19-feature analysis
+>
+> **Correct Results**: See `docs/CURRENT_VALID_RESULTS.md` for accurate performance (71% accuracy, 0.52 AUC)
+>
+> **DO NOT USE THIS FILE FOR ANY DECISION MAKING**
 
 ## Context
 - **Task**: Binary classification predicting shot outcomes from corner kicks
@@ -57,24 +67,16 @@ is_shot_assist=1            1              370
 - **1 case** where is_shot_assist=1 but leads_to_shot=0: Shot after 5-event window
 - **190 cases** where is_shot_assist=0 but leads_to_shot=1: Indirect assists (headers, scrambles)
 
-## Clean Feature Set (36 Features)
+## ⚠️ DEPRECATED: This analysis used 36 features including leaked features
 
-### Freeze-Frame Derived (18 features)
-- Player counts: attacking_in_box, defending_in_box, etc.
-- Spatial density: attacking_density, numerical_advantage, etc.
-- Positions: attacking_centroid_x/y, defending_centroid_x/y, etc.
-- Distances: attacking_to_goal_dist, keeper_distance_to_goal, etc.
+**See `docs/FEATURE_REMOVAL_METHODOLOGY.md` for the correct 19 temporally valid features.**
 
-### Pass Technique (3 features)
-- is_inswinging, is_outswinging, is_cross_field_switch
+This file contains outdated analysis that included leaked features like:
+- `is_cross_field_switch` (99.6% correlated with outcome)
+- Pass technique features that may be outcome-based
+- Other temporally invalid features
 
-### Match State (11 features)
-- Score: attacking_team_goals, score_difference, match_situation
-- Temporal: period, minute, second, timestamp_seconds
-- Substitutions: total_subs_before, recent_subs_5min
-
-### Other (4 features)
-- corner_side, total_attacking, total_defending, num_keepers
+**Do not use this analysis for model evaluation.**
 
 ## Feature Importance Analysis
 

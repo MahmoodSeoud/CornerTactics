@@ -1,8 +1,21 @@
-# [ARCHIVED] Clean Baseline Results - November 19, 2025
+# ⚠️ [INVALID - DO NOT USE] Clean Baseline Results - November 19, 2025
 
-> **This document is archived. For current valid results, see [DATA_LEAKAGE_FINDINGS.md](DATA_LEAKAGE_FINDINGS.md)**
+> **⚠️ THIS DOCUMENT CONTAINS INVALID RESULTS DUE TO DATA LEAKAGE ⚠️**
 >
-> This intermediate analysis removed 7 leaked features but missed additional leakage. True performance is 71% with 19 valid features.
+> **Problem**: Uses 36 features including leaked features:
+> - `is_cross_field_switch` (99.6% outcome-correlated - LEAKED)
+> - `is_outswinging`, `is_inswinging` (may be outcome-based)
+> - Various centroid and spatial features that may be post-kick
+>
+> **Reported Performance**: 68.2% accuracy, 0.631 AUC (WRONG!)
+>
+> **Correct Results**: See [CURRENT_VALID_RESULTS.md](CURRENT_VALID_RESULTS.md):
+> - **19 valid features only**
+> - **MLP: 71.32% accuracy, 0.521 AUC** (barely better than random)
+> - **Random Forest: 63.57% accuracy, 0.505 AUC**
+> - **XGBoost: 60.47% accuracy, 0.509 AUC**
+>
+> **DO NOT CITE OR USE RESULTS FROM THIS FILE**
 
 ## Summary
 
@@ -17,8 +30,8 @@ All models retrained after removing 7 temporally leaked features. These results 
 4. `pass_end_x/y` - Actual landing location (not intended)
 5. `pass_length/angle` - Computed from actual landing
 
-## Clean Feature Set
-**36 features** remaining:
+## ~~Clean Feature Set~~ (INVALID - Contains Leakage)
+**36 features** (includes leaked features):
 - Freeze-frame positions (18 features)
 - Pass technique (3 features)
 - Score state (4 features)

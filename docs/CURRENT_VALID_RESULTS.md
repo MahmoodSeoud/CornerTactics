@@ -13,15 +13,15 @@ After extensive analysis and removal of temporal data leakage, we've discovered 
 
 | Model | Test Accuracy | Test AUC | CV Accuracy | CV AUC |
 |-------|---------------|----------|-------------|---------|
-| **MLP (Best)** | 71.32% | 0.521 | 59.85% ± 1.82% | 0.529 ± 0.018 |
-| Random Forest | 63.57% | 0.505 | - | - |
-| XGBoost | 60.47% | 0.509 | - | - |
+| **MLP (Best)** | **71.06%** | **0.556** | 61.35% ± 2.77% | 0.530 ± 0.031 |
+| Random Forest | 62.79% | 0.510 | - | - |
+| XGBoost | 61.50% | 0.545 | - | - |
 
-**Key Insight:** AUC of ~0.52 means the models are barely better than random guessing.
+**Key Insight:** AUC of ~0.55 means the models have very limited predictive power (random guessing = 0.50).
 
 ---
 
-## Valid Features (19 Total)
+## Valid Features (22 Total)
 
 These are the ONLY features that can legitimately be used for prediction:
 
@@ -31,10 +31,10 @@ These are the ONLY features that can legitimately be used for prediction:
 - `period` - First or second half
 - `corner_x` - Always ~120 or ~0
 - `corner_y` - Always ~80 or ~0
-- `team_id` - Team taking corner (if available)
-- `player_id` - Corner taker (if available)
+- `attacking_team_goals` - Goals scored by attacking team
+- `defending_team_goals` - Goals conceded (defending team's score)
 
-### Freeze Frame Data (12 features)
+### Freeze Frame Data (15 features)
 - `total_attacking` - Attacking players count
 - `total_defending` - Defending players count
 - `attacking_in_box` - Attackers in penalty area
@@ -46,6 +46,9 @@ These are the ONLY features that can legitimately be used for prediction:
 - `numerical_advantage` - Attacker-defender difference
 - `attacker_defender_ratio` - Ratio of attackers to defenders
 - `defending_depth` - Defensive line position
+- `attacking_to_goal_dist` - Avg attacker distance to goal
+- `defending_to_goal_dist` - Avg defender distance to goal
+- `keeper_distance_to_goal` - Goalkeeper distance to goal
 - `corner_side` - Left (0) or right (1) corner
 
 ---
@@ -63,9 +66,9 @@ The features that seemed most predictive were actually outcomes:
 ### 2. True Predictability is Very Limited
 
 - **Previous claim (with leaks):** 87.97% accuracy
-- **Reality (no leaks):** 71.32% accuracy
+- **Reality (no leaks):** 71.06% accuracy
 - **Baseline (always predict no shot):** 71% accuracy
-- **Improvement over baseline:** ~0.3%
+- **Improvement over baseline:** ~0.06%
 
 ### 3. Corner Kicks Are Chaotic Events
 
@@ -79,8 +82,8 @@ The fact that we can barely beat random guessing suggests that:
 ## Files and Scripts
 
 ### Valid Data Files
-- `/data/processed/corners_features_temporal_valid.csv` - Clean dataset
-- `/data/processed/temporal_valid_features.json` - Feature list
+- `/data/processed/corners_features_temporal_valid.csv` - Clean dataset (22 features)
+- `/data/processed/temporal_valid_features.json` - Feature list (22 features)
 
 ### Valid Scripts
 - `scripts/14_extract_temporally_valid_features.py` - Extract valid features

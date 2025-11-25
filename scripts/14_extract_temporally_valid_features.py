@@ -54,9 +54,14 @@ VALID_ENGINEERED_FEATURES = [
 
     # Valid engineered features
     'corner_side',              # Left/right corner
-    'defending_depth',          # If available
-    'defending_to_goal_dist',   # If calculated from freeze frame
-    'defending_team_goals',     # Match state (if available)
+    'defending_depth',          # Defensive line position from freeze frame
+    'attacking_to_goal_dist',   # Avg attacker distance to goal from freeze frame
+    'defending_to_goal_dist',   # Avg defender distance to goal from freeze frame
+    'keeper_distance_to_goal',  # GK distance to goal from freeze frame
+
+    # Match state (known before corner)
+    'attacking_team_goals',     # Goals scored by attacking team
+    'defending_team_goals',     # Goals conceded (defending team's score)
 ]
 
 # Features that contain temporal leakage (MUST EXCLUDE)

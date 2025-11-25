@@ -83,116 +83,133 @@ This proves `pass_end` is the **actual landing location**, not intended target.
 
 ---
 
-## 4. CLEAN FEATURE SET (36 Features)
+## 4. VALID FEATURE SET (22 Features)
 
-### Freeze-Frame Derived (18 features)
+These are the ONLY temporally valid features available at the moment of corner kick execution:
+
+### Event Data (7 features)
+- `second` - Match second when corner awarded
+- `minute` - Match minute
+- `period` - First or second half
+- `corner_x` - Corner position X (always 120 or 0)
+- `corner_y` - Corner position Y (always 80 or 0)
+- `attacking_team_goals` - Goals scored by attacking team
+- `defending_team_goals` - Goals conceded (defending team's score)
+
+### 360° Freeze Frame Data (15 features)
+All freeze frame features capture player positions AT the moment of corner kick:
+
 **Player Counts**:
-- `attacking_in_box`, `defending_in_box`
-- `attacking_near_goal`, `defending_near_goal`
-- `total_attacking`, `total_defending`
+- `total_attacking` - Total attacking players
+- `total_defending` - Total defending players
+- `attacking_in_box` - Attackers in penalty area
+- `defending_in_box` - Defenders in penalty area
+- `attacking_near_goal` - Attackers near goal
+- `defending_near_goal` - Defenders near goal
 
-**Spatial Density**:
-- `attacking_density`, `defending_density`
-- `numerical_advantage`, `attacker_defender_ratio`
+**Spatial Metrics**:
+- `attacking_density` - Spatial concentration of attackers
+- `defending_density` - Spatial concentration of defenders
+- `numerical_advantage` - Attackers minus defenders
+- `attacker_defender_ratio` - Ratio of attackers to defenders
 
-**Positional**:
-- `attacking_centroid_x/y`, `defending_centroid_x/y`
-- `defending_compactness`, `defending_depth`
-- `attacking_to_goal_dist`, `defending_to_goal_dist`
-- `keeper_distance_to_goal`
+**Positional Distances**:
+- `defending_depth` - Defensive line Y position
+- `attacking_to_goal_dist` - Average attacker distance to goal
+- `defending_to_goal_dist` - Average defender distance to goal
+- `keeper_distance_to_goal` - Goalkeeper distance to goal
 
-### Pass Technique (3 features)
-- `is_inswinging`
-- `is_outswinging`
-- `is_cross_field_switch`
-
-### Match State (11 features)
-- `score_difference`, `match_situation`
-- `attacking_team_goals`, `defending_team_goals`
-- `minute`, `second`, `period`, `timestamp_seconds`
-- `total_subs_before`, `recent_subs_5min`, `minutes_since_last_sub`
-
-### Other (4 features)
-- `corner_side`
-- `num_attacking_keepers`, `num_defending_keepers`
+**Other**:
+- `corner_side` - Left (0) or right (1) corner
 
 ---
 
 ## 5. MODEL PERFORMANCE (NO TEMPORAL LEAKAGE)
 
 ### Data Split
+- **Total samples**: 1,933 corners
 - **Train**: 1,546 samples (80%)
 - **Test**: 387 samples (20%)
 - **Method**: Stratified random split
+- **Class distribution**: 560 shots (29.0%), 1,373 no shots (71.0%)
 
-### Valid Results (19 Temporally Valid Features)
+### Valid Results (22 Temporally Valid Features)
 
 | Model | Test Accuracy | Test AUC | CV Accuracy | CV AUC |
 |-------|---------------|----------|-------------|---------|
-| **MLP** | 71.32% | 0.521 | 59.85% ± 1.82% | 0.529 ± 0.018 |
-| Random Forest | 63.57% | 0.505 | - | - |
-| XGBoost | 60.47% | 0.509 | - | - |
+| **MLP (Best)** | **71.06%** | **0.556** | 61.35% ± 2.77% | 0.530 ± 0.031 |
+| Random Forest | 62.79% | 0.510 | - | - |
+| XGBoost | 61.50% | 0.545 | - | - |
 
 ### Key Insights
-- **Performance barely better than random** (AUC ~0.52)
+- **Performance barely better than random** (AUC ~0.55)
+- **Baseline accuracy** (predicting all "no shot"): ~71%
+- **MLP improvement over baseline**: Only ~0.06%
 - **MLP performs best** but still limited predictive power
-- **Cross-validation lower than test** suggests some variance in test set
+- **Cross-validation lower than test** (61.35% vs 71.06%) suggests favorable test set
 - **Corner outcomes are inherently unpredictable** from pre-kick features alone
-- XGBoost CV AUC: 0.565 ± 0.032
-- MLP CV AUC: 0.565 ± 0.055
+- **True predictability is very limited** - execution matters more than setup
 
 ---
 
 ## 6. FEATURE IMPORTANCE
 
-### Top 10 Random Forest Importance
-1. **defending_compactness** (0.065) - Defensive shape tightness
-2. **defending_to_goal_dist** (0.063) - Defensive distance to goal
-3. **defending_centroid_y** (0.062) - Defense vertical position
-4. **keeper_distance_to_goal** (0.060) - GK positioning
-5. **defending_depth** (0.058) - Defensive line depth
-6. **attacking_centroid_y** (0.057) - Attack vertical position
-7. **attacking_centroid_x** (0.056) - Attack horizontal position
-8. **timestamp_seconds** (0.054) - When in match
-9. **defending_centroid_x** (0.053) - Defense horizontal position
-10. **attacking_to_goal_dist** (0.051) - Attacker distance to goal
+**NOTE:** With 22 valid features and AUC ~0.55, feature importance is limited. The weak predictive power means no single feature strongly discriminates outcomes.
 
-### Permutation Importance (Impact on AUC)
-1. **is_cross_field_switch** (0.047) - Far post corners
-2. **is_outswinging** (0.017) - Outswing technique
-3. **defending_compactness** (0.013) - Defensive shape
+### Model Characteristics
+- **MLP**: Best overall (71.06% accuracy, 0.556 AUC)
+- **Random Forest**: Second best (62.79% accuracy, 0.510 AUC)
+- **XGBoost**: Third (61.50% accuracy, 0.545 AUC)
 
-### Statistical Correlations with Shot Outcome
-- **is_cross_field_switch**: r=0.132, p<0.001 (strongest)
-- **is_outswinging**: r=0.108, p<0.001
-- **attacking_centroid_y**: r=0.063, p<0.01
+### Top 10 Most Important Features (Random Forest)
+1. **attacking_to_goal_dist** (0.131) - Avg attacker distance to goal
+2. **keeper_distance_to_goal** (0.114) - GK positioning
+3. **defending_to_goal_dist** (0.111) - Avg defender distance to goal
+4. **defending_depth** (0.110) - Defensive line position
+5. **minute** (0.090) - Match minute
+6. **second** (0.085) - Match second
+7. **attacker_defender_ratio** (0.042) - Attacker/defender ratio
+8. **defending_near_goal** (0.041) - Defenders near goal
+9. **total_attacking** (0.035) - Total attackers
+10. **attacking_near_goal** (0.035) - Attackers near goal
+
+### Key Observations
+1. **All models perform near baseline** - Predicting "no shot" always gives ~71% accuracy
+2. **Limited discrimination** - AUC ~0.52 is barely better than random (0.50)
+3. **Freeze frame features most relevant** - 12 of 19 features capture player positioning
+4. **Temporal features less important** - Match timing provides minimal signal
+5. **Defensive positioning** - Features like `defending_depth` and `defending_to_goal_dist` show slight relevance
 
 ---
 
 ## 7. KEY FINDINGS
 
-### 1. Spatial Features Dominate
-- Defensive compactness and team centroids are top predictors
-- Freeze-frame positioning captures meaningful tactical information
+### 1. Corner Kick Outcomes Are Largely Unpredictable
+- **AUC ~0.52** indicates near-random prediction
+- Pre-kick positioning provides minimal predictive signal
+- **Execution matters far more than setup**
 
-### 2. Pass Technique Matters
-- **Cross-field switches** (far post corners) strongly predict shots
-- **Outswinging corners** more likely to create opportunities
-- These have highest permutation importance
+### 2. Limited Value of Freeze Frame Data
+- Despite 12 positioning features, models achieve only marginal improvement
+- Suggests that small variations in delivery dominate outcomes
+- Player skill and in-the-moment decisions more important than positioning
 
-### 3. Better Class Balance Improved Learning
-- Previous: 21.8% shots (excluding blocked)
-- Current: 29.0% shots (including all outcomes)
-- AUC improved from 0.615 to 0.631
+### 3. Baseline Comparison
+- Predicting "no shot" always: ~71% accuracy
+- Best model (MLP): 71.06% accuracy
+- **Improvement: Only 0.06%** - practically negligible
 
-### 4. Temporal Context Relevant
-- Match timing features (minute, second) in top 10
-- May capture fatigue, urgency, tactical changes
+### 4. Cross-Validation Reveals Overfitting
+- Test accuracy: 71.06%
+- CV accuracy: 61.35%
+- Suggests test set was somewhat favorable
+- True performance likely closer to 61%
 
-### 5. Conservative Prediction
-- Models favor specificity over sensitivity
-- High false negative rate (miss actual shots)
-- Reflects inherent unpredictability of set pieces
+### 5. Previous High Performance Was Due to Leakage
+- Original 87.97% accuracy used leaked features
+- Removed 9 temporally invalid features
+- Performance dropped to realistic 71%
+- **Leakage was responsible for 16.91% of apparent accuracy**
 
 ---
 
@@ -205,10 +222,10 @@ This proves `pass_end` is the **actual landing location**, not intended target.
 "Following TacticAI methodology, we labeled corners as 'shot' if a shot by the attacking team occurred within the next 5 events. All shot outcomes were included: goals, saves, blocked shots, posts, and off-target attempts. This yielded 560 shots (29.0%)."
 
 ### Feature Engineering
-"We extracted 36 features from freeze-frame data capturing spatial positioning (team centroids, defensive compactness, player counts in box), pass technique (inswinging, outswinging, cross-field switch), and match state (score, timing, substitutions)."
+"We extracted 22 temporally valid features from event data and 360° freeze-frame data. Features included match timing (minute, second, period), corner position, score state (both teams' goals), and 15 freeze-frame metrics capturing player positioning at the moment of corner execution (player counts, spatial density, numerical advantage, distances to goal, goalkeeper position)."
 
 ### Leakage Removal
-"We identified and removed 7 temporally leaked features that contained information only available after the outcome occurred, including pass landing location (which StatsBomb records as actual, not intended, landing) and shot assist labels."
+"We identified and removed 9 temporally leaked features that contained information only available after the outcome occurred, including pass landing location (which StatsBomb records as actual, not intended, landing position), shot assist labels, pass duration, cross-field switch indicator, and recipient information. Only features available at t=0 (corner kick moment) were retained."
 
 ### Model Training
 "We trained Random Forest, XGBoost, and MLP classifiers with class-weighted loss functions to handle the 2.45:1 class imbalance. Models were evaluated using AUC-ROC, accuracy, and MCC on a held-out test set of 387 samples."
@@ -218,44 +235,41 @@ This proves `pass_end` is the **actual landing location**, not intended target.
 ## 9. RESULTS FOR PAPER
 
 ### Main Results
-"The best performing model was Random Forest with AUC-ROC of 0.631 and accuracy of 68.2%. This represents the true predictive capability using only information available at the moment of corner execution."
+"The best performing model was MLP with accuracy of 71.06% and AUC-ROC of 0.556. However, this represents only a 0.06% improvement over the baseline (predicting 'no shot' for all instances gives 71% accuracy). The near-random AUC (~0.55) indicates that corner kick outcomes are largely unpredictable using only information available at the moment of corner execution."
 
-### Feature Importance
-"The most predictive features were spatial positioning metrics: defensive compactness (importance=0.065), defensive distance to goal (0.063), and team centroids. Pass technique features, particularly cross-field switches (r=0.132, p<0.001), showed the strongest statistical correlation with shot outcomes."
+### Limited Predictive Power
+"All three models (MLP, Random Forest, XGBoost) achieved AUC values between 0.510 and 0.556, barely exceeding random chance (0.50). Cross-validation accuracy (61.35%) was significantly lower than test accuracy (71.06%), suggesting limited generalization. These results indicate that pre-kick positioning provides minimal predictive signal for corner kick outcomes."
 
 ### Comparison to Literature
-"Our 29.0% shot rate aligns with TacticAI's reported ~24% rate, validating our labeling methodology. The moderate AUC-ROC (0.631) reflects the inherent unpredictability of contested set pieces, where factors beyond spatial positioning (player skill, timing, ball physics) determine outcomes."
+"Our 29.0% shot rate aligns with TacticAI's reported ~24% rate, validating our labeling methodology. The low AUC-ROC (0.55) reflects the inherent unpredictability of contested set pieces, where factors beyond spatial positioning (player skill, execution quality, ball physics, split-second decisions) dominate outcomes. This finding suggests that predictive models for corner kicks should focus on execution prediction rather than outcome prediction."
 
 ---
 
 ## 10. LIMITATIONS
 
-1. **Limited temporal information** - Freeze frames capture single moment
-2. **Missing player attributes** - No height, heading ability, etc.
-3. **Conservative predictions** - Models miss most actual shots
-4. **Sample size** - 1,933 corners may limit generalization
+1. **Limited temporal information** - Freeze frames capture single moment, not player movements
+2. **Missing player attributes** - No height, heading ability, historical performance metrics
+3. **Inherent unpredictability** - Corner outcomes dominated by execution quality, not setup
+4. **Sample size** - 1,933 corners with 360° data limits generalization
+5. **Favorable test set** - CV accuracy (59.85%) lower than test (71.32%) suggests overfitting
+6. **Near-baseline performance** - 0.3% improvement over majority class baseline is negligible
 
 ---
 
 ## 11. CODE AND DATA FILES
 
-### Current Data
-- `data/processed/corners_features_with_shot.csv` - Main dataset (1,933 × 53)
-- `data/processed/corners_with_shot_labels.json` - Shot labels
-- `data/processed/corner_labels.csv` - Label file
+### Valid Data (Use These)
+- `data/processed/corners_features_temporal_valid.csv` - Clean dataset (1,933 × 26: 22 features + metadata)
+- `data/processed/temporal_valid_features.json` - Feature metadata (22 features)
+- `data/processed/corner_labels.csv` - Shot labels
 
-### Current Models
-- `models/clean_baselines/random_forest_clean.pkl`
-- `models/clean_baselines/xgboost_clean.pkl`
-- `models/clean_baselines/mlp_clean.pkl`
-- `models/clean_baselines/clean_features.json` - Feature list
-- `models/clean_baselines/clean_baseline_results.json` - Results
+### Valid Results
+- `results/no_leakage/training_results_no_leakage.json` - Model performance with 19 features
 
 ### Key Scripts
-- `scripts/07_extract_shot_labels.py` - Shot labeling (lines 62-72 for outcomes)
-- `scripts/retrain_clean_baselines.py` - Model training
-- `scripts/analyze_data_leakage.py` - Leakage analysis
-- `scripts/verify_shot_labels.py` - Label verification
+- `scripts/14_extract_temporally_valid_features.py` - Extract clean 19 features
+- `scripts/15_retrain_without_leakage.py` - Train models without leakage
+- `scripts/analyze_data_leakage.py` - Leakage detection analysis
 
 ---
 
@@ -265,15 +279,21 @@ This proves `pass_end` is the **actual landing location**, not intended target.
 |--------|-------|
 | Total corners | 1,933 |
 | Shot percentage | 29.0% (560) |
-| Features | 36 (after removing 7 leaked) |
-| Best model | Random Forest |
-| AUC-ROC | 0.631 |
-| Accuracy | 68.2% |
-| MCC | 0.120 |
-| Top predictor | is_cross_field_switch (r=0.132) |
+| No-shot percentage | 71.0% (1,373) |
+| Valid features | 22 |
+| Leaked features removed | 9 |
+| Best model | MLP |
+| Test accuracy | 71.06% |
+| Test AUC-ROC | 0.556 |
+| CV accuracy | 61.35% ± 2.77% |
+| CV AUC-ROC | 0.530 ± 0.031 |
+| Baseline (predict "no shot") | ~71% |
+| Improvement over baseline | +0.06% |
+| Interpretation | **Near-random prediction** |
 
 ---
 
-*Updated: 2025-11-19*
+*Updated: 2025-11-25*
 *Use this document for paper writing*
-*Ignore all ablation results - they used leaked features*
+*All results validated with 22 temporally valid features*
+*Previous high-accuracy results (87.97%) were due to data leakage*
