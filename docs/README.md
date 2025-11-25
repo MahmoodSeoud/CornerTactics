@@ -1,22 +1,31 @@
 # CornerTactics Documentation
 
-**Last Updated:** November 21, 2025
+**Last Updated:** November 25, 2025
 
 ---
 
 ## Quick Start: What You Need to Know
 
-After discovering temporal data leakage in November 2025, all previous results have been invalidated and corrected. **True performance is 71% accuracy with 22 valid features** (not 88% with leaked features).
+After discovering temporal data leakage and fixing methodology issues, all previous results have been invalidated and corrected.
+
+**Key Facts:**
+- **Split**: 60/20/20 (train/val/test) with match-based stratification
+- **Features**: 22 temporally valid features
+- **Binary shot prediction**: ~70% accuracy (baseline: 72%) - no predictive power
+- **Multi-class outcome**: ~51% accuracy (baseline: 53%) - no predictive power
+- **Conclusion**: Corner kick outcomes are essentially unpredictable from pre-kick features
 
 ---
 
 ## Essential Reading (Start Here)
 
-### 1. Current Valid Results ⭐
+### 1. Current Valid Results
 **File:** `CURRENT_VALID_RESULTS.md`
 
 The single source of truth for model performance:
-- Valid performance: 71.06% accuracy, 0.556 AUC
+- Proper 60/20/20 match-based splits
+- Binary shot prediction results
+- Multi-class outcome prediction results (4 classes)
 - 22 temporally valid features
 - What can and cannot be predicted
 
@@ -24,7 +33,7 @@ The single source of truth for model performance:
 **File:** `DATA_LEAKAGE_FINDINGS.md`
 
 Executive summary of the data leakage discovery:
-- What went wrong (87% → 71% accuracy)
+- What went wrong (87% → 70% accuracy)
 - Which features were leaked
 - Empirical evidence
 - Lessons learned
@@ -42,10 +51,37 @@ Systematic process for identifying and removing leaked features:
 **File:** `DECISION_LOG.md`
 
 Complete record of every feature inclusion/exclusion decision:
-- 19 features kept (with reasoning)
-- 12 features removed (with evidence)
-- 3 features excluded (ambiguous)
+- 22 features kept (with reasoning)
+- Features removed (with evidence)
 - Edge cases explained
+
+---
+
+## Current Results Summary
+
+### Binary Shot Prediction
+
+| Model | Train | Val | Test | Test AUC |
+|-------|-------|-----|------|----------|
+| MLP | 70.48% | 72.78% | 70.52% | 0.4324 |
+| XGBoost | 99.39% | 63.61% | 60.44% | 0.5095 |
+| Random Forest | 92.29% | 66.85% | 59.95% | 0.4526 |
+| **Baseline** | - | - | **71.74%** | 0.5000 |
+
+**All models at or below baseline. AUC ~0.5 = no predictive power.**
+
+### Multi-Class Outcome Prediction
+
+Classes: Ball Receipt (53%), Clearance (24%), Goalkeeper (11%), Other (12%)
+
+| Model | Train | Val | Test | Test F1 |
+|-------|-------|-----|------|---------|
+| MLP | 57.49% | 53.37% | 50.86% | 0.1734 |
+| XGBoost | 98.53% | 49.06% | 49.39% | 0.2237 |
+| Random Forest | 88.48% | 37.74% | 43.00% | 0.2819 |
+| **Baseline** | - | - | **53.07%** | - |
+
+**All models at or below baseline. Models just predict majority class.**
 
 ---
 
@@ -55,7 +91,7 @@ Complete record of every feature inclusion/exclusion decision:
 **File:** `TEMPORAL_DATA_LEAKAGE_ANALYSIS.md`
 
 Comprehensive feature-by-feature temporal analysis:
-- All 53 original features categorized
+- All original features categorized
 - Detailed reasoning for each classification
 - Valid vs leaked vs ambiguous
 
@@ -67,20 +103,6 @@ Technical reference for StatsBomb data structure:
 - Freeze frame (360°) data
 - Coordinate system
 - Corner kick definitions
-
----
-
-## Archived Documents
-
-### Partially Valid (Historical Context)
-**File:** `CLEAN_BASELINE_RESULTS.md` [ARCHIVED]
-
-Intermediate analysis from November 19, 2025 that removed 7 leaked features but missed additional leakage. Preserved for historical context only.
-
-### Paper Methods Summary
-**File:** `PAPER_METHODS_AND_RESULTS.md`
-
-Overview of methodology and results. Updated to reflect valid results but some sections may reference older intermediate work.
 
 ---
 
@@ -98,28 +120,35 @@ docs/
 ├── TEMPORAL_DATA_LEAKAGE_ANALYSIS.md              # Detailed feature analysis
 ├── STATSBOMB_DATA_GUIDE.md                        # Technical data reference
 │
-├── CLEAN_BASELINE_RESULTS.md [ARCHIVED]           # Historical intermediate work
-└── PAPER_METHODS_AND_RESULTS.md                   # Methods overview
+├── CLEAN_BASELINE_RESULTS.md [DEPRECATED]         # Historical - now invalid
+├── PAPER_METHODS_AND_RESULTS.md                   # Methods overview (needs update)
+├── SHOT_LABEL_VERIFICATION.md                     # Shot label validation
+└── VERIFICATION_SUMMARY.md                        # Verification notes
 ```
 
 ---
 
 ## Key Findings Summary
 
-### The Problem
-- Initial models: 87.97% accuracy (INVALID)
-- Cause: 8 features contained temporal leakage
-- Most egregious: `is_shot_assist` (literally the prediction target)
+### The Problems Fixed
+1. **Data Leakage**: 8+ features contained information about the outcome
+2. **Improper Splits**: Was using 80/20 instead of 60/20/20
+3. **No Validation Set**: Model selection done on test set
+4. **No Match-Based Splits**: Same match corners in train and test
+5. **Single Task Only**: Only binary prediction, no multi-class
 
-### The Fix
-- Removed 9 leaked features systematically
-- Kept 22 temporally valid features
-- Retrained all models from scratch
+### The Fixes Applied
+1. Removed all temporally leaked features (kept 22)
+2. Implemented 60/20/20 match-based stratified splits
+3. Added proper validation set for model selection
+4. Ensured no match overlap between sets
+5. Added multi-class outcome prediction task
 
 ### The Reality
-- True performance: 71.06% accuracy
-- AUC: 0.556 (limited predictive power)
-- Conclusion: Corner outcomes are largely unpredictable from pre-kick features
+- **Binary shot prediction**: 70.52% accuracy (baseline: 71.74%)
+- **Multi-class outcome**: 50.86% accuracy (baseline: 53.07%)
+- **AUC values**: 0.43-0.51 (random = 0.50)
+- **Conclusion**: Corner outcomes are unpredictable from pre-kick features
 
 ---
 
@@ -127,11 +156,17 @@ docs/
 
 ### Valid Scripts (Use These)
 - `scripts/14_extract_temporally_valid_features.py` - Extract clean features
-- `scripts/15_retrain_without_leakage.py` - Train valid models
+- `scripts/15_retrain_without_leakage.py` - Train valid models (both tasks)
 
 ### Dataset Files
 - `data/processed/corners_features_temporal_valid.csv` - Clean dataset (22 features)
-- `data/processed/temporal_valid_features.json` - Feature metadata (22 features)
+- `data/processed/temporal_valid_features.json` - Feature metadata
+- `data/processed/train_indices.csv` - Training set indices (60%)
+- `data/processed/val_indices.csv` - Validation set indices (20%)
+- `data/processed/test_indices.csv` - Test set indices (20%)
+
+### Results
+- `results/no_leakage/training_results.json` - Full results JSON
 
 ---
 
@@ -139,46 +174,49 @@ docs/
 
 ### Citing This Work
 If you use this dataset or methodology, please note:
-1. Only results from November 21, 2025 onward are valid
+1. Only results from November 25, 2025 onward are valid
 2. Any results showing >75% accuracy for corner prediction should be scrutinized for leakage
-3. See `FEATURE_REMOVAL_METHODOLOGY.md` for reproducible removal process
+3. Use match-based splits to prevent leakage
+4. Report both binary and multi-class results
 
 ### Common Pitfalls to Avoid
 1. ❌ Using `pass_end_x/y` as "intended target" (they're actual outcomes)
 2. ❌ Using `is_shot_assist` as a feature (it's the target variable)
 3. ❌ Including any `has_*`, `is_*_outcome`, or `duration` features
 4. ❌ Trusting feature names without validating temporal availability
+5. ❌ Using random splits instead of match-based splits
+6. ❌ Evaluating on test set without a separate validation set
 
 ---
 
 ## Questions?
 
-### Q: Why is performance so low (71%)?
-**A:** Because corner kick outcomes are inherently unpredictable from pre-kick features alone. Most of the "predictability" comes from execution (how the kick is taken), not setup (player positioning).
+### Q: Why is performance so low (~70%)?
+**A:** Because corner kick outcomes are inherently unpredictable from pre-kick features alone. The models perform at or below the baseline of always predicting the majority class.
 
-### Q: Can we improve beyond 71%?
-**A:** Marginally. Possible approaches:
-- Better feature engineering from freeze frames
-- Player skill ratings (historical data)
-- Team tactical patterns
-- Match context (score, time)
+### Q: Can we improve beyond baseline?
+**A:** Unlikely with current features. Possible approaches:
+- Video/trajectory data (post-kick information)
+- Player skill ratings (external data)
+- Team tactical patterns (historical data)
 
-Expect improvements of 2-5%, not 15%.
+Don't expect significant improvements from pre-kick positioning alone.
 
-### Q: What happened to the optimal feature selection results?
-**A:** Deleted. They were based on leaked features and are completely invalid.
+### Q: What's the difference between binary and multi-class tasks?
+**A:**
+- **Binary**: Did the corner lead to a shot? (Yes/No)
+- **Multi-class**: What happened immediately after? (Ball Receipt, Clearance, Goalkeeper, Other)
 
-### Q: Why does the documentation mention different feature counts (19, 22, 36)?
+Both tasks show no predictive power above baseline.
 
-**Answer: Use 22 features only. This is the complete, corrected valid feature set.**
-
-- **22 features** = Correct, complete temporally valid features (71% accuracy)
-- **19 features** = OLD - was missing `attacking_team_goals`, `attacking_to_goal_dist`, `keeper_distance_to_goal`
-- **36 features** = INVALID, includes leaked features like `is_cross_field_switch`
-
-Always use the dataset at `data/processed/corners_features_temporal_valid.csv` with 22 features.
+### Q: Why use 60/20/20 instead of 80/20?
+**A:** The validation set is essential for:
+- Hyperparameter tuning
+- Model selection
+- Early stopping
+- Preventing overfitting to test set
 
 ---
 
-*Last updated: November 21, 2025*
-*Previous results invalidated due to temporal data leakage*
+*Last updated: November 25, 2025*
+*Previous results invalidated due to temporal data leakage and methodology issues*
