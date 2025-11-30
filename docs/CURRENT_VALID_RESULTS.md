@@ -167,6 +167,46 @@ The fact that we can barely beat random guessing suggests that:
 
 ---
 
+## Raw Spatial Baseline Experiments (November 27, 2025)
+
+To address the critique that we "threw away spatial structure before even trying," we conducted additional experiments comparing raw coordinates against aggregate features.
+
+### Feature Representations Tested
+
+| Feature Set | # Features | Description |
+|-------------|------------|-------------|
+| Aggregates (original) | 22 | Counts, densities, centroids |
+| Raw Coordinates | 46 | Individual (x,y) per player, padded |
+| Spatial Structure | 13 | Team spread, range, centroid diff |
+| All Combined | 99 | Everything together |
+
+### Results
+
+| Feature Set | Best AUC | Above Random |
+|-------------|----------|--------------|
+| Spatial Structure | **0.545** | +4.5% |
+| Raw Coordinates | 0.526 | +2.6% |
+| Aggregates | 0.502 | +0.2% |
+
+**Finding:** Raw coordinates slightly outperform aggregates, but ALL approaches are near random (0.50).
+
+### Leakage Proof (Smoking Gun)
+
+| Feature Set | Test AUC | Test Acc |
+|-------------|----------|----------|
+| Clean features (22) | 0.445 | 64.4% |
+| **is_shot_assist ONLY** | **0.768** | **86.7%** |
+| All leaked features (14) | 0.831 | 86.7% |
+
+**The `is_shot_assist` feature alone achieves 86.7% accuracy.** This proves:
+1. Leaked features don't "predict" outcomes—they **encode** outcomes
+2. Previous high accuracy was circular reasoning, not prediction
+3. Remove leakage → performance drops to random
+
+See `docs/RAW_SPATIAL_BASELINE_RESULTS.md` for full details.
+
+---
+
 ## Conclusions
 
 1. **Corner kick outcomes are inherently unpredictable** from pre-kick information
