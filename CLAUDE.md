@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a **machine learning research project** for predicting corner kick outcomes in professional soccer using StatsBomb's open event data and 360-degree freeze frame player positioning data.
+CornerTactics is a **data extraction and processing project** for corner kick data in professional soccer using StatsBomb's open event data and 360-degree freeze frame player positioning data.
 
-**Purpose**: Build ML models to predict corner kick outcomes and player positioning using graph neural networks and traditional ML methods
+**Purpose**: Download, extract, and process corner kick data with player positions for soccer analytics research
 
-**Project Stage**: Mid-to-advanced with trained models and comprehensive data (1,933 labeled corners with 360° positioning)
+**Project Stage**: Complete data pipeline with comprehensive data (1,933 labeled corners with 360 positioning)
 
 ## Development Environment
 
@@ -17,15 +17,22 @@ CornerTactics is a **machine learning research project** for predicting corner k
 conda activate robo
 ```
 
-**Python Version**: 3.x with deep learning dependencies
+**Python Version**: 3.x
 
 ## Project Structure
 
 ```
 CornerTactics/
-├── scripts/                                    # Data download scripts
+├── scripts/                                    # Data processing scripts
 │   ├── download_statsbomb_events.py           # Downloads all StatsBomb event data
-│   └── download_statsbomb_360_freeze_frames.py # Downloads 360 freeze frame data
+│   ├── download_statsbomb_360_freeze_frames.py # Downloads 360 freeze frame data
+│   ├── 01_extract_corners_with_freeze_frames.py # Extract corners with freeze frames
+│   ├── 02_extract_outcome_labels.py           # Extract outcome labels
+│   ├── 03_extract_features.py                 # Feature extraction
+│   ├── 04_create_splits.py                    # Create train/val/test splits
+│   ├── 07_extract_shot_labels.py              # Extract shot labels
+│   ├── 14_extract_temporally_valid_features.py # Temporally valid features
+│   └── 16_extract_raw_spatial_features.py     # Raw spatial features
 ├── src/                                        # Core modules
 │   └── statsbomb_loader.py                    # StatsBomb data loader class
 ├── data/                                       # Data directory (gitignored, ~11.3GB)
@@ -37,27 +44,20 @@ CornerTactics/
 │   │   │   ├── match_index.csv
 │   │   │   └── matches_with_corners.csv
 │   │   └── freeze-frames/                     # 323 freeze frame JSON files
-│   ├── processed/
-│   │   └── corner_outcome_distribution.json   # Outcome analysis
-│   └── misc/                                  # Additional data sources
-│       ├── soccernet/                         # SoccerNet corner clips
-│       ├── soccersynth/                       # Synthetic soccer data
-│       └── ussf_data_sample.pkl               # USSF data sample
-├── models/                                     # Trained models (gitignored)
-│   ├── final/                                 # Production-ready models
-│   │   ├── mlp_event_best.pth                 # MLP for event prediction (728KB)
-│   │   ├── mlp_receiver_best.pth              # MLP for receiver prediction (755KB)
-│   │   ├── xgboost_event_best.json            # XGBoost event model (1.6MB)
-│   │   └── xgboost_receiver_best.json         # XGBoost receiver model (13MB)
-│   ├── hyperparameter_search/                 # Hyperparameter optimization results
-│   ├── receiver_prediction/                   # Receiver prediction task
-│   └── corner_gnn_*/                          # 12 GNN model checkpoints
-├── runs/                                       # TensorBoard logs (gitignored)
+│   └── processed/                             # Processed corner data
+│       ├── corners_with_freeze_frames.json
+│       ├── corners_with_labels.json
+│       ├── corners_with_features.csv
+│       └── train/val/test_indices.csv
+├── tests/                                      # Test suite for data scripts
 ├── docs/
-│   └── STATSBOMB_DATA_GUIDE.md                # Comprehensive data documentation (16KB)
-├── logs/                                       # Log files (gitignored)
+│   ├── STATSBOMB_DATA_GUIDE.md                # Comprehensive data documentation
+│   ├── DATASET_STATISTICS.json                # Dataset statistics
+│   └── SHOT_LABEL_VERIFICATION.md             # Shot label verification
+├── notes/features/                             # Feature extraction notes
+├── corner_clips/                               # Sample corner video clips
 ├── requirements.txt                            # Python dependencies
-├── PLAN.md                                     # Implementation roadmap
+├── PLAN.md                                     # Data processing plan
 ├── CLAUDE.md                                   # This file
 └── README.md                                   # Project overview
 ```
@@ -101,6 +101,43 @@ Downloads StatsBomb 360-degree freeze frame data for set pieces.
 
 **Output**: `data/statsbomb/freeze-frames/`
 
+### Data Processing Scripts
+
+#### `scripts/01_extract_corners_with_freeze_frames.py`
+Extracts corner kicks that have 360 freeze frame data.
+
+**Output**: `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
+
+#### `scripts/02_extract_outcome_labels.py`
+Labels corners with outcome classes (Ball Receipt, Clearance, Goalkeeper, Other).
+
+**Output**: `data/processed/corners_with_labels.json`
+
+#### `scripts/03_extract_features.py`
+Extracts 49 features from corner events and freeze frames.
+
+**Output**: `data/processed/corners_with_features.csv`
+
+#### `scripts/04_create_splits.py`
+Creates match-based stratified train/val/test splits (60/20/20).
+
+**Output**: `data/processed/train_indices.csv`, `val_indices.csv`, `test_indices.csv`
+
+#### `scripts/07_extract_shot_labels.py`
+Extracts binary shot labels following TacticAI methodology.
+
+**Output**: `data/processed/corners_with_shot_labels.json`
+
+#### `scripts/14_extract_temporally_valid_features.py`
+Extracts only features available at corner kick time (no temporal leakage).
+
+**Output**: `data/processed/corners_features_temporal_valid.csv`
+
+#### `scripts/16_extract_raw_spatial_features.py`
+Extracts raw player coordinates and pairwise distances.
+
+**Output**: `data/processed/corners_raw_spatial_features.csv`
+
 ### Core Module
 
 #### `src/statsbomb_loader.py`
@@ -113,12 +150,10 @@ Data loader class for StatsBomb corner kick analysis.
 - `get_next_action()` - Find outcome event following corner kick
 - `save_dataset()` - Save processed data to CSV
 
-**Note**: Uses statsbombpy API; may need updates to work with downloaded JSON files directly.
-
 ### Documentation
 
 #### `docs/STATSBOMB_DATA_GUIDE.md`
-Comprehensive documentation of StatsBomb data structure and usage (16KB).
+Comprehensive documentation of StatsBomb data structure and usage.
 
 **Contents**:
 - Dataset statistics and corner outcome distribution
@@ -126,74 +161,12 @@ Comprehensive documentation of StatsBomb data structure and usage (16KB).
 - StatsBomb coordinate system (120x80 pitch)
 - Event type reference
 - Python code examples for data loading and analysis
-- Competition coverage information
 
 **Corner Outcome Distribution** (1,933 corners with 360 data):
 - Ball Receipt: 1,050 (54.3%)
 - Clearance: 453 (23.4%)
 - Goal Keeper: 196 (10.1%)
 - Other: 234 (12.2%)
-
-#### `PLAN.md`
-Implementation roadmap and project status assessment.
-
-**Key Insights**:
-- Identifies gaps in current implementation
-- Provides detailed 6-task implementation plan for baseline models
-- Outlines expected baseline performance metrics
-- Emphasizes proper data handling (match-based splits, class imbalance)
-
-## Machine Learning Models
-
-### Graph Neural Networks (GNN)
-
-**12 trained GNN checkpoints** using Graph Convolutional Networks (GCN) and Graph Attention Networks (GAT).
-
-**Architecture Example**:
-- Model: GCN/GAT
-- Hidden layers: [64, 128, 64]
-- Dropout: 0.3
-- Loss: Weighted cross-entropy / Focal loss
-- Optimizer: Adam with cosine annealing
-
-**Tasks**:
-- Shot prediction (binary classification)
-- Goal prediction (binary classification)
-
-**Performance** (shot prediction):
-- Best validation AUC: 0.636
-- Test accuracy: 68.5%
-- Test AUC: 0.565
-
-### Production Models
-
-Located in `models/final/`:
-
-1. **MLP Event Predictor** (728KB) - Neural network for event outcome classification
-2. **MLP Receiver Predictor** (755KB) - Neural network for receiver identification
-3. **XGBoost Event Model** (1.6MB) - Gradient boosting for event outcome
-4. **XGBoost Receiver Model** (13MB) - Gradient boosting for receiver identification
-
-### Hyperparameter Optimization
-
-Systematic search results in `models/hyperparameter_search/`:
-- MLP event prediction (best validation: 0.526)
-- MLP receiver prediction
-- XGBoost event prediction
-- XGBoost receiver prediction
-
-**Best MLP Architecture**: [512, 256, 128, 64] with LR=0.01, batch_size=128, dropout=0.2
-
-### Receiver Prediction Task
-
-Novel task: predicting which player will receive the corner kick.
-
-**Performance**:
-- Test top-1 accuracy: 2.0%
-- Test top-3 accuracy: 14.0%
-- Test top-5 accuracy: 32.7%
-
-This is a challenging multi-class problem (predicting 1 player out of ~22).
 
 ## Dependencies
 
@@ -206,8 +179,6 @@ See `requirements.txt`:
 - `mplsoccer>=1.3.0` - Soccer pitch visualization
 - `tqdm>=4.65.0` - Progress bars
 - `requests>=2.31.0` - HTTP requests
-
-Additional ML dependencies (check for PyTorch, XGBoost, scikit-learn in environment).
 
 ## Code Philosophy
 
@@ -222,16 +193,7 @@ Additional ML dependencies (check for PyTorch, XGBoost, scikit-learn in environm
 1. **Data Directory**: All downloaded data goes to `data/statsbomb/` (gitignored, ~11.3GB)
 2. **Coordinate System**: StatsBomb uses 120x80 pitch (x: 0-120, y: 0-80)
 3. **360 Freeze Frames**: Player positions at the exact moment of corner kick (1,933 available)
-4. **Model Checkpoints**: Stored in `models/` (gitignored)
-5. **TensorBoard Logs**: Training runs logged in `runs/` for visualization
-6. **Match-Based Splits**: Use match-based train/test splits to avoid data leakage
-
-## Known Gaps (from PLAN.md)
-
-1. **Missing extraction pipeline** - No scripts for extracting corners from downloaded JSONs
-2. **No feature engineering code** - Only documented in PLAN.md
-3. **Incomplete baseline implementation** - GNN models exist but traditional baselines may need work
-4. **StatsBombLoader outdated** - Uses API instead of local JSON files
+4. **Match-Based Splits**: Use match-based train/test splits to avoid data leakage
 
 ## Usage Examples
 
@@ -243,19 +205,14 @@ python scripts/download_statsbomb_events.py
 python scripts/download_statsbomb_360_freeze_frames.py
 ```
 
-### Use StatsBomb Loader (API-based)
+### Run Data Processing Pipeline
 
-```python
-from src.statsbomb_loader import StatsBombCornerLoader
-
-loader = StatsBombCornerLoader(output_dir="data/statsbomb")
-competitions = loader.get_available_competitions()
-df = loader.build_corner_dataset(
-    country="England",
-    division="Premier League",
-    season="2019/2020"
-)
-loader.save_dataset(df, "corners_epl_2019.csv")
+```bash
+python scripts/01_extract_corners_with_freeze_frames.py
+python scripts/02_extract_outcome_labels.py
+python scripts/03_extract_features.py
+python scripts/04_create_splits.py
+python scripts/07_extract_shot_labels.py
 ```
 
 ### Load Event Data Directly (JSON-based)
@@ -282,6 +239,5 @@ See `docs/STATSBOMB_DATA_GUIDE.md` for detailed API reference.
 ## Git Workflow
 
 - Never commit data files (covered by `.gitignore`)
-- Never commit model checkpoints (covered by `.gitignore`)
 - Keep commit messages concise and descriptive
 - Repository is initialized (`.git/` present)
