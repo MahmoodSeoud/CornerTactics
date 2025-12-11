@@ -4,6 +4,7 @@ SoccerNet-v3/
 ByteTrack/
 sn-tracking/
 sn-gamestate/
+tracklab/
 
 # Option 2: If using as submodules, remove above and use:
 # git submodule add https://github.com/SoccerNet/sn-gamestate.git
@@ -89,6 +90,7 @@ soccernet_data/
 # Generated output files
 corner_clips/
 output/
+outputs/
 results/
 exports/
 clips/

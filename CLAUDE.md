@@ -1,133 +1,120 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-CornerTactics is a **data extraction project** for corner kick prediction research using StatsBomb's open event data and 360-degree freeze frame player positioning data.
+CornerTactics extracts **tracking data** (player x, y coordinates and velocities) from SoccerNet broadcast videos using the sn-gamestate pipeline. Data will be used for GNN-based corner kick outcome prediction.
 
-**Purpose**: Extract and process corner kick data with player positions for binary shot prediction research
-
-**Dataset**: 1,933 corners with 360-degree freeze frames from StatsBomb Open Data
+**Goal**: Extract ~4,000 corner kicks with per-frame player pitch coordinates from 500 SoccerNet games.
 
 ## Development Environment
 
-**Conda Environment**: `robo`
+**Conda Environment**: `sn-gamestate`
 ```bash
-conda activate robo
+conda activate sn-gamestate
 ```
 
-**Python Version**: 3.x
+**Requirements**:
+- Python 3.9 (exact)
+- PyTorch 1.13.1
+- CUDA 11.7
+- mmcv 2.0.1
 
 ## Project Structure
 
 ```
 CornerTactics/
-├── scripts/                                    # Data processing pipeline
-│   ├── download_statsbomb_events.py           # Download StatsBomb event data
-│   ├── download_statsbomb_360_freeze_frames.py # Download 360 freeze frames
-│   ├── 01_extract_corners.py                  # Extract corners with freeze frames
-│   ├── 02_extract_shot_labels.py              # Extract binary shot labels
-│   ├── 03_extract_valid_features.py           # Extract 22 valid features (no leakage)
-│   ├── 04_create_splits.py                    # Create train/val/test splits
-│   └── 05_extract_raw_spatial.py              # Extract raw coordinates (ablation)
-├── src/
-│   └── statsbomb_loader.py                    # StatsBomb data loader class
-├── data/                                       # Data directory (gitignored)
-│   ├── statsbomb/                             # Raw downloaded data
-│   └── processed/                             # Processed corner data
-├── tests/                                      # Test suite
-├── docs/
-│   └── STATSBOMB_DATA_GUIDE.md               # Data documentation
-├── requirements.txt
-├── CLAUDE.md                                   # This file
+├── sn-gamestate/              # Cloned: SoccerNet game state reconstruction
+├── tracklab/                  # Cloned: Tracking laboratory framework
+├── scripts/
+│   ├── extract_soccernet_corners.py  # Phase 2.1: Parse Labels-v2.json
+│   ├── extract_corner_clips.py       # Phase 2.2: Extract video clips
+│   ├── create_corner_metadata.py     # Phase 2.3: Corner metadata JSON
+│   ├── format_for_gsr.py             # Phase 3: Format for GSR pipeline
+│   ├── run_gsr.sbatch                # Phase 4: SLURM batch script
+│   └── postprocess_gsr.py            # Phase 5: Post-processing
+├── data/
+│   ├── misc/soccernet/videos/        # SoccerNet video data (500 games)
+│   ├── corner_clips/                 # Extracted 10-sec corner clips
+│   ├── MySoccerNetGS/                # Formatted for GSR pipeline
+│   └── processed/                    # Corner metadata JSON/CSV
+├── outputs/
+│   ├── states/                       # Tracker state .pklz files
+│   ├── json/                         # GSR JSON predictions
+│   └── processed/                    # Final parquet files
+├── logs/
+│   └── slurm/                        # SLURM job logs
+├── plan.md                           # Full 6-phase implementation plan
+├── CLAUDE.md                         # This file
 └── README.md
 ```
 
-## Data Pipeline
+## Pipeline Phases
 
-Run scripts in order:
-
+### Phase 1: Environment Setup
 ```bash
-conda activate robo
+# Clone repos (done)
+git clone https://github.com/SoccerNet/sn-gamestate.git
+git clone https://github.com/TrackingLaboratory/tracklab.git
 
-# 1. Download raw data
-python scripts/download_statsbomb_events.py
-python scripts/download_statsbomb_360_freeze_frames.py
-
-# 2. Extract and process
-python scripts/01_extract_corners.py           # → corners_with_freeze_frames.json
-python scripts/02_extract_shot_labels.py       # → corners_with_shot_labels.json
-python scripts/03_extract_valid_features.py    # → corners_features_temporal_valid.csv
-python scripts/04_create_splits.py             # → train/val/test_indices.csv
-
-# 3. Optional: raw coordinates for ablation
-python scripts/05_extract_raw_spatial.py       # → corners_raw_spatial_features.csv
+# Create conda env with exact versions
+conda create -n sn-gamestate pip python=3.9 pytorch==1.13.1 torchvision==0.14.1 pytorch-cuda=11.7 -c pytorch -c nvidia
+conda activate sn-gamestate
+pip install -e sn-gamestate/
+mim install mmcv==2.0.1
 ```
 
-## Feature Engineering
+### Phase 2: Corner Clip Extraction
+```bash
+# Extract corners from Labels-v2.json
+python scripts/extract_soccernet_corners.py
 
-### Valid Features (22 total, no temporal leakage)
+# Create corner metadata
+python scripts/create_corner_metadata.py
 
-**Best 4 Features (Configuration A):**
-- `corner_y` - Corner y-coordinate
-- `defending_to_goal_dist` - Mean defender distance to goal
-- `defending_near_goal` - Defenders in 6-yard box
-- `defending_depth` - Defensive line spread (std Y)
+# Extract video clips (10-sec each)
+python scripts/extract_corner_clips.py --visible-only
+```
 
-**Additional 18 Features (Configuration B):**
+### Phase 3: Format for GSR Pipeline
+```bash
+python scripts/format_for_gsr.py
+```
 
-Event Metadata:
-- `minute`, `second`, `period`, `corner_x`
-- `attacking_team_goals`, `defending_team_goals`
+### Phase 4: SLURM Inference
+```bash
+sbatch scripts/run_gsr.sbatch
+```
 
-Freeze-Frame:
-- `total_attacking`, `total_defending`
-- `attacking_in_box`, `defending_in_box`
-- `attacking_near_goal`
-- `attacking_density`, `defending_density`
-- `numerical_advantage`, `attacker_defender_ratio`
-- `attacking_to_goal_dist`, `keeper_distance_to_goal`
-- `corner_side`
-
-### Excluded Features (13, temporal leakage)
-
-These features encode information only available AFTER the corner kick:
-- `is_shot_assist` - directly encodes target
-- `pass_end_x`, `pass_end_y` - actual ball landing position
-- `pass_length`, `pass_angle` - computed from actual trajectory
-- `duration`, `has_recipient`, `pass_recipient_id`
-- `has_pass_outcome`, `pass_outcome`, `pass_outcome_encoded`
-- `is_aerial_won`, `is_cross_field_switch`
+### Phase 5: Post-Processing
+```bash
+python scripts/postprocess_gsr.py
+```
 
 ## Dataset Statistics
 
-```
-Corners with 360 Data:  1,933
-Shot Rate:              29.0% (560 shots)
-No-Shot Rate:           71.0% (1,373)
-```
-
-**Train/Val/Test Split** (match-based, no overlap):
-- Train: 1,155 (60%)
-- Val: 371 (19%)
-- Test: 407 (21%)
+- **SoccerNet games**: 500 (6 leagues)
+- **Total corners**: 4,836
+- **Visible corners**: 4,229
+- **Video format**: 720p MKV, 10-sec clips
 
 ## Code Philosophy
 
 - Straightforward, data-oriented code
-- Efficient pandas operations
+- Efficient batch processing with SLURM
 - Clear variable names
 - Think like John Carmack: fix problems, don't work around them
 
 ## Important Notes
 
-1. **Temporal Validity**: Only use features available at t=0 (corner kick moment)
-2. **Match-Based Splits**: Prevents data leakage from same-match corners
-3. **StatsBomb Coordinates**: 120x80 pitch (x: 0-120, y: 0-80)
-4. **Data Directory**: All data in `data/` (gitignored, ~11GB)
+1. **Conda Environment**: Use `sn-gamestate` (Python 3.9 + PyTorch 1.13.1)
+2. **Data Directory**: All data in `data/` (gitignored, ~100GB when complete)
+3. **SLURM**: GSR inference requires GPU nodes via SLURM
+4. **Pitch Coordinates**: Output is in meters (105m x 68m standard pitch)
 
 ## Git Workflow
 
 - Never commit data files (gitignored)
 - Keep commit messages concise
+- Main plan reference: `plan.md`
