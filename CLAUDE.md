@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CornerTactics is a **data extraction and processing project** for corner kick data in professional soccer using StatsBomb's open event data and 360-degree freeze frame player positioning data.
+CornerTactics is a **data extraction project** for corner kick prediction research using StatsBomb's open event data and 360-degree freeze frame player positioning data.
 
-**Purpose**: Download, extract, and process corner kick data with player positions for soccer analytics research
+**Purpose**: Extract and process corner kick data with player positions for binary shot prediction research
 
-**Project Stage**: Complete data pipeline with comprehensive data (1,933 labeled corners with 360 positioning)
+**Dataset**: 1,933 corners with 360-degree freeze frames from StatsBomb Open Data
 
 ## Development Environment
 
@@ -23,221 +23,111 @@ conda activate robo
 
 ```
 CornerTactics/
-├── scripts/                                    # Data processing scripts
-│   ├── download_statsbomb_events.py           # Downloads all StatsBomb event data
-│   ├── download_statsbomb_360_freeze_frames.py # Downloads 360 freeze frame data
-│   ├── 01_extract_corners_with_freeze_frames.py # Extract corners with freeze frames
-│   ├── 02_extract_outcome_labels.py           # Extract outcome labels
-│   ├── 03_extract_features.py                 # Feature extraction
+├── scripts/                                    # Data processing pipeline
+│   ├── download_statsbomb_events.py           # Download StatsBomb event data
+│   ├── download_statsbomb_360_freeze_frames.py # Download 360 freeze frames
+│   ├── 01_extract_corners.py                  # Extract corners with freeze frames
+│   ├── 02_extract_shot_labels.py              # Extract binary shot labels
+│   ├── 03_extract_valid_features.py           # Extract 22 valid features (no leakage)
 │   ├── 04_create_splits.py                    # Create train/val/test splits
-│   ├── 07_extract_shot_labels.py              # Extract shot labels
-│   ├── 14_extract_temporally_valid_features.py # Temporally valid features
-│   └── 16_extract_raw_spatial_features.py     # Raw spatial features
-├── src/                                        # Core modules
+│   └── 05_extract_raw_spatial.py              # Extract raw coordinates (ablation)
+├── src/
 │   └── statsbomb_loader.py                    # StatsBomb data loader class
-├── data/                                       # Data directory (gitignored, ~11.3GB)
-│   ├── statsbomb/
-│   │   ├── events/                            # 3,464 match event JSON files
-│   │   │   ├── events/*.json
-│   │   │   ├── competitions.json
-│   │   │   ├── master_event_sequence.json     # Combined sequence (264MB)
-│   │   │   ├── match_index.csv
-│   │   │   └── matches_with_corners.csv
-│   │   └── freeze-frames/                     # 323 freeze frame JSON files
+├── data/                                       # Data directory (gitignored)
+│   ├── statsbomb/                             # Raw downloaded data
 │   └── processed/                             # Processed corner data
-│       ├── corners_with_freeze_frames.json
-│       ├── corners_with_labels.json
-│       ├── corners_with_features.csv
-│       └── train/val/test_indices.csv
-├── tests/                                      # Test suite for data scripts
+├── tests/                                      # Test suite
 ├── docs/
-│   ├── STATSBOMB_DATA_GUIDE.md                # Comprehensive data documentation
-│   ├── DATASET_STATISTICS.json                # Dataset statistics
-│   └── SHOT_LABEL_VERIFICATION.md             # Shot label verification
-├── notes/features/                             # Feature extraction notes
-├── corner_clips/                               # Sample corner video clips
-├── requirements.txt                            # Python dependencies
-├── PLAN.md                                     # Data processing plan
+│   └── STATSBOMB_DATA_GUIDE.md               # Data documentation
+├── requirements.txt
 ├── CLAUDE.md                                   # This file
-└── README.md                                   # Project overview
+└── README.md
 ```
+
+## Data Pipeline
+
+Run scripts in order:
+
+```bash
+conda activate robo
+
+# 1. Download raw data
+python scripts/download_statsbomb_events.py
+python scripts/download_statsbomb_360_freeze_frames.py
+
+# 2. Extract and process
+python scripts/01_extract_corners.py           # → corners_with_freeze_frames.json
+python scripts/02_extract_shot_labels.py       # → corners_with_shot_labels.json
+python scripts/03_extract_valid_features.py    # → corners_features_temporal_valid.csv
+python scripts/04_create_splits.py             # → train/val/test_indices.csv
+
+# 3. Optional: raw coordinates for ablation
+python scripts/05_extract_raw_spatial.py       # → corners_raw_spatial_features.csv
+```
+
+## Feature Engineering
+
+### Valid Features (22 total, no temporal leakage)
+
+**Best 4 Features (Configuration A):**
+- `corner_y` - Corner y-coordinate
+- `defending_to_goal_dist` - Mean defender distance to goal
+- `defending_near_goal` - Defenders in 6-yard box
+- `defending_depth` - Defensive line spread (std Y)
+
+**Additional 18 Features (Configuration B):**
+
+Event Metadata:
+- `minute`, `second`, `period`, `corner_x`
+- `attacking_team_goals`, `defending_team_goals`
+
+Freeze-Frame:
+- `total_attacking`, `total_defending`
+- `attacking_in_box`, `defending_in_box`
+- `attacking_near_goal`
+- `attacking_density`, `defending_density`
+- `numerical_advantage`, `attacker_defender_ratio`
+- `attacking_to_goal_dist`, `keeper_distance_to_goal`
+- `corner_side`
+
+### Excluded Features (13, temporal leakage)
+
+These features encode information only available AFTER the corner kick:
+- `is_shot_assist` - directly encodes target
+- `pass_end_x`, `pass_end_y` - actual ball landing position
+- `pass_length`, `pass_angle` - computed from actual trajectory
+- `duration`, `has_recipient`, `pass_recipient_id`
+- `has_pass_outcome`, `pass_outcome`, `pass_outcome_encoded`
+- `is_aerial_won`, `is_cross_field_switch`
 
 ## Dataset Statistics
 
 ```
-Total Competitions:     75
-Total Matches:          3,464
-Total Events:           12,188,949
-Total Corners:          34,049
-Corners with 360 Data:  1,933 (5.7%)
-Context Events:         366,281
-Data Volume:            ~11.3GB
+Corners with 360 Data:  1,933
+Shot Rate:              29.0% (560 shots)
+No-Shot Rate:           71.0% (1,373)
 ```
 
-## Key Files
-
-### Data Download Scripts
-
-#### `scripts/download_statsbomb_events.py`
-Downloads complete StatsBomb event data from GitHub open-data repository.
-
-**Features**:
-- Fetches all competitions, matches, and event data (3,464 matches)
-- Creates match index and corner kick index
-- Generates master event sequence file
-- Retry logic with exponential backoff
-- Rate limiting (0.1s delay between requests)
-
-**Output**: `data/statsbomb/events/`
-
-#### `scripts/download_statsbomb_360_freeze_frames.py`
-Downloads StatsBomb 360-degree freeze frame data for set pieces.
-
-**Features**:
-- Identifies competitions with 360 data available
-- Downloads freeze frame files for matches (323 files)
-- Matches corner event UUIDs with freeze frames
-- Tracks coverage statistics (1,933 corner freeze frames)
-
-**Output**: `data/statsbomb/freeze-frames/`
-
-### Data Processing Scripts
-
-#### `scripts/01_extract_corners_with_freeze_frames.py`
-Extracts corner kicks that have 360 freeze frame data.
-
-**Output**: `data/processed/corners_with_freeze_frames.json` (~1,933 samples)
-
-#### `scripts/02_extract_outcome_labels.py`
-Labels corners with outcome classes (Ball Receipt, Clearance, Goalkeeper, Other).
-
-**Output**: `data/processed/corners_with_labels.json`
-
-#### `scripts/03_extract_features.py`
-Extracts 49 features from corner events and freeze frames.
-
-**Output**: `data/processed/corners_with_features.csv`
-
-#### `scripts/04_create_splits.py`
-Creates match-based stratified train/val/test splits (60/20/20).
-
-**Output**: `data/processed/train_indices.csv`, `val_indices.csv`, `test_indices.csv`
-
-#### `scripts/07_extract_shot_labels.py`
-Extracts binary shot labels following TacticAI methodology.
-
-**Output**: `data/processed/corners_with_shot_labels.json`
-
-#### `scripts/14_extract_temporally_valid_features.py`
-Extracts only features available at corner kick time (no temporal leakage).
-
-**Output**: `data/processed/corners_features_temporal_valid.csv`
-
-#### `scripts/16_extract_raw_spatial_features.py`
-Extracts raw player coordinates and pairwise distances.
-
-**Output**: `data/processed/corners_raw_spatial_features.csv`
-
-### Core Module
-
-#### `src/statsbomb_loader.py`
-Data loader class for StatsBomb corner kick analysis.
-
-**Methods**:
-- `get_available_competitions()` - Fetch competition list via statsbombpy API
-- `fetch_competition_events()` - Get all events for a competition
-- `build_corner_dataset()` - Build complete corner dataset with outcomes
-- `get_next_action()` - Find outcome event following corner kick
-- `save_dataset()` - Save processed data to CSV
-
-### Documentation
-
-#### `docs/STATSBOMB_DATA_GUIDE.md`
-Comprehensive documentation of StatsBomb data structure and usage.
-
-**Contents**:
-- Dataset statistics and corner outcome distribution
-- File format specifications (events, competitions, freeze frames)
-- StatsBomb coordinate system (120x80 pitch)
-- Event type reference
-- Python code examples for data loading and analysis
-
-**Corner Outcome Distribution** (1,933 corners with 360 data):
-- Ball Receipt: 1,050 (54.3%)
-- Clearance: 453 (23.4%)
-- Goal Keeper: 196 (10.1%)
-- Other: 234 (12.2%)
-
-## Dependencies
-
-See `requirements.txt`:
-- `pandas>=2.0.0` - Data processing
-- `numpy>=1.24.0` - Numerical operations
-- `statsbombpy>=1.11.0` - StatsBomb API client
-- `statsbomb>=0.10.0` - Alternative StatsBomb library
-- `matplotlib>=3.7.0` - Visualization
-- `mplsoccer>=1.3.0` - Soccer pitch visualization
-- `tqdm>=4.65.0` - Progress bars
-- `requests>=2.31.0` - HTTP requests
+**Train/Val/Test Split** (match-based, no overlap):
+- Train: 1,155 (60%)
+- Val: 371 (19%)
+- Test: 407 (21%)
 
 ## Code Philosophy
 
 - Straightforward, data-oriented code
 - Efficient pandas operations
-- Clear variable names and comments
-- Minimal abstraction
+- Clear variable names
 - Think like John Carmack: fix problems, don't work around them
 
 ## Important Notes
 
-1. **Data Directory**: All downloaded data goes to `data/statsbomb/` (gitignored, ~11.3GB)
-2. **Coordinate System**: StatsBomb uses 120x80 pitch (x: 0-120, y: 0-80)
-3. **360 Freeze Frames**: Player positions at the exact moment of corner kick (1,933 available)
-4. **Match-Based Splits**: Use match-based train/test splits to avoid data leakage
-
-## Usage Examples
-
-### Download StatsBomb Data
-
-```bash
-conda activate robo
-python scripts/download_statsbomb_events.py
-python scripts/download_statsbomb_360_freeze_frames.py
-```
-
-### Run Data Processing Pipeline
-
-```bash
-python scripts/01_extract_corners_with_freeze_frames.py
-python scripts/02_extract_outcome_labels.py
-python scripts/03_extract_features.py
-python scripts/04_create_splits.py
-python scripts/07_extract_shot_labels.py
-```
-
-### Load Event Data Directly (JSON-based)
-
-```python
-import json
-import pandas as pd
-
-# Load match events
-with open('data/statsbomb/events/events/15946.json') as f:
-    events = json.load(f)
-
-# Filter corner kicks
-corners = [e for e in events if e.get('type', {}).get('name') == 'Pass'
-           and e.get('pass', {}).get('type', {}).get('name') == 'Corner']
-
-# Load freeze frames
-with open('data/statsbomb/freeze-frames/15946.json') as f:
-    freeze_frames = json.load(f)
-```
-
-See `docs/STATSBOMB_DATA_GUIDE.md` for detailed API reference.
+1. **Temporal Validity**: Only use features available at t=0 (corner kick moment)
+2. **Match-Based Splits**: Prevents data leakage from same-match corners
+3. **StatsBomb Coordinates**: 120x80 pitch (x: 0-120, y: 0-80)
+4. **Data Directory**: All data in `data/` (gitignored, ~11GB)
 
 ## Git Workflow
 
-- Never commit data files (covered by `.gitignore`)
-- Keep commit messages concise and descriptive
-- Repository is initialized (`.git/` present)
+- Never commit data files (gitignored)
+- Keep commit messages concise
