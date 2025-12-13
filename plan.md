@@ -10,13 +10,15 @@ Extract pitch coordinates (x, y in meters) and velocity data for ~4,000 corner k
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 1: Environment Setup | **DONE** | 100% |
-| Phase 2: Corner Clip Extraction | **DONE** | 2,566 clips extracted |
+| Phase 2: Corner Clip Extraction | **DONE** | 4,229 clips extracted |
 | Phase 3: Format for GSR | **DONE** | MySoccerNetGS ready |
-| Phase 4: GSR Inference | **IN PROGRESS** | 1/2,566 tested |
-| Phase 5: Post-Processing | Pending | - |
-| Phase 6: Validation | Pending | - |
+| Phase 4: GSR Inference | **READY** | SLURM script ready, 1 tested |
+| Phase 5: Post-Processing | **DONE** | postprocess_gsr.py updated |
+| Phase 6: Validation | **DONE** | validate_gsr_outputs.py created |
 
 **Last Updated**: 2025-12-13
+
+**Next Action**: Submit `sbatch scripts/run_gsr.sbatch` to process all 4,229 clips
 
 ---
 
