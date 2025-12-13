@@ -138,6 +138,45 @@ class TestComputeVelocities:
         assert first_row['speed'] == 0.0
 
 
+class TestProcessAllCorners:
+    """Tests for the full processing pipeline."""
+
+    def test_process_state_files_finds_pklz_files(self):
+        """process_all_corners should find .pklz state files."""
+        from scripts.postprocess_gsr import process_all_corners
+        from pathlib import Path
+
+        states_dir = Path('/home/mseo/CornerTactics/outputs/states')
+        pklz_files = sorted(states_dir.glob('CORNER-*.pklz'))
+
+        # Should find at least the test file
+        assert len(pklz_files) >= 1
+
+    def test_full_pipeline_on_single_state(self):
+        """Full pipeline should work on a single state file."""
+        from scripts.postprocess_gsr import parse_state_file, compute_velocities, extract_snapshot
+        from pathlib import Path
+
+        state_path = Path('/home/mseo/CornerTactics/outputs/states/CORNER-0000.pklz')
+        if not state_path.exists():
+            pytest.skip("Test state file not available")
+
+        # Parse
+        df = parse_state_file(state_path)
+        assert len(df) > 0
+
+        # Compute velocities
+        df = compute_velocities(df)
+        assert 'vx' in df.columns
+        assert 'speed' in df.columns
+
+        # Extract snapshot
+        snapshot = extract_snapshot(df, target_frame=50)
+        assert len(snapshot) > 0
+        assert 'x' in snapshot.columns
+        assert 'y' in snapshot.columns
+
+
 class TestExtractSnapshot:
     """Tests for extracting snapshots at specific frames."""
 

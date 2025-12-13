@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Post-process GSR JSON outputs to extract player positions and velocities.
+"""Post-process GSR .pklz state files to extract player positions and velocities.
 
 Phase 5: Post-Processing
-- Parse GSR JSON outputs
+- Parse GSR .pklz state files (ZIP archives with pickle DataFrames)
 - Extract player positions (bbox_pitch coordinates)
 - Compute velocities from frame-to-frame positions
-- Create corner snapshots at t=0 (frame 50)
+- Create corner snapshots at t=0 (frame 50 = 2 seconds into clip)
 - Merge with corner metadata
+- Save full tracking data and snapshots to parquet
 """
 
 import json
@@ -141,65 +142,81 @@ def extract_snapshot(df: pd.DataFrame, target_frame: int = 50) -> pd.DataFrame:
         return df[df['frame'] == closest].copy()
 
 
-def process_all_corners(json_dir: Path, output_dir: Path, metadata_path: Path):
-    """Process all GSR JSON files and create final outputs."""
+def process_all_corners(states_dir: Path, output_dir: Path, metadata_path: Path):
+    """Process all GSR .pklz state files and create final outputs.
 
+    Args:
+        states_dir: Directory containing CORNER-*.pklz state files
+        output_dir: Output directory for processed parquet files
+        metadata_path: Path to corner_metadata.json
+    """
     # Load corner metadata
     with open(metadata_path) as f:
         metadata = {c['corner_id']: c for c in json.load(f)}
 
-    # Find all JSON files
-    json_files = sorted(json_dir.glob('CORNER-*.json'))
-    print(f"Found {len(json_files)} GSR JSON files")
+    # Find all .pklz state files
+    state_files = sorted(states_dir.glob('CORNER-*.pklz'))
+    print(f"Found {len(state_files)} GSR state files")
 
     all_snapshots = []
+    all_tracking = []
 
-    for json_file in tqdm(json_files, desc="Processing GSR outputs"):
+    for state_file in tqdm(state_files, desc="Processing GSR outputs"):
         # Extract corner ID from filename
-        corner_id = int(json_file.stem.replace('CORNER-', ''))
+        corner_id = int(state_file.stem.replace('CORNER-', ''))
 
         try:
-            # Parse JSON
-            df = parse_gsr_json(json_file)
+            # Parse state file
+            df = parse_state_file(state_file)
 
             if df.empty:
-                print(f"Warning: No predictions in {json_file}")
+                print(f"Warning: No detections in {state_file}")
                 continue
 
             # Compute velocities
             df = compute_velocities(df)
+            df['corner_id'] = corner_id
 
-            # Extract snapshot at t=0
-            snapshot = extract_snapshot(df)
-            snapshot['corner_id'] = corner_id
+            # Store full tracking data
+            all_tracking.append(df)
 
+            # Extract snapshot at t=0 (frame 50)
+            snapshot = extract_snapshot(df, target_frame=50)
             all_snapshots.append(snapshot)
 
         except Exception as e:
-            print(f"Error processing {json_file}: {e}")
+            print(f"Error processing {state_file}: {e}")
             continue
 
     if not all_snapshots:
         print("No snapshots extracted!")
         return
 
-    # Combine all snapshots
+    # Combine all data
     snapshots_df = pd.concat(all_snapshots, ignore_index=True)
+    tracking_df = pd.concat(all_tracking, ignore_index=True)
+
     print(f"Total snapshots: {len(snapshots_df)}")
     print(f"Unique corners: {snapshots_df['corner_id'].nunique()}")
+    print(f"Total tracking rows: {len(tracking_df)}")
 
-    # Add metadata
+    # Add metadata to snapshots
     meta_cols = ['game_path', 'half', 'timestamp_seconds', 'corner_team',
                  'competition', 'season', 'home_team', 'away_team']
     for col in meta_cols:
         snapshots_df[col] = snapshots_df['corner_id'].map(
-            lambda cid: metadata.get(cid, {}).get(col, None)
+            lambda cid, c=col: metadata.get(cid, {}).get(c, None)
         )
 
     # Save outputs
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parquet format (efficient)
+    # Full tracking data
+    tracking_path = output_dir / 'corners_tracking.parquet'
+    tracking_df.to_parquet(tracking_path, index=False)
+    print(f"Saved: {tracking_path}")
+
+    # Snapshots (t=0 moment)
     parquet_path = output_dir / 'corner_snapshots.parquet'
     snapshots_df.to_parquet(parquet_path, index=False)
     print(f"Saved: {parquet_path}")
@@ -222,10 +239,10 @@ def process_all_corners(json_dir: Path, output_dir: Path, metadata_path: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Post-process GSR JSON outputs')
-    parser.add_argument('--json-dir', type=str,
-                        default='/home/mseo/CornerTactics/outputs/json',
-                        help='Directory containing GSR JSON outputs')
+    parser = argparse.ArgumentParser(description='Post-process GSR .pklz state files')
+    parser.add_argument('--states-dir', type=str,
+                        default='/home/mseo/CornerTactics/outputs/states',
+                        help='Directory containing CORNER-*.pklz state files')
     parser.add_argument('--output-dir', type=str,
                         default='/home/mseo/CornerTactics/outputs/processed',
                         help='Output directory for processed data')
@@ -235,7 +252,7 @@ def main():
     args = parser.parse_args()
 
     process_all_corners(
-        json_dir=Path(args.json_dir),
+        states_dir=Path(args.states_dir),
         output_dir=Path(args.output_dir),
         metadata_path=Path(args.metadata)
     )
