@@ -10,11 +10,54 @@ Phase 5: Post-Processing
 """
 
 import json
+import pickle
+import zipfile
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 import argparse
+
+
+def parse_state_file(state_path: Path) -> pd.DataFrame:
+    """Parse a GSR .pklz state file into a DataFrame.
+
+    The .pklz format is a ZIP archive containing:
+    - summary.json: metadata
+    - 0.pkl: Detection DataFrame
+    - 0_image.pkl: Per-frame camera parameters
+
+    Returns DataFrame with columns:
+        frame, track_id, x, y, role, team, jersey
+    """
+    with zipfile.ZipFile(state_path, 'r') as zf:
+        with zf.open('0.pkl') as f:
+            df = pickle.load(f)
+
+    # Extract required columns
+    records = []
+    for _, row in df.iterrows():
+        # Extract pitch coordinates from bbox_pitch dict
+        bbox_pitch = row.get('bbox_pitch')
+        if bbox_pitch is None or not isinstance(bbox_pitch, dict):
+            continue
+
+        x = bbox_pitch.get('x_bottom_middle')
+        y = bbox_pitch.get('y_bottom_middle')
+        if x is None or y is None:
+            continue
+
+        records.append({
+            'frame': int(row.get('image_id', 0)),
+            'track_id': int(row.get('track_id', -1)) if pd.notna(row.get('track_id')) else -1,
+            'x': float(x),
+            'y': float(y),
+            'role': row.get('role', 'unknown'),
+            'team': row.get('team', 'unknown'),
+            'jersey': row.get('jersey_number', -1)
+        })
+
+    return pd.DataFrame(records)
 
 
 def parse_gsr_json(json_path: Path) -> pd.DataFrame:
