@@ -216,6 +216,48 @@ class TestProcessAllCorners:
         assert 'y' in snapshot.columns
 
 
+class TestValidation:
+    """Tests for validation functions."""
+
+    def test_check_state_file_quality(self):
+        """check_state_file_quality should report tracking statistics."""
+        from scripts.postprocess_gsr import parse_state_file
+        from pathlib import Path
+
+        state_path = Path('/home/mseo/CornerTactics/outputs/states/CORNER-0000.pklz')
+        if not state_path.exists():
+            pytest.skip("Test state file not available")
+
+        df = parse_state_file(state_path)
+
+        # Should have multiple tracks
+        num_tracks = df['track_id'].nunique()
+        assert num_tracks > 0
+
+        # Should have multiple frames
+        num_frames = df['frame'].nunique()
+        assert num_frames > 0
+
+        # Players per frame at t=0
+        frame_50 = df[df['frame'] == 50]
+        assert len(frame_50) >= 5  # At least 5 players visible
+
+    def test_validate_pitch_coordinates(self):
+        """Pitch coordinates should be within reasonable bounds."""
+        from scripts.postprocess_gsr import parse_state_file
+        from pathlib import Path
+
+        state_path = Path('/home/mseo/CornerTactics/outputs/states/CORNER-0000.pklz')
+        if not state_path.exists():
+            pytest.skip("Test state file not available")
+
+        df = parse_state_file(state_path)
+
+        # Check for outliers
+        assert df['x'].between(-65, 65).all(), "X coordinates out of range"
+        assert df['y'].between(-50, 50).all(), "Y coordinates out of range"
+
+
 class TestExtractSnapshot:
     """Tests for extracting snapshots at specific frames."""
 
