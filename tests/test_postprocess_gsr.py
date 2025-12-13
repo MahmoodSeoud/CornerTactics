@@ -6,6 +6,45 @@ import pytest
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import re
+
+
+class TestSlurmScript:
+    """Tests for the SLURM batch script configuration."""
+
+    def test_slurm_script_exists(self):
+        """SLURM script should exist."""
+        script_path = Path('/home/mseo/CornerTactics/scripts/run_gsr.sbatch')
+        assert script_path.exists()
+
+    def test_slurm_script_uses_venv(self):
+        """SLURM script should use venv, not conda."""
+        script_path = Path('/home/mseo/CornerTactics/scripts/run_gsr.sbatch')
+        content = script_path.read_text()
+
+        # Should use venv activation
+        assert 'source' in content
+        assert 'VENV_DIR' in content or '.venv' in content
+        assert '/bin/activate' in content
+
+        # Should NOT use conda
+        assert 'conda activate' not in content
+
+    def test_slurm_script_loads_correct_modules(self):
+        """SLURM script should load GCC and CUDA modules."""
+        script_path = Path('/home/mseo/CornerTactics/scripts/run_gsr.sbatch')
+        content = script_path.read_text()
+
+        assert 'module load GCC/12.3.0' in content
+        assert 'module load' in content and 'CUDA' in content
+
+    def test_slurm_script_outputs_pklz(self):
+        """SLURM script should output .pklz state files."""
+        script_path = Path('/home/mseo/CornerTactics/scripts/run_gsr.sbatch')
+        content = script_path.read_text()
+
+        assert '.pklz' in content
+        assert 'state.save_file' in content
 
 
 class TestParseStateFile:
