@@ -1,377 +1,433 @@
-# Corner Kick Tracking Data Extraction Plan
+# FAANTRA Corner Kick Prediction - Execution Plan
 
-## Project Overview
-Extract pitch coordinates (x, y in meters) and velocity data for ~4,000 corner kicks from SoccerNet's 550 broadcast games using the sn-gamestate pipeline. Data will be used for GNN-based corner kick outcome prediction.
+## Goal
+Use FAANTRA (Football Action ANticipation TRAnsformer) to predict corner kick outcomes from video clips.
 
----
+## Repository
+https://github.com/MohamadDalal/FAANTRA
 
-## Current Status Summary
-
-| Phase | Status | Progress |
-|-------|--------|----------|
-| Phase 1: Environment Setup | **DONE** | 100% |
-| Phase 2: Corner Clip Extraction | **DONE** | 2,566 clips extracted |
-| Phase 3: Format for GSR | **DONE** | MySoccerNetGS ready |
-| Phase 4: GSR Inference | **IN PROGRESS** | 1/2,566 tested |
-| Phase 5: Post-Processing | Pending | - |
-| Phase 6: Validation | Pending | - |
-
-**Last Updated**: 2025-12-13
+## Dataset
+https://huggingface.co/datasets/SoccerNet/ActionAnticipation
 
 ---
 
-## Phase 1: Environment Setup [DONE]
+## Phase 1: Setup Environment
 
-### Task 1.1: Clone repositories [DONE]
 ```bash
-# Clone sn-gamestate
-git clone https://github.com/SoccerNet/sn-gamestate.git
+# Create project directory
+mkdir -p ~/faantra-corners
+cd ~/faantra-corners
 
-# Clone tracklab as local dependency
-git clone https://github.com/TrackingLaboratory/tracklab.git
-```
+# Clone FAANTRA
+git clone https://github.com/MohamadDalal/FAANTRA.git
+cd FAANTRA
 
-### Task 1.2: Create virtual environment [DONE]
-```bash
-# Using venv (not conda) with Python 3.9
-cd sn-gamestate
-python3.9 -m venv .venv
-source .venv/bin/activate
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
 
-# Install sn-gamestate and tracklab
-pip install -e .
-pip install -e ../tracklab
+# Install dependencies
+pip install -r requirements.txt
 
-# Install mmcv with CUDA ops (compiled from source)
-module load GCC/12.3.0 CUDA/12.1.1
-export CUDA_HOME=/opt/itu/easybuild/software/CUDA/12.1.1
-MMCV_WITH_OPS=1 pip install mmcv==2.1.0 --no-binary :all:
-
-# Install mmdet and mmocr
-pip install mmdet==3.1.0 mmocr==1.0.1
-```
-
-**Environment Details**:
-- Python 3.9
-- PyTorch 2.5.1 + CUDA 12.1
-- mmcv 2.1.0 (compiled with CUDA ops)
-- mmdet 3.1.0
-- mmocr 1.0.1
-- Virtual env: `/home/mseo/CornerTactics/sn-gamestate/.venv`
-
-### Task 1.3: Verify GPU access [DONE]
-```bash
-# Successfully tested on CORNER-0000
-# Output: 2,349 detections, 53 tracks, 244 frames
-# State file: outputs/states/CORNER-0000.pklz (3.2MB)
-# Visualization: outputs/demo_corner_0000.mp4 (11MB)
+# Additional dependencies
+pip install huggingface_hub pyzipper
 ```
 
 ---
 
-## Phase 2: Corner Clip Extraction [DONE]
+## Phase 2: Download Dataset
 
-### Task 2.1: Parse SoccerNet action spotting labels [DONE]
-```
-Script: scripts/extract_soccernet_corners.py
-Input: SoccerNet Labels-v2.json files from all 550 games
-Output: data/processed/all_corners.csv
-
-Results:
-- Total corners found: 4,836
-- Visible corners: 4,229
-```
-
-### Task 2.2: Extract video clips with ffmpeg [DONE]
 ```bash
-# Script: scripts/extract_corner_clips.py --visible-only
-# Input: SoccerNet MKV videos
-# Output: data/corner_clips/corner_{id:04d}.mp4
-
-Results:
-- Extracted clips: 2,566 (from available videos)
-- Format: 720p MP4, 10 seconds each
-- Note: Some source videos still downloading
+# Download Ball Action Anticipation dataset
+# Replace {NDA_KEY} with password from soccer-net.org/data NDA form
+python setup_dataset_BAA.py --download-key {NDA_KEY}
 ```
 
-### Task 2.3: Create corner metadata JSON [DONE]
-```
-Script: scripts/create_corner_metadata.py
-Output: data/processed/corner_metadata.json
-
-Contents: game path, half, timestamp, teams, competition, season
-```
+This downloads:
+- Pre-clipped 30-second video segments
+- Action labels for each clip
+- Train/valid/test/challenge splits
 
 ---
 
-## Phase 3: Format Data for GSR Pipeline [DONE]
+## Phase 3: Explore Dataset Structure
 
-### Task 3.1: Create SoccerNetGS directory structure [DONE]
-```
-Script: scripts/format_for_gsr.py
-Output: data/MySoccerNetGS/
+Create this script to understand what's in the dataset:
 
-MySoccerNetGS/
-└── custom/
-    ├── CORNER-0000/
-    │   ├── video.mp4 -> symlink to corner_clips/corner_0000.mp4
-    │   └── Labels-GameState.json
-    ├── CORNER-0001/
-    │   └── ...
-    └── ... (2,566 directories)
-```
-
-### Task 3.2: Generate minimal Labels-GameState.json [DONE]
-```json
-{
-  "info": {"version": "1.3"},
-  "images": [],
-  "annotations": []
-}
-```
-
-### Task 3.3: Create video index file [DONE]
-```
-Output: data/MySoccerNetGS/video_list.txt
-Contents: One video ID per line (CORNER-0000 to CORNER-2565)
-```
-
----
-
-## Phase 4: SLURM Job Configuration [IN PROGRESS]
-
-### Task 4.1: Create SLURM batch script [DONE]
-```bash
-# Single video test script: scripts/test_gsr_single.sbatch
-# Batch processing script: scripts/run_gsr.sbatch (pending)
-
-#SBATCH --partition=acltr
-#SBATCH --account=students
-#SBATCH --gres=gpu:1
-#SBATCH --mem=32G
-#SBATCH --time=00:30:00
-```
-
-### Task 4.2: Test single video [DONE]
-```bash
-# Command:
-tracklab -cn soccernet \
-    dataset=video \
-    dataset.video_path=/path/to/corner_0000.mp4 \
-    dataset.eval_set=val \
-    eval_tracking=false \
-    state.save_file=outputs/states/CORNER-0000.pklz
-
-# Results:
-# - Runtime: ~6 minutes
-# - Detections: 2,349
-# - Unique tracks: 53
-# - Frames: 244
-# - Output size: 3.2MB
-```
-
-### Task 4.3: Bug fixes applied [DONE]
-1. **nbjw_calib.py KeyError fix** (`sn_gamestate/calibration/nbjw_calib.py:179`):
-   ```python
-   # Changed from:
-   predictions = metadatas["keypoints"][0]
-   # To:
-   predictions = metadatas["keypoints"].iloc[0]
-   ```
-
-2. **mmdet version compatibility** (`.venv/lib/python3.9/site-packages/mmdet/__init__.py`):
-   ```python
-   mmcv_maximum_version = '2.2.0'  # was '2.1.0'
-   ```
-
-### Task 4.4: Batch processing [PENDING]
-```
-TODO:
-- Create SLURM array job for all 2,566 clips
-- Estimate: ~6 min/clip × 2,566 clips = 256 hours
-- With 4 GPUs: ~64 hours (2.7 days)
-```
-
----
-
-## Phase 5: Post-Processing [PENDING]
-
-### Task 5.1: Parse GSR state files
-```
-Script: scripts/postprocess_gsr.py (to be created)
-Input: outputs/states/*.pklz
-Output: outputs/processed/corners_tracking.parquet
-
-Columns needed:
-- corner_id, frame, track_id
-- x, y (pitch coordinates in meters)
-- role, team, jersey_number
-```
-
-### Task 5.2: Compute velocity from positions
 ```python
-# Group by track_id
-# Sort by frame
-# Compute: vx = (x_t - x_{t-1}) / dt, vy = (y_t - y_{t-1}) / dt
-# dt = 1/25 (assuming 25 fps)
-# Add columns: vx, vy, speed
+# explore_dataset.py
+import os
+import json
+from pathlib import Path
+
+DATA_PATH = "data/BAA"  # Adjust if different
+
+def explore_dataset():
+    """Explore the BAA dataset structure and find corner-related clips."""
+
+    # List available splits
+    print("Available splits:")
+    for split in os.listdir(DATA_PATH):
+        split_path = Path(DATA_PATH) / split
+        if split_path.is_dir():
+            print(f"  {split}/")
+
+    # Load labels and look for action types
+    labels_path = Path(DATA_PATH) / "train" / "labels.json"
+    if labels_path.exists():
+        with open(labels_path) as f:
+            labels = json.load(f)
+
+        # Count action types
+        action_counts = {}
+        for clip_id, clip_data in labels.items():
+            for action in clip_data.get("actions", []):
+                action_type = action.get("label", "unknown")
+                action_counts[action_type] = action_counts.get(action_type, 0) + 1
+
+        print("\nAction types in dataset:")
+        for action, count in sorted(action_counts.items(), key=lambda x: -x[1]):
+            print(f"  {action}: {count}")
+
+    # Check clip structure
+    print("\nSample clip structure:")
+    train_path = Path(DATA_PATH) / "train"
+    clips = [d for d in train_path.iterdir() if d.is_dir()]
+    if clips:
+        sample_clip = clips[0]
+        print(f"  {sample_clip.name}/")
+        for item in sample_clip.iterdir():
+            print(f"    {item.name}")
+
+if __name__ == "__main__":
+    explore_dataset()
 ```
 
-### Task 5.3: Extract corner kick moment (t=0)
-```
-- t=0 is approximately frame 50 (2 seconds into 10-sec clip at 25fps)
-- For each corner, extract snapshot at t=0 with all player positions and velocities
-- Output: corner_snapshots.parquet
-```
-
-### Task 5.4: Merge with corner metadata
-```
-- Join corner_snapshots with corner_metadata
-- Add outcome labels from SoccerNet events
-- Final output: corners_with_tracking.parquet
-```
-
----
-
-## Phase 6: Validation & Quality Check [PENDING]
-
-### Task 6.1: Check for failed jobs
-```
-- Scan SLURM output logs for errors
-- List corners with missing state files
-- Resubmit failed jobs
-```
-
-### Task 6.2: Validate tracking quality
-```
-- Check: number of tracked players per frame (expect 10-20 in penalty box area)
-- Flag corners with < 5 players tracked (likely calibration failure)
-- Compute statistics: mean players tracked, calibration success rate
-```
-
-### Task 6.3: Visualize sample outputs
-```
-- Generate minimap visualization for 10 random corners
-- Verify player positions look reasonable
-- Check velocity vectors make sense
-```
-
----
-
-## Directory Structure (Current)
-
-```
-CornerTactics/
-├── sn-gamestate/              # Cloned repo with .venv
-│   ├── .venv/                 # Python virtual environment
-│   ├── sn_gamestate/          # GSR modules (nbjw_calib.py fixed)
-│   └── pretrained_models/     # Model weights
-├── tracklab/                  # Cloned repo (local install)
-├── data/
-│   ├── misc/soccernet/videos/ # Original SoccerNet data (downloading)
-│   ├── corner_clips/          # 2,566 extracted 10-sec clips
-│   ├── MySoccerNetGS/         # Formatted for GSR pipeline
-│   │   └── custom/            # 2,566 video directories
-│   └── processed/
-│       ├── all_corners.csv
-│       └── corner_metadata.json
-├── outputs/
-│   ├── states/                # Tracker state .pklz files
-│   │   └── CORNER-0000.pklz   # Test output (3.2MB)
-│   ├── json/                  # GSR JSON predictions
-│   ├── demo_corner_0000.mp4   # Visualization (11MB)
-│   └── processed/             # Final parquet files (pending)
-├── scripts/
-│   ├── extract_soccernet_corners.py  # Phase 2.1
-│   ├── extract_corner_clips.py       # Phase 2.2
-│   ├── create_corner_metadata.py     # Phase 2.3
-│   ├── format_for_gsr.py             # Phase 3
-│   ├── test_gsr_single.sbatch        # Phase 4 (single test)
-│   ├── run_gsr.sbatch                # Phase 4 (batch - pending)
-│   └── postprocess_gsr.py            # Phase 5 (pending)
-├── logs/
-│   └── slurm/                 # SLURM output logs
-├── plan.md                    # This file
-├── CLAUDE.md                  # Claude Code instructions
-└── README.md                  # Project documentation
-```
-
----
-
-## Key Configuration Values
-
-```yaml
-# tracklab command (working)
-tracklab -cn soccernet \
-    dataset=video \
-    dataset.video_path=/path/to/video.mp4 \
-    dataset.eval_set=val \
-    eval_tracking=false \
-    state.save_file=outputs/states/CORNER-XXXX.pklz
-```
-
-**SLURM Modules Required**:
+Run it:
 ```bash
-module purge
-module load GCC/12.3.0 CUDA/12.1.1
-export CUDA_HOME=/opt/itu/easybuild/software/CUDA/12.1.1
+python explore_dataset.py
 ```
 
 ---
 
-## GSR Output Format
+## Phase 4: Identify Corner Clips
 
-State files (`.pklz`) are ZIP archives containing:
-- `summary.json` - Video metadata
-- `0.pkl` - Detection DataFrame
-- `0_image.pkl` - Camera parameters per frame
+Create script to find clips containing corners:
 
-**Detection columns**:
-| Column | Description |
-|--------|-------------|
-| track_id | Unique player ID across frames |
-| image_id | Frame number |
-| team | left / right |
-| role | player / goalkeeper / referee |
-| jersey_number | Detected number |
-| bbox_pitch | {x_bottom_middle, y_bottom_middle, ...} in meters |
+```python
+# find_corner_clips.py
+import os
+import json
+from pathlib import Path
 
-**Coordinate system**:
-- Origin: Center of pitch (0, 0)
-- X: -52.5m (left goal) to +52.5m (right goal)
-- Y: -34m (bottom) to +34m (top)
+DATA_PATH = "data/BAA"
+
+def find_corner_clips():
+    """
+    Find clips that contain corner kick situations.
+
+    Corners might be identified by:
+    1. Action labels containing "corner"
+    2. Context before certain actions (cross from corner position)
+    3. Spatial position of actions near corner flag
+    """
+
+    corner_clips = []
+    all_clips = []
+
+    for split in ["train", "valid", "test"]:
+        labels_path = Path(DATA_PATH) / split / "labels.json"
+        if not labels_path.exists():
+            continue
+
+        with open(labels_path) as f:
+            labels = json.load(f)
+
+        for clip_id, clip_data in labels.items():
+            all_clips.append({"split": split, "clip_id": clip_id, "data": clip_data})
+
+            # Check if any action mentions corner
+            actions = clip_data.get("actions", [])
+            action_labels = [a.get("label", "").lower() for a in actions]
+
+            # Look for corner indicators
+            is_corner = any("corner" in label for label in action_labels)
+
+            # Also check for crosses that might be from corners
+            # (This is a heuristic - may need refinement)
+            has_cross = any("cross" in label for label in action_labels)
+
+            if is_corner:
+                corner_clips.append({
+                    "split": split,
+                    "clip_id": clip_id,
+                    "actions": actions
+                })
+
+    print(f"Total clips: {len(all_clips)}")
+    print(f"Corner clips found: {len(corner_clips)}")
+
+    # Save corner clips list
+    with open("corner_clips.json", "w") as f:
+        json.dump(corner_clips, f, indent=2)
+
+    # Show sample
+    if corner_clips:
+        print("\nSample corner clip:")
+        print(json.dumps(corner_clips[0], indent=2))
+
+    return corner_clips
+
+if __name__ == "__main__":
+    find_corner_clips()
+```
+
+Run it:
+```bash
+python find_corner_clips.py
+```
 
 ---
 
-## Expected Outputs
+## Phase 5: Create Corner-Specific Dataset
 
-1. **2,566 corner clips** (10 sec each) - DONE
-2. **2,566 state files** with per-frame pitch coordinates - IN PROGRESS
-3. **corners_with_tracking.parquet** (~50MB) with:
-   - corner_id, game_id, timestamp
-   - Per-player: x, y, vx, vy, speed, role, team
-   - Ready for GNN input
+If corners are found, create a filtered dataset:
+
+```python
+# create_corner_dataset.py
+import os
+import json
+import shutil
+from pathlib import Path
+
+DATA_PATH = "data/BAA"
+CORNER_DATA_PATH = "data/BAA_corners"
+
+def create_corner_dataset():
+    """Create a corner-only subset of the BAA dataset."""
+
+    # Load corner clips
+    with open("corner_clips.json") as f:
+        corner_clips = json.load(f)
+
+    if not corner_clips:
+        print("No corner clips found!")
+        return
+
+    # Create output directory
+    os.makedirs(CORNER_DATA_PATH, exist_ok=True)
+
+    # Group by split
+    by_split = {}
+    for clip in corner_clips:
+        split = clip["split"]
+        if split not in by_split:
+            by_split[split] = []
+        by_split[split].append(clip)
+
+    # Copy clips to new location
+    for split, clips in by_split.items():
+        split_out = Path(CORNER_DATA_PATH) / split
+        os.makedirs(split_out, exist_ok=True)
+
+        # Create labels file
+        labels = {}
+        for clip in clips:
+            clip_id = clip["clip_id"]
+
+            # Copy clip folder
+            src = Path(DATA_PATH) / split / clip_id
+            dst = split_out / clip_id
+            if src.exists() and not dst.exists():
+                shutil.copytree(src, dst)
+
+            # Add to labels
+            labels[clip_id] = {"actions": clip["actions"]}
+
+        # Save labels
+        with open(split_out / "labels.json", "w") as f:
+            json.dump(labels, f, indent=2)
+
+        print(f"{split}: {len(clips)} corner clips")
+
+    print(f"\nCorner dataset created at {CORNER_DATA_PATH}")
+
+if __name__ == "__main__":
+    create_corner_dataset()
+```
 
 ---
 
-## Estimated Runtime
+## Phase 6: Train FAANTRA on Corners
 
-| Phase | Estimated | Actual |
-|-------|-----------|--------|
-| Phase 1: Setup | 1 hour | ~4 hours (dependency issues) |
-| Phase 2: Clip extraction | 2-4 hours | Done |
-| Phase 3: Formatting | 30 min | Done |
-| Phase 4: GSR inference | 3-4 days (4 GPUs) | ~6 min/clip tested |
-| Phase 5: Post-processing | 1-2 hours | Pending |
-| Phase 6: Validation | 1 hour | Pending |
+Option A: Train on full dataset first (baseline)
+```bash
+python main.py config/BAA_config.json baseline_model
+```
 
-**Remaining**: ~3 days for batch GSR + post-processing
+Option B: Train on corner-only subset
+```bash
+# First modify config to point to corner dataset
+# Then train
+python main.py config/corner_config.json corner_model
+```
+
+Create corner config:
+```python
+# create_corner_config.py
+import json
+
+# Load base config
+with open("config/BAA_config.json") as f:
+    config = json.load(f)
+
+# Modify for corners
+config["data_path"] = "data/BAA_corners"
+config["model_name"] = "corner_faantra"
+
+# Save
+with open("config/corner_config.json", "w") as f:
+    json.dump(config, f, indent=2)
+
+print("Created config/corner_config.json")
+```
 
 ---
 
-## Next Steps
+## Phase 7: Evaluate
 
-1. **Create batch SLURM script** for processing all 2,566 clips
-2. **Submit array job** and monitor progress
-3. **Implement post-processing** to extract tracking data to parquet
-4. **Validate** tracking quality across all corners
+```bash
+# Evaluate on test set
+python test.py config/corner_config.json checkpoints/best.pth corner_model -s test
+```
+
+---
+
+## Phase 8: Analysis
+
+Create script to analyze predictions:
+
+```python
+# analyze_results.py
+import json
+
+def analyze_predictions():
+    """Analyze model predictions on corner clips."""
+
+    # Load predictions (generated by test.py)
+    with open("predictions.json") as f:
+        predictions = json.load(f)
+
+    # Load ground truth
+    with open("data/BAA_corners/test/labels.json") as f:
+        ground_truth = json.load(f)
+
+    # Compare
+    correct = 0
+    total = 0
+
+    by_action = {}  # Accuracy per action type
+
+    for clip_id, pred in predictions.items():
+        gt = ground_truth.get(clip_id, {})
+
+        pred_actions = set(a["label"] for a in pred.get("actions", []))
+        gt_actions = set(a["label"] for a in gt.get("actions", []))
+
+        # Check overlap
+        for action in gt_actions:
+            total += 1
+            if action in pred_actions:
+                correct += 1
+
+            if action not in by_action:
+                by_action[action] = {"correct": 0, "total": 0}
+            by_action[action]["total"] += 1
+            if action in pred_actions:
+                by_action[action]["correct"] += 1
+
+    print(f"Overall accuracy: {correct}/{total} = {100*correct/total:.1f}%")
+    print("\nPer-action accuracy:")
+    for action, stats in sorted(by_action.items()):
+        acc = 100 * stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+        print(f"  {action}: {stats['correct']}/{stats['total']} = {acc:.1f}%")
+
+if __name__ == "__main__":
+    analyze_predictions()
+```
+
+---
+
+## Decision Points
+
+After Phase 4, check:
+- **If >500 corner clips:** Proceed with corner-specific training
+- **If 100-500 corner clips:** Use full dataset, evaluate on corner subset only
+- **If <100 corner clips:** Ask Discord if corners are in dataset, or pivot approach
+
+After Phase 7, check:
+- **If mAP > 30%:** Good baseline, iterate on model
+- **If mAP 10-30%:** Task is learnable but hard, expected for anticipation
+- **If mAP < 10%:** Check data pipeline, may need different approach
+
+---
+
+## File Structure After Setup
+
+```
+~/faantra-corners/FAANTRA/
+├── data/
+│   ├── BAA/                    # Full dataset
+│   │   ├── train/
+│   │   ├── valid/
+│   │   ├── test/
+│   │   └── challenge/
+│   └── BAA_corners/            # Corner subset
+│       ├── train/
+│       ├── valid/
+│       └── test/
+├── config/
+│   ├── BAA_config.json         # Original config
+│   └── corner_config.json      # Corner config
+├── checkpoints/
+│   └── best.pth
+├── corner_clips.json
+├── explore_dataset.py
+├── find_corner_clips.py
+├── create_corner_dataset.py
+└── analyze_results.py
+```
+
+---
+
+## Commands Summary
+
+```bash
+# 1. Setup
+cd ~/faantra-corners/FAANTRA
+source venv/bin/activate
+
+# 2. Download data
+python setup_dataset_BAA.py --download-key {KEY}
+
+# 3. Explore
+python explore_dataset.py
+
+# 4. Find corners
+python find_corner_clips.py
+
+# 5. Create corner dataset (if corners found)
+python create_corner_dataset.py
+
+# 6. Create config
+python create_corner_config.py
+
+# 7. Train
+python main.py config/corner_config.json corner_model
+
+# 8. Evaluate
+python test.py config/corner_config.json checkpoints/best.pth corner_model -s test
+
+# 9. Analyze
+python analyze_results.py
+```
