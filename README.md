@@ -1,219 +1,176 @@
 # CornerTactics
 
-Extract player tracking data from soccer broadcast videos for corner kick analysis using Graph Neural Networks.
+Predict corner kick outcomes from soccer broadcast videos using deep learning.
 
 ## Overview
 
-CornerTactics extracts per-frame player positions (x, y coordinates in meters) from SoccerNet broadcast videos using the [sn-gamestate](https://github.com/SoccerNet/sn-gamestate) pipeline. The extracted tracking data will be used for GNN-based corner kick outcome prediction.
+CornerTactics uses the FAANTRA (Football Action ANticipation TRAnsformer) architecture to predict corner kick outcomes from SoccerNet broadcast videos. The system observes video leading up to a corner kick and anticipates whether it will result in a goal, shot, clearance, or other outcome.
 
-**Pipeline**: Video -> Object Detection -> Re-ID -> Tracking -> Camera Calibration -> Pitch Projection
+## Current Status
 
-## Features
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1. Build Dataset | **Complete** | Corner metadata from SoccerNet labels |
+| 2. Video Clip Extraction | **Complete** | 4,836 corner clips extracted (114GB) |
+| 3. Frame Extraction | In Progress | Extract frames for FAANTRA training |
+| 4. Model Training | Pending | Train FAANTRA on corner outcomes |
+| 5. Evaluation | Pending | Evaluate model performance |
 
-- Extract corner kick clips from SoccerNet game videos
-- Run Game State Reconstruction (GSR) pipeline for player tracking
-- Project player bounding boxes to pitch coordinates (meters)
-- Team assignment and jersey number detection
-- SLURM-based batch processing for HPC clusters
+## Dataset
 
-## Quick Start
+### Corner Kick Video Clips
 
-### Prerequisites
+- **Total clips**: 4,836
+- **Clip duration**: 30 seconds (25s observation + 5s anticipation)
+- **Resolution**: 720p MP4
+- **Total size**: 114GB
 
-- Python 3.9
-- CUDA 12.1
-- Access to SoccerNet dataset
-- SLURM cluster (for batch processing)
+### Outcome Classes
 
-### Installation
+| Outcome | Count | % |
+|---------|-------|---|
+| NOT_DANGEROUS | 1,939 | 40.1% |
+| CLEARED | 1,138 | 23.5% |
+| SHOT_OFF_TARGET | 713 | 14.7% |
+| SHOT_ON_TARGET | 387 | 8.0% |
+| FOUL | 384 | 7.9% |
+| GOAL | 172 | 3.6% |
+| OFFSIDE | 77 | 1.6% |
+| CORNER_WON | 26 | 0.5% |
 
-```bash
-# Clone repository
-git clone <repository-url>
-cd CornerTactics
+### Source Data
 
-# Create virtual environment
-cd sn-gamestate
-python3.9 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -e .
-pip install -e ../tracklab
-
-# Install mmcv with CUDA ops (requires compilation)
-module load GCC/12.3.0 CUDA/12.1.1
-export CUDA_HOME=/opt/itu/easybuild/software/CUDA/12.1.1
-MMCV_WITH_OPS=1 pip install mmcv==2.1.0 --no-binary :all:
-
-# Install remaining dependencies
-pip install mmdet==3.1.0 mmocr==1.0.1
-```
-
-### Run GSR on a Single Video
-
-```bash
-cd scripts
-sbatch test_gsr_single.sbatch
-```
-
-### Check Results
-
-```bash
-# View tracking state
-ls -la outputs/states/CORNER-0000.pklz
-
-# View visualization video
-ls -la outputs/demo_corner_0000.mp4
-```
+SoccerNet videos from 6 leagues:
+- England Premier League, Spain La Liga, Italy Serie A
+- Germany Bundesliga, France Ligue 1, UEFA Champions League
 
 ## Project Structure
 
 ```
 CornerTactics/
-├── sn-gamestate/           # Game State Reconstruction pipeline
-│   ├── .venv/              # Python virtual environment
-│   └── sn_gamestate/       # GSR modules
-├── tracklab/               # Tracking framework
-├── scripts/                # Processing scripts
-│   ├── extract_corner_clips.py
-│   ├── test_gsr_single.sbatch
-│   └── run_gsr.sbatch
-├── data/
-│   ├── corner_clips/       # Extracted 10-sec clips
-│   └── MySoccerNetGS/      # Formatted for GSR
-├── outputs/
-│   └── states/             # Tracking results (.pklz)
-└── logs/slurm/             # Job logs
+├── scripts/                        # Data pipeline scripts
+│   ├── 01_build_corner_dataset.py  # Step 1: Build metadata from SoccerNet
+│   ├── 02_extract_video_clips.py   # Step 2: Extract 30s video clips
+│   ├── 03_prepare_faantra_data.py  # Step 3: Create splits + extract frames
+│   └── slurm/                      # SLURM batch scripts
+│       └── extract_frames.sbatch
+├── FAANTRA/                        # FAANTRA model (forked)
+│   ├── data/
+│   │   ├── corners/                # Corner dataset
+│   │   │   ├── corner_dataset.json # Metadata for all corners
+│   │   │   └── clips/              # 4,836 video clips (114GB)
+│   │   └── corner_anticipation/    # FAANTRA-formatted data
+│   │       ├── train/              # Training frames
+│   │       ├── valid/              # Validation frames
+│   │       └── test/               # Test frames
+│   ├── main.py                     # Training script
+│   ├── test.py                     # Evaluation script
+│   └── venv/                       # Python environment
+├── data/misc/soccernet/videos/     # Source SoccerNet videos (1.1TB)
+├── plan.md                         # Detailed project plan
+└── CLAUDE.md                       # Development context
 ```
 
-## Pipeline Phases
+## Quick Start
 
-| Phase | Script | Description |
-|-------|--------|-------------|
-| 1 | - | Environment setup |
-| 2 | `extract_corner_clips.py` | Extract 10-sec corner clips |
-| 3 | `format_for_gsr.py` | Format for GSR pipeline |
-| 4 | `run_gsr.sbatch` | Run GSR inference |
-| 5 | `postprocess_gsr.py` | Convert to parquet |
-| 6 | - | GNN training |
+### Prerequisites
 
-## Output Format
+- Python 3.9+
+- FFmpeg 6.0 (via module system)
+- decord (for frame extraction)
+- SLURM cluster access
 
-### Tracking State Files (.pklz)
-
-ZIP archives containing pandas DataFrames with:
-
-| Column | Description |
-|--------|-------------|
-| `track_id` | Unique player ID across frames |
-| `image_id` | Frame number |
-| `team` | Team assignment (left/right) |
-| `role` | player / goalkeeper / referee |
-| `jersey_number` | Detected jersey number |
-| `bbox_pitch` | Pitch coordinates (meters) |
-
-### Loading Results
-
-```python
-import zipfile
-import pickle
-
-with zipfile.ZipFile('outputs/states/CORNER-0000.pklz', 'r') as zf:
-    with zf.open('0.pkl') as f:
-        detections = pickle.load(f)
-
-# Get player positions
-for _, row in detections.iterrows():
-    if row['bbox_pitch']:
-        x = row['bbox_pitch']['x_bottom_middle']
-        y = row['bbox_pitch']['y_bottom_middle']
-        print(f"Track {row['track_id']}: ({x:.1f}m, {y:.1f}m)")
-```
-
-## Coordinate System
-
-- **Origin**: Center of pitch (0, 0)
-- **X-axis**: -52.5m (left goal) to +52.5m (right goal)
-- **Y-axis**: -34m (bottom touchline) to +34m (top touchline)
-- **Pitch size**: 105m x 68m (standard)
-
-## Dataset Statistics
-
-| Metric | Value |
-|--------|-------|
-| SoccerNet games | 550 (1.1TB) |
-| Total corners | 4,836 |
-| Visible corners | 4,229 |
-| Extracted clips | 2,566 |
-| Video duration | 10 sec each |
-
-**Games per league**:
-- Spain La Liga: 125
-- UEFA Champions League: 108
-- Italy Serie A: 105
-- England EPL: 104
-- Germany Bundesliga: 61
-- France Ligue 1: 47
-
-### GSR Performance (per clip)
-
-| Metric | Value |
-|--------|-------|
-| Detections | ~2,300 |
-| Frames | ~244 |
-| Unique tracks | ~50 |
-| Processing time | ~6 min |
-
-## Requirements
-
-See `sn-gamestate/pyproject.toml` for full dependencies.
-
-Key packages:
-- PyTorch 2.5.1
-- mmcv 2.1.0 (compiled with CUDA)
-- mmdet 3.1.0
-- mmocr 1.0.1
-- tracklab
-
-## SLURM Configuration
+### Setup
 
 ```bash
-#SBATCH --partition=acltr
-#SBATCH --account=students
-#SBATCH --gres=gpu:1
-#SBATCH --mem=32G
-#SBATCH --time=00:30:00
+cd CornerTactics
+
+# Activate FAANTRA environment
+source FAANTRA/venv/bin/activate
+
+# Load FFmpeg (for video processing)
+module load GCCcore/12.3.0 FFmpeg/6.0-GCCcore-12.3.0
 ```
 
-Required modules:
+### Data Pipeline
+
+Run from CornerTactics root:
+
 ```bash
-module load GCC/12.3.0 CUDA/12.1.1
-export CUDA_HOME=/opt/itu/easybuild/software/CUDA/12.1.1
+# Step 1: Build corner dataset (already done)
+python scripts/01_build_corner_dataset.py
+
+# Step 2: Extract video clips (already done)
+python scripts/02_extract_video_clips.py
+
+# Step 2b: Verify and repair corrupt clips
+python scripts/02_extract_video_clips.py --verify --repair
+
+# Step 3a: Create train/val/test splits
+python scripts/03_prepare_faantra_data.py --splits-only
+
+# Step 3b: Extract frames (use SLURM for parallel processing)
+sbatch scripts/slurm/extract_frames.sbatch                    # Train split
+SPLIT=valid CHUNKS=5 sbatch scripts/slurm/extract_frames.sbatch  # Valid split
+SPLIT=test CHUNKS=5 sbatch scripts/slurm/extract_frames.sbatch   # Test split
 ```
 
-## Troubleshooting
+### Monitor Progress
 
-### mmcv._ext not found
-Compile mmcv from source with CUDA:
 ```bash
-MMCV_WITH_OPS=1 pip install mmcv==2.1.0 --no-binary :all:
+# Check SLURM jobs
+squeue -u $USER
+
+# Count extracted frames
+ls FAANTRA/data/corner_anticipation/train/clip_*/ 2>/dev/null | wc -l
 ```
 
-### KeyError: 0 in NBJW_Calib
-Fixed in `sn_gamestate/calibration/nbjw_calib.py:179`:
-```python
-# Use .iloc[0] instead of [0]
-predictions = metadatas["keypoints"].iloc[0]
+### Train Model
+
+```bash
+cd FAANTRA
+source venv/bin/activate
+python main.py config/corner_config.json corner_model
 ```
+
+### Evaluate
+
+```bash
+python test.py config/corner_config.json checkpoints/best.pth corner_model -s test
+```
+
+## Pipeline Details
+
+### Step 1: Build Corner Dataset
+
+Scans SoccerNet Labels-v2.json files to find corner kick events. For each corner:
+- Extracts timing information
+- Classifies outcome based on events within 15s window
+- Creates `corner_dataset.json` with all metadata
+
+### Step 2: Extract Video Clips
+
+Uses FFmpeg to extract 30-second clips from match videos:
+- **Observation window**: 25 seconds before corner (what model sees)
+- **Anticipation window**: 5 seconds after corner (what model predicts)
+- Includes integrity verification and corrupt clip repair
+
+### Step 3: Prepare FAANTRA Data
+
+Formats data for FAANTRA training:
+- Creates 80/10/10 train/val/test splits
+- Extracts individual frames using decord (750 frames per clip)
+- Creates Labels-ball.json with outcome annotations
+- Supports chunked parallel extraction via SLURM
+
+## References
+
+- [FAANTRA Paper (CVPR 2025 Workshop)](https://openaccess.thecvf.com/content/CVPR2025W/CVSPORTS/html/Dalal_Action_Anticipation_from_SoccerNet_Football_Video_Broadcasts_CVPRW_2025_paper.html)
+- [FAANTRA Repository](https://github.com/MohamadDalal/FAANTRA)
+- [SoccerNet](https://www.soccer-net.org/)
 
 ## License
 
 This project uses:
-- [SoccerNet](https://www.soccer-net.org/) data (research use)
-- [sn-gamestate](https://github.com/SoccerNet/sn-gamestate) (Apache 2.0)
-
-## Acknowledgments
-
-- SoccerNet team for the dataset and GSR pipeline
-- TrackingLaboratory for the tracklab framework
+- [SoccerNet](https://www.soccer-net.org/) data (research use, requires NDA)
+- [FAANTRA](https://github.com/MohamadDalal/FAANTRA) code (see FAANTRA/LICENSE)

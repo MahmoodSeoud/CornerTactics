@@ -5,6 +5,7 @@ ByteTrack/
 sn-tracking/
 sn-gamestate/
 tracklab/
+FAANTRA/
 
 # Option 2: If using as submodules, remove above and use:
 # git submodule add https://github.com/SoccerNet/sn-gamestate.git
