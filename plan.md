@@ -19,8 +19,8 @@ Labeling follows TacticAI methodology: classify based on **immediate next event*
 |-------|--------|-------------|
 | 1. Video Clip Extraction | **Complete** | 4,836 corner clips (114GB) |
 | 2. Label Processing | **Complete** | SHOT/NO_SHOT labels using immediate next event |
-| 3. Frame Extraction | **In Progress** | ~40% train, ~85% valid/test complete |
-| 4. Model Training | Pending | Train FAANTRA on corner outcomes |
+| 3. Frame Extraction | **Complete** | 4,836 clips × 750 frames each |
+| 4. Model Training | **In Progress** | Training on V100 (Job 43215) |
 | 5. Evaluation | Pending | Evaluate model performance |
 
 ---
@@ -84,13 +84,13 @@ Following TacticAI approach: label based on **immediate next event** after corne
 
 ---
 
-## Phase 3: Frame Extraction (In Progress)
+## Phase 3: Frame Extraction (Complete)
 
 ### Progress
 
-- **Train**: 1,451 / 3,868 clips (~37%)
-- **Valid**: 423 / 483 clips (~88%)
-- **Test**: 410 / 485 clips (~85%)
+- **Train**: 3,868 / 3,868 clips (100%)
+- **Valid**: 483 / 483 clips (100%)
+- **Test**: 485 / 485 clips (100%)
 
 ### Configuration
 
@@ -116,15 +116,54 @@ FAANTRA/data/corner_anticipation/
 
 ---
 
-## Phase 4: Model Training (Pending)
+## Phase 4: Model Training (In Progress)
 
 ### FAANTRA Configuration
 
-- **Architecture**: Transformer with RegNetY backbone (ImageNet pretrained)
+- **Architecture**: Transformer with RegNetY backbone + GSF (Gated Shift Fusion)
 - **Observation**: 50% of clip (first 375 frames)
 - **Anticipation**: 50% of clip (predict outcome)
-- **Batch size**: 4
+- **Batch size**: 1 (V100 32GB memory constraint)
 - **Epochs**: 50
+- **Learning rate**: 0.0001 with linear warmup (5 epochs) + cosine annealing
+- **Classes**: 8 corner outcomes (GOAL, SHOT_ON_TARGET, SHOT_OFF_TARGET, CORNER_WON, CLEARED, NOT_DANGEROUS, FOUL, OFFSIDE)
+
+### Training Status
+
+**Current Job**: 43215 on V100 (cn5.hpc.itu.dk)
+- Training started: 2025-12-18
+- Estimated time: ~25 hours (50 epochs × 30 min/epoch)
+
+### Issues Encountered & Fixed
+
+#### 1. Label Preprocessing Bug (Critical)
+**Problem**: FAANTRA's `_store_clips_anticipation()` only processed first ~15 seconds of each 30-second clip, missing our labels at 25 seconds.
+
+```python
+# Original (broken): video_len = int(full_video_len * ((clip_len*stride/FPS)+5)/30) = 381 frames
+# Fixed: video_len = full_video_len = 750 frames
+```
+
+**Fix**: Modified `FAANTRA/dataset/frame.py:132` to use full video length.
+
+**Result**: 78,729 clips now have valid labels (was 0 before).
+
+#### 2. Multi-GPU Incompatibility
+**Problem**: FAANTRA's GSF (Gated Shift Fusion) module incompatible with PyTorch DataParallel.
+- 4× V100: `CUDA error: misaligned address`
+- 2× V100: `cuDNN error: CUDNN_STATUS_EXECUTION_FAILED`
+
+**Solution**: Single GPU training only.
+
+#### 3. Memory Constraints
+**Problem**: V100 32GB OOM with batch_size > 1.
+
+**Solution**: batch_size=1 for V100, batch_size=8 planned for A100 80GB.
+
+#### 4. Corrupt Video Clips
+**Status**: 146/4836 clips (3%) have "moov atom not found" error.
+- Being repaired via `python scripts/02_extract_video_clips.py --verify --repair`
+- Does not block current training (frames already extracted)
 
 ### Training Commands
 
@@ -132,12 +171,21 @@ FAANTRA/data/corner_anticipation/
 cd /home/mseo/CornerTactics/FAANTRA
 source venv/bin/activate
 
-# Train
+# Submit V100 training job
+sbatch scripts/slurm/train_faantra_v100.sbatch
+
+# Or A100 (when available)
 sbatch scripts/slurm/train_faantra.sbatch
 
-# Or manually
-python main.py config/SoccerNetBall/Corner-Config-v2.json corner_baseline
+# Monitor
+squeue -u $USER
+tail -f logs/train_*.out
 ```
+
+### Key Config Files
+
+- `config/SoccerNetBall/Corner-Config.json` - V100 config (batch_size=1)
+- `config/SoccerNetBall/Corner-Config-v2.json` - A100 config (batch_size=8)
 
 ---
 
