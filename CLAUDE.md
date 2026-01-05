@@ -12,9 +12,20 @@ CornerTactics predicts corner kick outcomes from SoccerNet broadcast videos usin
 |-------|--------|-------------|
 | 1. Build Dataset | **Complete** | Corner metadata from SoccerNet labels |
 | 2. Video Clip Extraction | **Complete** | 4,836 clips extracted (114GB) |
-| 3. Frame Extraction | **In Progress** | Extract frames for FAANTRA |
-| 4. Model Training | Pending | Train FAANTRA on outcomes |
-| 5. Evaluation | Pending | Evaluate performance |
+| 3. Frame Extraction | **Complete** | Frames extracted for all splits |
+| 4. Model Training | **Complete** | FAANTRA trained on corner outcomes |
+| 5. Evaluation | **Complete** | 12.6% mAP@∞ (8-class), 50% mAP@∞ (binary) |
+
+## Results Summary
+
+| Task | Model | Result |
+|------|-------|--------|
+| 8-class outcome | FAANTRA | mAP@∞ = 12.6% |
+| Binary shot/no-shot | FAANTRA | mAP@∞ = 50% (random) |
+| Binary shot (StatsBomb) | Classical ML | AUC = 0.43 |
+| Ball actions (baseline) | FAANTRA | mAP@∞ = 18.48% |
+
+**Key Finding**: Shot prediction from pre-corner observation achieves random performance (~50%), confirming outcome depends on post-corner events.
 
 ## Project Structure
 
