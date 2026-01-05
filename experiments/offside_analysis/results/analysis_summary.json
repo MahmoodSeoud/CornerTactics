@@ -1,0 +1,55 @@
+{
+  "num_corners": 1933,
+  "num_shots": 560,
+  "comparison": {
+    "baseline_auc": 0.5145292207792207,
+    "augmented_auc": 0.536948051948052,
+    "improvement": 0.022418831168831255
+  },
+  "ranking": [
+    [
+      "defensive_line_spread",
+      0.18738882854757924
+    ],
+    [
+      "defensive_compactness",
+      0.1830510608092369
+    ],
+    [
+      "attacker_defender_gap",
+      0.17557186873797045
+    ],
+    [
+      "last_defender_x",
+      0.17283866000733208
+    ],
+    [
+      "furthest_attacker_x",
+      0.1721497474153922
+    ],
+    [
+      "num_attackers",
+      0.061333505094744556
+    ],
+    [
+      "num_defenders",
+      0.036828265867731455
+    ],
+    [
+      "attackers_in_offside_zone",
+      0.005781117539318351
+    ],
+    [
+      "attackers_beyond_defender",
+      0.0050569459806947825
+    ]
+  ],
+  "significant_features": [
+    "defensive_line_spread",
+    "defensive_compactness",
+    "attackers_beyond_defender",
+    "furthest_attacker_x",
+    "attacker_defender_gap",
+    "attackers_in_offside_zone"
+  ]
+}
