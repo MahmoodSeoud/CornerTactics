@@ -71,26 +71,39 @@ Implementation of Tasks 4 and 5 from plan2.md:
 experiments/
 ├── class_imbalance/
 │   ├── __init__.py
-│   ├── focal_loss.py
-│   ├── oversampling.py
-│   └── hierarchical_classifier.py
+│   ├── focal_loss.py        (FocalLoss, FocalLossMulticlass)
+│   ├── oversampling.py      (EmbeddingExtractor, SMOTEOversampler, ADASYNOversampler)
+│   ├── hierarchical_classifier.py (HierarchicalClassifier, HierarchicalLoss, HierarchicalTrainer)
+│   └── class_grouping.py    (ClassGroupingExperiment, run_all_grouping_experiments)
 └── interpretability/
     ├── __init__.py
-    ├── attention_viz.py
-    └── shap_analysis.py
+    ├── attention_viz.py     (AttentionExtractor, plot_attention_on_pitch)
+    └── shap_analysis.py     (IntegratedGradientsExplainer, analyze_feature_importance)
 ```
 
 ## Test Structure
 ```
 tests/
 ├── class_imbalance/
-│   ├── test_focal_loss.py
-│   ├── test_oversampling.py
-│   └── test_hierarchical_classifier.py
+│   ├── __init__.py
+│   ├── test_focal_loss.py            (16 tests)
+│   ├── test_oversampling.py          (11 tests)
+│   ├── test_hierarchical_classifier.py (15 tests)
+│   └── test_class_grouping.py        (13 tests)
 └── interpretability/
-    ├── test_attention_viz.py
-    └── test_shap_analysis.py
+    ├── __init__.py
+    ├── test_attention_viz.py         (8 tests)
+    └── test_shap_analysis.py         (10 tests)
 ```
+
+**Total: 73 tests passing**
 
 ## Progress Log
 - [2026-01-05] Created feature branch and notes file
+- [2026-01-05] Implemented Focal Loss with TDD (16 tests)
+- [2026-01-05] Implemented SMOTE/ADASYN oversampling (11 tests)
+- [2026-01-05] Implemented Hierarchical Classification (15 tests)
+- [2026-01-05] Implemented Class Grouping Experiments (13 tests)
+- [2026-01-05] Implemented Attention Visualization (8 tests)
+- [2026-01-05] Implemented SHAP/Integrated Gradients (10 tests)
+- [2026-01-05] All 73 tests passing, ready for PR
