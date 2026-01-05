@@ -92,7 +92,7 @@ soccernet_data/
 corner_clips/
 output/
 outputs/
-results/
+# results/ - now tracked for reproducibility
 exports/
 clips/
 runs/
