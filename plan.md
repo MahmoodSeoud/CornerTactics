@@ -20,8 +20,18 @@ Labeling follows TacticAI methodology: classify based on **immediate next event*
 | 1. Video Clip Extraction | **Complete** | 4,836 corner clips (114GB) |
 | 2. Label Processing | **Complete** | SHOT/NO_SHOT labels using immediate next event |
 | 3. Frame Extraction | **Complete** | 4,836 clips × 750 frames each |
-| 4. Model Training | **In Progress** | Training on V100 (Job 43215) |
-| 5. Evaluation | Pending | Evaluate model performance |
+| 4. Model Training | **Complete** | 8-class and binary models trained |
+| 5. Evaluation | **Complete** | 12.6% mAP (8-class), 50% mAP (binary) |
+
+## Final Results
+
+| Task | Model | Result | Interpretation |
+|------|-------|--------|----------------|
+| 8-class outcome | FAANTRA | 12.6% mAP@∞ | Some classes learnable |
+| Binary shot/no-shot | FAANTRA | 50% mAP@∞ | Random chance |
+| Binary shot | Classical ML | 0.43 AUC | Random chance |
+
+**Conclusion**: Shot prediction is fundamentally unpredictable from pre-corner observation.
 
 ---
 
