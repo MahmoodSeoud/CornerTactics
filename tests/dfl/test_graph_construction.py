@@ -208,3 +208,122 @@ class TestFrameToGraph:
         assert hasattr(graph, "pos")
         assert graph.pos.shape[0] == graph.x.shape[0]  # Same number of nodes
         assert graph.pos.shape[1] == 2  # 2D positions (x, y)
+
+
+class TestCornerToTemporalGraphs:
+    """Tests for converting a corner kick to a sequence of graphs."""
+
+    def test_corner_to_temporal_graphs_returns_list(self):
+        """corner_to_temporal_graphs should return a list of graphs."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+            find_corner_events,
+        )
+        from src.dfl.graph_construction import corner_to_temporal_graphs
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        graphs = corner_to_temporal_graphs(tracking, corners[0])
+
+        assert isinstance(graphs, list)
+        assert len(graphs) > 0
+
+    def test_corner_to_temporal_graphs_all_are_data_objects(self):
+        """Each element should be a PyTorch Geometric Data object."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+            find_corner_events,
+        )
+        from src.dfl.graph_construction import corner_to_temporal_graphs
+        from torch_geometric.data import Data
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        graphs = corner_to_temporal_graphs(tracking, corners[0])
+
+        for g in graphs:
+            assert isinstance(g, Data)
+
+    def test_corner_to_temporal_graphs_has_frame_metadata(self):
+        """Each graph should have frame_idx and relative_time attributes."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+            find_corner_events,
+        )
+        from src.dfl.graph_construction import corner_to_temporal_graphs
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        graphs = corner_to_temporal_graphs(tracking, corners[0])
+
+        for g in graphs:
+            assert hasattr(g, "frame_idx")
+            assert hasattr(g, "relative_time")
+
+    def test_corner_to_temporal_graphs_correct_duration(self):
+        """Sequence should cover approximately 8 seconds (2 before + 6 after)."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+            find_corner_events,
+        )
+        from src.dfl.graph_construction import corner_to_temporal_graphs
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        graphs = corner_to_temporal_graphs(
+            tracking, corners[0], pre_seconds=2.0, post_seconds=6.0
+        )
+
+        fps = 25
+        expected_frames = int(8.0 * fps)  # 200 frames
+
+        # Allow 10% tolerance
+        assert abs(len(graphs) - expected_frames) < expected_frames * 0.2

@@ -131,3 +131,56 @@ def frame_to_graph(
         edge_index = torch.empty((2, 0), dtype=torch.long)
 
     return Data(x=x_tensor, edge_index=edge_index, pos=pos)
+
+
+def corner_to_temporal_graphs(
+    tracking_dataset,
+    corner_event,
+    fps: int = 25,
+    pre_seconds: float = 2.0,
+    post_seconds: float = 6.0,
+) -> List[Data]:
+    """
+    Convert a corner kick into a sequence of graphs over time.
+
+    Args:
+        tracking_dataset: kloppy TrackingDataset
+        corner_event: The corner kick event
+        fps: Frame rate of tracking data
+        pre_seconds: Seconds before corner to include
+        post_seconds: Seconds after corner to include
+
+    Returns:
+        List of Data objects, one per frame, with added attributes:
+            - frame_idx: Index within the sequence
+            - relative_time: Time relative to corner delivery (seconds)
+    """
+    from src.dfl.data_loading import extract_corner_sequence, compute_velocities
+
+    # Extract frames around the corner
+    frames = extract_corner_sequence(
+        tracking_dataset,
+        corner_event,
+        pre_seconds=pre_seconds,
+        post_seconds=post_seconds,
+    )
+
+    if not frames:
+        return []
+
+    # Compute velocities for all frames
+    velocities = compute_velocities(frames, fps=fps)
+
+    # Convert each frame to a graph
+    graphs = []
+    for i, frame in enumerate(frames):
+        graph = frame_to_graph(
+            frame=frame,
+            velocities=velocities[i],
+            corner_event=corner_event,
+        )
+        graph.frame_idx = i
+        graph.relative_time = (i / fps) - pre_seconds
+        graphs.append(graph)
+
+    return graphs
