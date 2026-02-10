@@ -184,3 +184,103 @@ def corner_to_temporal_graphs(
         graphs.append(graph)
 
     return graphs
+
+
+def label_corner(
+    corner_event,
+    event_dataset,
+    n_subsequent_events: int = 5,
+) -> Dict[str, Any]:
+    """
+    Create multi-head labels for a corner kick based on subsequent events.
+
+    Args:
+        corner_event: The corner kick event
+        event_dataset: kloppy EventDataset containing all events
+        n_subsequent_events: Number of events after corner to analyze
+
+    Returns:
+        Dict with labels:
+            - shot_binary: 1 if shot within next n events, else 0
+            - goal_binary: 1 if goal within next n events, else 0
+            - first_contact_team: 'attacking', 'defending', or 'unknown'
+            - outcome_class: One of ['goal', 'shot_saved', 'shot_blocked',
+                                      'clearance', 'ball_receipt', 'other']
+    """
+    all_events = list(event_dataset.events)
+
+    # Find the corner event in the event list
+    corner_idx = None
+    corner_timestamp = corner_event.timestamp
+
+    for i, e in enumerate(all_events):
+        if e.timestamp == corner_timestamp:
+            # Check if it's the same event (same type and timestamp)
+            if str(e.event_type).lower() == str(corner_event.event_type).lower():
+                corner_idx = i
+                break
+
+    # If exact match not found, find by closest timestamp
+    if corner_idx is None:
+        min_diff = float("inf")
+        for i, e in enumerate(all_events):
+            diff = abs(_get_timestamp_seconds(e.timestamp) - _get_timestamp_seconds(corner_timestamp))
+            if diff < min_diff:
+                min_diff = diff
+                corner_idx = i
+
+    labels = {
+        "shot_binary": 0,
+        "goal_binary": 0,
+        "first_contact_team": "unknown",
+        "outcome_class": "other",
+    }
+
+    if corner_idx is None:
+        return labels
+
+    # Get events following this corner
+    subsequent = all_events[corner_idx + 1 : corner_idx + 1 + n_subsequent_events]
+
+    for event in subsequent:
+        event_type_str = str(event.event_type).lower()
+
+        # Check for shots
+        if "shot" in event_type_str:
+            labels["shot_binary"] = 1
+            labels["outcome_class"] = "shot_saved"  # Default shot outcome
+
+            # Check if goal
+            if "goal" in event_type_str:
+                labels["goal_binary"] = 1
+                labels["outcome_class"] = "goal"
+            elif hasattr(event, "result"):
+                result_str = str(event.result).lower() if event.result else ""
+                if "goal" in result_str:
+                    labels["goal_binary"] = 1
+                    labels["outcome_class"] = "goal"
+                elif "blocked" in result_str:
+                    labels["outcome_class"] = "shot_blocked"
+
+        # Check for clearance
+        if "clearance" in event_type_str:
+            if labels["outcome_class"] == "other":
+                labels["outcome_class"] = "clearance"
+
+        # First contact detection
+        if labels["first_contact_team"] == "unknown":
+            if hasattr(event, "team") and event.team is not None:
+                if hasattr(corner_event, "team") and corner_event.team is not None:
+                    if event.team == corner_event.team:
+                        labels["first_contact_team"] = "attacking"
+                    else:
+                        labels["first_contact_team"] = "defending"
+
+    return labels
+
+
+def _get_timestamp_seconds(timestamp) -> float:
+    """Convert timestamp to seconds."""
+    if hasattr(timestamp, "total_seconds"):
+        return timestamp.total_seconds()
+    return float(timestamp)

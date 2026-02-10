@@ -327,3 +327,100 @@ class TestCornerToTemporalGraphs:
 
         # Allow 10% tolerance
         assert abs(len(graphs) - expected_frames) < expected_frames * 0.2
+
+
+class TestLabelCorner:
+    """Tests for labeling corner kick outcomes."""
+
+    def test_label_corner_returns_dict(self):
+        """label_corner should return a dictionary of labels."""
+        from src.dfl.data_loading import load_event_data, find_corner_events
+        from src.dfl.graph_construction import label_corner
+
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        labels = label_corner(corners[0], events)
+
+        assert isinstance(labels, dict)
+
+    def test_label_corner_has_shot_binary(self):
+        """Labels should include shot_binary (0 or 1)."""
+        from src.dfl.data_loading import load_event_data, find_corner_events
+        from src.dfl.graph_construction import label_corner
+
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        labels = label_corner(corners[0], events)
+
+        assert "shot_binary" in labels
+        assert labels["shot_binary"] in [0, 1]
+
+    def test_label_corner_has_goal_binary(self):
+        """Labels should include goal_binary (0 or 1)."""
+        from src.dfl.data_loading import load_event_data, find_corner_events
+        from src.dfl.graph_construction import label_corner
+
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        labels = label_corner(corners[0], events)
+
+        assert "goal_binary" in labels
+        assert labels["goal_binary"] in [0, 1]
+
+    def test_label_corner_has_first_contact_team(self):
+        """Labels should include first_contact_team."""
+        from src.dfl.data_loading import load_event_data, find_corner_events
+        from src.dfl.graph_construction import label_corner
+
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        labels = label_corner(corners[0], events)
+
+        assert "first_contact_team" in labels
+        assert labels["first_contact_team"] in ["attacking", "defending", "unknown"]
+
+    def test_label_corner_has_outcome_class(self):
+        """Labels should include outcome_class."""
+        from src.dfl.data_loading import load_event_data, find_corner_events
+        from src.dfl.graph_construction import label_corner
+
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        corners = find_corner_events(events)
+
+        if not corners:
+            pytest.skip("No corners in this match")
+
+        labels = label_corner(corners[0], events)
+
+        assert "outcome_class" in labels
