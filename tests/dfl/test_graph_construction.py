@@ -589,3 +589,70 @@ class TestSaveLoadDataset:
 
         assert len(loaded) == len(dataset)
         assert loaded[0]["match_id"] == dataset[0]["match_id"]
+
+
+class TestDatasetSummary:
+    """Tests for dataset summary statistics."""
+
+    def test_get_dataset_summary_returns_dict(self):
+        """get_dataset_summary should return a dictionary of statistics."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import (
+            build_corner_dataset_from_match,
+            get_dataset_summary,
+        )
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        summary = get_dataset_summary(dataset)
+
+        assert isinstance(summary, dict)
+        assert "total_corners" in summary
+        assert "shot_rate" in summary
+        assert "goal_rate" in summary
+
+    def test_get_dataset_summary_correct_total(self):
+        """Summary should have correct total corners count."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import (
+            build_corner_dataset_from_match,
+            get_dataset_summary,
+        )
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        summary = get_dataset_summary(dataset)
+
+        assert summary["total_corners"] == len(dataset)

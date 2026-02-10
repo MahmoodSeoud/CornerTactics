@@ -377,3 +377,56 @@ def load_corner_dataset(path) -> List[Dict[str, Any]]:
 
     with open(path, "rb") as f:
         return pickle.load(f)
+
+
+def get_dataset_summary(dataset: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Get summary statistics for a corner dataset.
+
+    Args:
+        dataset: List of corner samples
+
+    Returns:
+        Dict with statistics:
+            - total_corners: int
+            - shot_rate: float (0-1)
+            - goal_rate: float (0-1)
+            - avg_frames_per_corner: float
+            - outcome_distribution: dict
+            - first_contact_distribution: dict
+    """
+    if not dataset:
+        return {
+            "total_corners": 0,
+            "shot_rate": 0.0,
+            "goal_rate": 0.0,
+            "avg_frames_per_corner": 0.0,
+            "outcome_distribution": {},
+            "first_contact_distribution": {},
+        }
+
+    total = len(dataset)
+    shots = sum(1 for d in dataset if d["labels"]["shot_binary"] == 1)
+    goals = sum(1 for d in dataset if d["labels"]["goal_binary"] == 1)
+    total_frames = sum(len(d["graphs"]) for d in dataset)
+
+    # Outcome class distribution
+    outcome_counts = {}
+    for d in dataset:
+        outcome = d["labels"]["outcome_class"]
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+
+    # First contact distribution
+    contact_counts = {}
+    for d in dataset:
+        contact = d["labels"]["first_contact_team"]
+        contact_counts[contact] = contact_counts.get(contact, 0) + 1
+
+    return {
+        "total_corners": total,
+        "shot_rate": shots / total if total > 0 else 0.0,
+        "goal_rate": goals / total if total > 0 else 0.0,
+        "avg_frames_per_corner": total_frames / total if total > 0 else 0.0,
+        "outcome_distribution": outcome_counts,
+        "first_contact_distribution": contact_counts,
+    }
