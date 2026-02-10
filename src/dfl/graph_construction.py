@@ -340,3 +340,40 @@ def build_corner_dataset_from_match(
             )
 
     return dataset
+
+
+def save_corner_dataset(dataset: List[Dict[str, Any]], path) -> None:
+    """
+    Save corner dataset to a pickle file.
+
+    Args:
+        dataset: List of corner samples from build_corner_dataset_from_match
+        path: Output file path
+    """
+    import pickle
+    from pathlib import Path
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, "wb") as f:
+        pickle.dump(dataset, f)
+
+
+def load_corner_dataset(path) -> List[Dict[str, Any]]:
+    """
+    Load corner dataset from a pickle file.
+
+    Args:
+        path: Path to the pickle file
+
+    Returns:
+        List of corner samples
+    """
+    import pickle
+    from pathlib import Path
+
+    path = Path(path)
+
+    with open(path, "rb") as f:
+        return pickle.load(f)

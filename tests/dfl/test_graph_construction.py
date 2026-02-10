@@ -517,3 +517,75 @@ class TestBuildCornerDataset:
         assert isinstance(sample["graphs"], list)
         assert len(sample["graphs"]) > 0
         assert all(isinstance(g, Data) for g in sample["graphs"])
+
+
+class TestSaveLoadDataset:
+    """Tests for saving and loading the corner dataset."""
+
+    def test_save_corner_dataset_creates_file(self, tmp_path):
+        """save_corner_dataset should create a pickle file."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import (
+            build_corner_dataset_from_match,
+            save_corner_dataset,
+        )
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        output_path = tmp_path / "corner_dataset.pkl"
+        save_corner_dataset(dataset, output_path)
+
+        assert output_path.exists()
+
+    def test_load_corner_dataset_returns_same_data(self, tmp_path):
+        """load_corner_dataset should return the same data that was saved."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import (
+            build_corner_dataset_from_match,
+            save_corner_dataset,
+            load_corner_dataset,
+        )
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        if not dataset:
+            pytest.skip("No corners in this match")
+
+        output_path = tmp_path / "corner_dataset.pkl"
+        save_corner_dataset(dataset, output_path)
+        loaded = load_corner_dataset(output_path)
+
+        assert len(loaded) == len(dataset)
+        assert loaded[0]["match_id"] == dataset[0]["match_id"]
