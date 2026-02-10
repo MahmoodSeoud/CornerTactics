@@ -1,256 +1,212 @@
-# CornerTactics - Corner Kick Outcome Prediction
+# Corner Kick Training Data Pipeline: Execution Plan
 
-## Goal
-Predict corner kick outcomes (SHOT vs NO_SHOT) from SoccerNet broadcast videos using FAANTRA.
+## Objective
+Build a training dataset for a corner kick outcome prediction model. Each row represents one player present during a corner kick event. The final dataset contains: player x,y position, player height, team affiliation, and who received the ball.
 
-## Approach
+## Output Schema
 
-Using FAANTRA (Football Action ANticipation TRAnsformer) for binary classification:
-- **SHOT**: Corner results in a shot attempt (goal, on target, off target)
-- **NO_SHOT**: Corner is cleared, won foul, etc.
-
-Labeling follows TacticAI methodology: classify based on **immediate next event** after corner, not a time window.
-
----
-
-## Current Status
-
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1. Video Clip Extraction | **Complete** | 4,836 corner clips (114GB) |
-| 2. Label Processing | **Complete** | SHOT/NO_SHOT labels using immediate next event |
-| 3. Frame Extraction | **Complete** | 4,836 clips × 750 frames each |
-| 4. Model Training | **Complete** | 8-class and binary models trained |
-| 5. Evaluation | **Complete** | 12.6% mAP (8-class), 50% mAP (binary) |
-
-## Final Results
-
-| Task | Model | Result | Interpretation |
-|------|-------|--------|----------------|
-| 8-class outcome | FAANTRA | 12.6% mAP@∞ | Some classes learnable |
-| Binary shot/no-shot | FAANTRA | 50% mAP@∞ | Random chance |
-| Binary shot | Classical ML | 0.43 AUC | Random chance |
-
-**Conclusion**: Shot prediction is fundamentally unpredictable from pre-corner observation.
+| Column | Type | Source |
+|--------|------|--------|
+| corner_event_id | string | StatsBomb event ID |
+| match_id | int | StatsBomb match ID |
+| competition | string | StatsBomb competition name |
+| delivery_player_id | int | StatsBomb pass event |
+| delivery_player_name | string | StatsBomb pass event |
+| delivery_x | float | StatsBomb pass end_location |
+| delivery_y | float | StatsBomb pass end_location |
+| delivery_type | string | Inswinger/Outswinger/Straight/Short |
+| freeze_player_id | int | StatsBomb 360 freeze frame |
+| freeze_player_name | string | StatsBomb 360 freeze frame |
+| freeze_x | float | 360 freeze frame location[0] |
+| freeze_y | float | 360 freeze frame location[1] |
+| is_teammate | bool | 360 freeze frame teammate field |
+| is_keeper | bool | 360 freeze frame keeper field |
+| is_actor | bool | 360 freeze frame actor field |
+| player_height_cm | int | Transfermarkt or FBref |
+| outcome_player_id | int | Next event in chain (ball receipt, header, clearance, shot) |
+| outcome_type | string | Header/Shot/Clearance/Goal Kick/Ball Receipt |
+| outcome_body_part | string | Head/Right Foot/Left Foot |
+| resulted_in_shot | bool | Derived from event chain |
+| resulted_in_goal | bool | Derived from event chain |
 
 ---
 
-## Phase 1: Video Clip Extraction (Complete)
+## Phase 1: Identify Competitions with 360 Data
 
-### Dataset Statistics
-
-- **Total corners**: 4,836 video clips
-- **Clip duration**: 30 seconds (25s observation + 5s anticipation)
-- **Resolution**: 720p MP4
-- **Total size**: 114GB
-- **Valid clips**: 4,690 (97% - some corrupt source videos)
-
-### Source Data
-
-SoccerNet videos from 6 leagues:
-- England Premier League, Spain La Liga, Italy Serie A
-- Germany Bundesliga, France Ligue 1, UEFA Champions League
-
----
-
-## Phase 2: Label Processing (Complete)
-
-### Labeling Methodology
-
-Following TacticAI approach: label based on **immediate next event** after corner kick.
-
-**Old approach (15-second window)**: Captured unrelated events like offsides from counter-attacks.
-
-**New approach (immediate next event)**: Clean labels matching what actually happened.
-
-### Label Distribution
-
-| Primary Label | Count | Percentage |
-|---------------|-------|------------|
-| **SHOT** | 1,476 | 30.5% |
-| **NO_SHOT** | 3,360 | 69.5% |
-
-### Shot Breakdown
-
-| Type | Count | % |
-|------|-------|---|
-| Off Target | 819 | 16.9% |
-| On Target | 636 | 13.2% |
-| Goal | 21 | 0.4% |
-
-### No-Shot Breakdown
-
-| Type | Count | % |
-|------|-------|---|
-| Clearance (ball out of play) | 1,560 | 32.3% |
-| Timeout (>30s to next event) | 1,100 | 22.7% |
-| Foul | 533 | 11.0% |
-| Offside | 134 | 2.8% |
-
-### Key Files
-
-- `FAANTRA/data/corners/corner_dataset.json` - Original 8-class labels
-- `FAANTRA/data/corners/corner_dataset_v2.json` - New SHOT/NO_SHOT labels
-
----
-
-## Phase 3: Frame Extraction (Complete)
-
-### Progress
-
-- **Train**: 3,868 / 3,868 clips (100%)
-- **Valid**: 483 / 483 clips (100%)
-- **Test**: 485 / 485 clips (100%)
-
-### Configuration
-
-- Frame rate: 25 fps
-- Frames per clip: 750 (30 seconds)
-- Format: JPEG
-- Split: 80/10/10 train/valid/test
-
-### Output Structure
-
+### Step 1.1: Load competitions
 ```
-FAANTRA/data/corner_anticipation/
-├── train/
-│   ├── clip_1/frame0.jpg ... frame749.jpg
-│   ├── clip_2/
-│   ├── Labels-ball.json
-│   └── clip_mapping.json
-├── valid/
-├── test/
-├── train.json, val.json, test.json
-└── class.txt
+pip install statsbombpy
 ```
 
+Use statsbombpy to load all competitions. Filter for competitions where match_available_360 is not null. The free open data includes 360 data for:
+- Euro 2020 (competition_id=55, season_id=43)
+- Euro 2024 (competition_id=55, season_id=282)
+- 2022 FIFA World Cup (competition_id=43, season_id=106)
+- Select La Liga, Premier League, Bundesliga seasons (check each)
+
+### Step 1.2: Collect all match IDs with 360 data
+For each competition+season pair with 360 availability, load matches. Store match_id, competition_name, season_name, home_team, away_team.
+
+Expected output: a list of 150-300+ match IDs.
+
 ---
 
-## Phase 4: Model Training (In Progress)
+## Phase 2: Extract Corner Kick Events
 
-### FAANTRA Configuration
+### Step 2.1: Load events for each match
+For each match_id, call sb.events(match_id=match_id, split=True, flatten_attrs=True).
 
-- **Architecture**: Transformer with RegNetY backbone + GSF (Gated Shift Fusion)
-- **Observation**: 50% of clip (first 375 frames)
-- **Anticipation**: 50% of clip (predict outcome)
-- **Batch size**: 1 (V100 32GB memory constraint)
-- **Epochs**: 50
-- **Learning rate**: 0.0001 with linear warmup (5 epochs) + cosine annealing
-- **Classes**: 8 corner outcomes (GOAL, SHOT_ON_TARGET, SHOT_OFF_TARGET, CORNER_WON, CLEARED, NOT_DANGEROUS, FOUL, OFFSIDE)
+### Step 2.2: Filter for corner kick deliveries
+Corner kicks are pass events where:
+- play_pattern_name == "From Corner"
+- type_name == "Pass"
+- pass_type_name == "Corner"
 
-### Training Status
+Store: event_id, match_id, player_id, player_name, team_name, location (x,y of delivery start), pass_end_location (x,y of delivery target), pass_outcome_name, pass_technique_name (Inswinging/Outswinging/Straight), pass_body_part_name.
 
-**Current Job**: 43215 on V100 (cn5.hpc.itu.dk)
-- Training started: 2025-12-18
-- Estimated time: ~25 hours (50 epochs × 30 min/epoch)
+### Step 2.3: Build the event chain for each corner
+For each corner kick pass event, find the subsequent events in the same possession:
+1. Look at events with the same possession number and a higher index.
+2. The first ball-touching event after the delivery tells you who received the ball. This is typically: Ball Receipt, Clearance, Miscontrol, Shot, or an aerial duel (Duel where duel_type_name == "Aerial Lost" or duel_outcome_name includes aerial).
+3. Record: outcome_player_id, outcome_player_name, outcome_type_name, outcome_body_part_name.
+4. Scan the full possession for any Shot event. If found, set resulted_in_shot = True. If shot_outcome_name == "Goal", set resulted_in_goal = True.
 
-### Issues Encountered & Fixed
+Expected output: 1,500-2,000 corner kick events with outcome chains.
 
-#### 1. Label Preprocessing Bug (Critical)
-**Problem**: FAANTRA's `_store_clips_anticipation()` only processed first ~15 seconds of each 30-second clip, missing our labels at 25 seconds.
+---
 
-```python
-# Original (broken): video_len = int(full_video_len * ((clip_len*stride/FPS)+5)/30) = 381 frames
-# Fixed: video_len = full_video_len = 750 frames
+## Phase 3: Extract 360 Freeze Frames
+
+### Step 3.1: Load 360 data for each match
+For each match_id, call sb.frames(match_id=match_id, fmt='dataframe').
+
+### Step 3.2: Join freeze frames to corner events
+Filter the frames dataframe where the event_id matches a corner kick pass event from Phase 2. Each matching frame contains multiple rows (one per visible player). Fields per row:
+- id (event_id)
+- teammate (bool)
+- actor (bool)
+- keeper (bool)
+- location (list of [x, y])
+
+### Step 3.3: Resolve player identity in freeze frames
+The open data 360 freeze frames do NOT always include player_id for every player in the frame. The teammate/actor/keeper flags are present.
+
+Workaround for identity:
+- The actor (the player performing the event, the corner taker) is identified by the parent event's player_id.
+- For shot freeze frames, all players have IDs. For pass freeze frames (including corner deliveries), player_id is included in the paid API but may be missing in open data.
+
+CHECK: Load a sample frame and inspect whether player_id and player_name fields are populated. If they are null for non-actor players, you need an alternative approach.
+
+Alternative if player IDs are missing from freeze frames:
+- Use the freeze frame positions (x, y, teammate flag) without individual identity.
+- Join height data at the team level instead: compute average team height, or assign positional height proxies (center backs get team's tallest player height, etc.).
+- OR: use only shot freeze frames (which do include player IDs) and filter for shots that originated from corners.
+
+---
+
+## Phase 4: Collect Player Height Data
+
+### Step 4.1: Build a unique player list
+From Phase 2 event data, collect all unique player_id + player_name combinations. This includes: corner takers, ball recipients, and (if available from freeze frames) all players visible during corners.
+
+### Step 4.2: Scrape Transfermarkt for height
+
+Option A (recommended): Use the transfermarkt Python package.
+```
+pip install transfermarkt
 ```
 
-**Fix**: Modified `FAANTRA/dataset/frame.py:132` to use full video length.
+For each player name, search Transfermarkt. Extract height_cm from the player profile.
 
-**Result**: 78,729 clips now have valid labels (was 0 before).
+Option B: Scrape FBref player pages. FBref provides height on player bio pages.
 
-#### 2. Multi-GPU Incompatibility
-**Problem**: FAANTRA's GSF (Gated Shift Fusion) module incompatible with PyTorch DataParallel.
-- 4× V100: `CUDA error: misaligned address`
-- 2× V100: `cuDNN error: CUDNN_STATUS_EXECUTION_FAILED`
+Option C: Use a pre-built dataset. Kaggle has several FIFA/football player datasets with height. Search for "football player height dataset kaggle" and download.
 
-**Solution**: Single GPU training only.
+### Step 4.3: Handle missing heights
+Some players will not have height data available. For these:
+1. Try alternate name spellings (accented characters, transliterations).
+2. If still missing, impute by position: use the average height for that position from the rest of the dataset. Typical values: GK ~188cm, CB ~185cm, FB ~178cm, CM ~180cm, FW ~180cm.
+3. Flag imputed rows with a boolean column: height_imputed = True.
 
-#### 3. Memory Constraints
-**Problem**: V100 32GB OOM with batch_size > 1.
+### Step 4.4: Join height to the dataset
+Merge player_height_cm into the freeze frame rows on player_id. If player IDs are missing from freeze frames, merge on team + is_keeper flag (keepers are identifiable; outfield players get team-level positional estimates).
 
-**Solution**: batch_size=1 for V100, batch_size=8 planned for A100 80GB.
+---
 
-#### 4. Corrupt Video Clips
-**Status**: 146/4836 clips (3%) have "moov atom not found" error.
-- Being repaired via `python scripts/02_extract_video_clips.py --verify --repair`
-- Does not block current training (frames already extracted)
+## Phase 5: Assemble Final Dataset
 
-### Training Commands
+### Step 5.1: Merge all data
+For each corner kick event:
+- One row per visible player in the freeze frame.
+- Columns from the event (delivery info, outcome info).
+- Columns from the freeze frame (x, y, teammate, keeper, actor).
+- Columns from height join (player_height_cm, height_imputed).
 
-```bash
-cd /home/mseo/CornerTactics/FAANTRA
-source venv/bin/activate
+### Step 5.2: Add derived features
+For each player row, compute:
+- distance_to_goal: Euclidean distance from (freeze_x, freeze_y) to center of goal (120, 40).
+- distance_to_delivery_target: Euclidean distance from player position to pass_end_location.
+- is_near_post: freeze_y < 36 (near post side, assuming standard orientation).
+- is_far_post: freeze_y > 44.
+- is_in_box: freeze_x > 102 and 18 < freeze_y < 62.
+- is_in_6yard: freeze_x > 114 and 30 < freeze_y < 50.
 
-# Submit V100 training job
-sbatch scripts/slurm/train_faantra_v100.sbatch
+### Step 5.3: Validate
+- Check: every corner event has at least 5 players in the freeze frame (discard if fewer, likely bad data).
+- Check: each corner has exactly one actor == True.
+- Check: delivery coordinates are near a corner flag (x near 120, y near 0 or 80).
+- Check: no duplicate player rows per corner event.
+- Print summary statistics: total corners, corners per competition, average players per frame, height coverage percentage, shot rate, goal rate.
 
-# Or A100 (when available)
-sbatch scripts/slurm/train_faantra.sbatch
+### Step 5.4: Export
+Save as CSV and Parquet. Include a metadata JSON file documenting column definitions, data sources, and imputation rates.
 
-# Monitor
-squeue -u $USER
-tail -f logs/train_*.out
+---
+
+## Phase 6: Validation Checks Before Training
+
+Run these sanity checks on the final dataset:
+
+1. Corner kick count by competition. Expect roughly 10-12 per match.
+2. Shot conversion rate from corners. Professional average is 3-4%. If your dataset shows >10% or <1%, something is wrong with the event chain logic.
+3. Goal conversion rate from corners. Professional average is roughly 3% of corners result in goals. 
+4. Height distribution. Should be roughly normal, centered around 180cm with std of 6-7cm.
+5. Position distribution. Most freeze frame players should be in or near the penalty box (x > 90).
+6. Teammate/opponent split. Expect roughly 50/50 per corner (both teams commit players to the box).
+
+---
+
+## Estimated Scale
+
+| Metric | Estimate |
+|--------|----------|
+| Matches with 360 data | 150-300 |
+| Corner kicks extracted | 1,500-2,500 |
+| Player-corner rows (final dataset) | 20,000-35,000 |
+| Unique players needing height lookup | 500-1,000 |
+| Height coverage (before imputation) | 85-95% |
+
+---
+
+## Dependencies
+
+```
+pip install statsbombpy pandas numpy
+pip install transfermarkt  # or use web scraping
 ```
 
-### Key Config Files
-
-- `config/SoccerNetBall/Corner-Config.json` - V100 config (batch_size=1)
-- `config/SoccerNetBall/Corner-Config-v2.json` - A100 config (batch_size=8)
+No GPU required. No video processing. Pure structured data extraction and joining.
 
 ---
 
-## Phase 5: Evaluation (Pending)
+## Known Risks
 
-### Metrics
+1. Open data 360 freeze frames may not include player_id for all visible players. This is the biggest risk. Check Phase 3.3 immediately. If IDs are missing, the height join becomes approximate (team-level, not player-level).
 
-- mAP@delta: Temporal precision
-- Binary accuracy: SHOT vs NO_SHOT
-- Precision/Recall per class
+2. Transfermarkt scraping may be rate-limited or blocked. Use delays between requests. Have FBref or Kaggle datasets as fallback.
 
-### Baselines to Compare
+3. StatsBomb coordinate system uses 120x80 with origin at bottom-left. Make sure the corner flag positions match expectations (120,0), (120,80), (0,0), (0,80) before computing derived features.
 
-- Random baseline: 50%
-- Most-frequent-class (NO_SHOT): 69.5%
-- FAANTRA trained on our data: TBD
+4. The pass_technique_name field (Inswinger/Outswinger) may be null for some corners. These are still usable but that feature will need null handling.
 
----
-
-## Scripts
-
-Clean, refactored pipeline in `scripts/`:
-
-| Script | Purpose |
-|--------|---------|
-| `01_build_corner_dataset.py` | Build corner metadata (original 8-class) |
-| `01_build_corner_dataset_v2.py` | Build SHOT/NO_SHOT labels (TacticAI method) |
-| `02_extract_video_clips.py` | Extract 30s video clips from SoccerNet |
-| `03_prepare_faantra_data.py` | Create splits + extract frames |
-| `slurm/extract_frames.sbatch` | SLURM job for parallel frame extraction |
-| `slurm/train_faantra.sbatch` | SLURM job for GPU training |
-| `slurm/eval_faantra.sbatch` | SLURM job for evaluation |
-
----
-
-## Environment Setup
-
-### FAANTRA Environment
-
-```bash
-cd /home/mseo/CornerTactics/FAANTRA
-source venv/bin/activate
-```
-
-### FFmpeg Module (for video processing)
-
-```bash
-module load GCCcore/12.3.0 FFmpeg/6.0-GCCcore-12.3.0
-```
-
----
-
-## References
-
-- [FAANTRA Paper (CVPR 2025)](https://openaccess.thecvf.com/content/CVPR2025W/CVSPORTS/html/Dalal_Action_Anticipation_from_SoccerNet_Football_Video_Broadcasts_CVPRW_2025_paper.html)
-- [FAANTRA Repository](https://github.com/MohamadDalal/FAANTRA)
-- [TacticAI Paper](https://www.nature.com/articles/s41467-024-45965-x) - Labeling methodology reference
-- [SoccerNet Challenge](https://www.soccer-net.org/challenges/2026)
+5. Short corners exist in the data. These are corners where the ball is played short to a nearby teammate instead of delivered into the box. Filter or flag these separately. Identify them by: pass_end_location x < 105 or distance from corner flag to end location < 15 yards.
