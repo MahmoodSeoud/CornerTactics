@@ -424,3 +424,96 @@ class TestLabelCorner:
         labels = label_corner(corners[0], events)
 
         assert "outcome_class" in labels
+
+
+class TestBuildCornerDataset:
+    """Tests for building the complete corner dataset."""
+
+    def test_build_corner_dataset_from_match_returns_list(self):
+        """build_corner_dataset_from_match should return a list of corner samples."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import build_corner_dataset_from_match
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        assert isinstance(dataset, list)
+
+    def test_build_corner_dataset_sample_has_required_keys(self):
+        """Each sample should have graphs, labels, match_id, corner_time."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import build_corner_dataset_from_match
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        if not dataset:
+            pytest.skip("No corners in this match")
+
+        sample = dataset[0]
+        assert "graphs" in sample
+        assert "labels" in sample
+        assert "match_id" in sample
+        assert "corner_time" in sample
+
+    def test_build_corner_dataset_graphs_are_list(self):
+        """Each sample's graphs should be a list of Data objects."""
+        from src.dfl.data_loading import (
+            load_tracking_data,
+            load_event_data,
+        )
+        from src.dfl.graph_construction import build_corner_dataset_from_match
+        from torch_geometric.data import Data
+
+        tracking = load_tracking_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+        events = load_event_data(
+            provider="metrica",
+            data_dir=METRICA_DATA_DIR / "Sample_Game_3",
+        )
+
+        dataset = build_corner_dataset_from_match(
+            tracking_dataset=tracking,
+            event_dataset=events,
+            match_id="Sample_Game_3",
+        )
+
+        if not dataset:
+            pytest.skip("No corners in this match")
+
+        sample = dataset[0]
+        assert isinstance(sample["graphs"], list)
+        assert len(sample["graphs"]) > 0
+        assert all(isinstance(g, Data) for g in sample["graphs"])

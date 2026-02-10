@@ -284,3 +284,59 @@ def _get_timestamp_seconds(timestamp) -> float:
     if hasattr(timestamp, "total_seconds"):
         return timestamp.total_seconds()
     return float(timestamp)
+
+
+def build_corner_dataset_from_match(
+    tracking_dataset,
+    event_dataset,
+    match_id: str,
+    fps: int = 25,
+    pre_seconds: float = 2.0,
+    post_seconds: float = 6.0,
+) -> List[Dict[str, Any]]:
+    """
+    Build corner kick dataset from a single match.
+
+    Args:
+        tracking_dataset: kloppy TrackingDataset
+        event_dataset: kloppy EventDataset
+        match_id: Identifier for this match
+        fps: Frame rate of tracking data
+        pre_seconds: Seconds before corner to include
+        post_seconds: Seconds after corner to include
+
+    Returns:
+        List of dicts, each containing:
+            - 'graphs': List[Data] (temporal sequence of graphs)
+            - 'labels': dict (multi-head labels)
+            - 'match_id': str
+            - 'corner_time': float (timestamp of corner)
+    """
+    from src.dfl.data_loading import find_corner_events
+
+    corners = find_corner_events(event_dataset)
+    dataset = []
+
+    for corner in corners:
+        graphs = corner_to_temporal_graphs(
+            tracking_dataset,
+            corner,
+            fps=fps,
+            pre_seconds=pre_seconds,
+            post_seconds=post_seconds,
+        )
+
+        labels = label_corner(corner, event_dataset)
+
+        if graphs and labels:
+            corner_time = _get_timestamp_seconds(corner.timestamp)
+            dataset.append(
+                {
+                    "graphs": graphs,
+                    "labels": labels,
+                    "match_id": match_id,
+                    "corner_time": corner_time,
+                }
+            )
+
+    return dataset
