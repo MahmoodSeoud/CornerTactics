@@ -45,7 +45,7 @@ echo ""
 echo "Starting ablation experiment..."
 echo ""
 
-python3 scripts/run_ablation.py \
+python3 -u scripts/run_ablation.py \
     --data-dir data/dfl \
     --output-dir results/ablation \
     --pretrain-epochs 50 \
