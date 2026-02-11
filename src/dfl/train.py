@@ -117,9 +117,12 @@ def pretrain_spatial_gnn(
     Returns:
         Trained model with pretrained spatial_gnn weights
     """
+    # Get device from model
+    device = next(model.parameters()).device
+
     # Create a temporary pretraining head matching spatial_gnn output dimension
     gnn_out_dim = model.spatial_gnn.out_channels
-    pretrain_head = nn.Linear(gnn_out_dim, 1)
+    pretrain_head = nn.Linear(gnn_out_dim, 1).to(device)
 
     optimizer = torch.optim.Adam(
         list(model.spatial_gnn.parameters()) + list(pretrain_head.parameters()),
@@ -127,7 +130,7 @@ def pretrain_spatial_gnn(
         weight_decay=weight_decay,
     )
     criterion = nn.BCEWithLogitsLoss(
-        pos_weight=torch.tensor([pos_weight])
+        pos_weight=torch.tensor([pos_weight], device=device)
     )
 
     model.train()
@@ -140,8 +143,8 @@ def pretrain_spatial_gnn(
             # Handle both formats: full sequences with frames or simple dicts
             if "graph" in seq:
                 # Simple format for testing
-                x = seq["graph"]
-                edge_index = seq["edge_index"]
+                x = seq["graph"].to(device)
+                edge_index = seq["edge_index"].to(device)
             elif "frames" in seq:
                 # Full format with frames - use middle frame
                 frames = seq["frames"]
@@ -155,8 +158,8 @@ def pretrain_spatial_gnn(
                 graph = frame_to_graph(
                     frames[mid_idx], velocities[mid_idx], DummyEvent()
                 )
-                x = graph.x
-                edge_index = graph.edge_index
+                x = graph.x.to(device)
+                edge_index = graph.edge_index.to(device)
             else:
                 continue
 
@@ -164,7 +167,7 @@ def pretrain_spatial_gnn(
             emb = model.spatial_gnn(x, edge_index)
             pred = pretrain_head(emb)
 
-            target = torch.tensor([[float(seq["shot_label"])]])
+            target = torch.tensor([[float(seq["shot_label"])]], device=device)
             loss = criterion(pred, target)
 
             optimizer.zero_grad()
@@ -284,6 +287,9 @@ def finetune_on_corners(
         "other": 5,
     }
 
+    # Get device from model
+    device = next(model.parameters()).device
+
     for train_data, test_data in folds:
         if not train_data or not test_data:
             continue
@@ -303,15 +309,15 @@ def finetune_on_corners(
                 graphs = sample["graphs"]
                 labels = sample["labels"]
 
-                # Prepare labels as tensors
+                # Prepare labels as tensors on correct device
                 label_tensors = {
-                    "shot_binary": torch.tensor([labels["shot_binary"]]),
-                    "goal_binary": torch.tensor([labels["goal_binary"]]),
+                    "shot_binary": torch.tensor([labels["shot_binary"]], device=device),
+                    "goal_binary": torch.tensor([labels["goal_binary"]], device=device),
                     "first_contact_team": torch.tensor(
-                        [contact_map.get(labels["first_contact_team"], 0)]
+                        [contact_map.get(labels["first_contact_team"], 0)], device=device
                     ),
                     "outcome_class": torch.tensor(
-                        [outcome_map.get(labels["outcome_class"], 5)]
+                        [outcome_map.get(labels["outcome_class"], 5)], device=device
                     ),
                 }
 
@@ -334,7 +340,7 @@ def finetune_on_corners(
                 graphs = sample["graphs"]
                 predictions = fold_model([graphs])
 
-                test_predictions.append(predictions["shot"].item())
+                test_predictions.append(predictions["shot"].cpu().item())
                 test_labels.append(sample["labels"]["shot_binary"])
 
         results.append(
