@@ -73,9 +73,10 @@ def normalize_to_pitch(x: float, y: float, source: str) -> tuple[float, float]:
         x_m = x + (PITCH_LENGTH / 2.0)
         y_m = y + (PITCH_WIDTH / 2.0)
     elif source == "dfl":
-        # DFL: already in (0-105, 0-68) after kloppy loading
-        x_m = x
-        y_m = y
+        # kloppy sportec loader returns [0,1] normalized coordinates by default.
+        # Scale to meters on the standard pitch.
+        x_m = x * PITCH_LENGTH
+        y_m = y * PITCH_WIDTH
     elif source == "soccernet_gsr":
         # GSR: depends on calibration, assume already pitch-relative meters
         x_m = x
