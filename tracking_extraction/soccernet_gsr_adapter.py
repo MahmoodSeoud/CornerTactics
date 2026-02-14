@@ -36,7 +36,7 @@ DEFAULT_FPS = 25.0
 SHOT_OUTCOMES = {"SHOT_ON_TARGET", "SHOT_OFF_TARGET", "GOAL"}
 
 
-def parse_gsr_output(gsr_json_path: Path, fps: float = DEFAULT_FPS) -> List[Frame]:
+def parse_gsr_output(gsr_json_path: Path) -> List[Frame]:
     """Parse sn-gamestate JSON predictions into Frame objects.
 
     GSR output is a list of detections (COCO-style), each with:
@@ -56,9 +56,11 @@ def parse_gsr_output(gsr_json_path: Path, fps: float = DEFAULT_FPS) -> List[Fram
 
     Ball detections have role="ball".
 
+    Timestamps are left as 0.0 — the caller should set them once the
+    actual GSR output fps is known (see gsr_to_corner_tracking).
+
     Args:
         gsr_json_path: Path to GSR JSON output file
-        fps: Frame rate of the source video
 
     Returns:
         List of Frame objects sorted by frame_idx
@@ -117,13 +119,14 @@ def parse_gsr_output(gsr_json_path: Path, fps: float = DEFAULT_FPS) -> List[Fram
                 is_visible=True,
             ))
 
-        # Quality filter: skip frames with too few players
-        if len(players) < 10:
+        # Quality filter: skip frames with very few players
+        # GSR on broadcast video may detect fewer players in wide shots
+        if len(players) < 5:
             continue
 
         frames.append(Frame(
             frame_idx=fid,
-            timestamp_ms=(fid / fps) * 1000.0,
+            timestamp_ms=0.0,  # Set by caller once gsr_fps is known
             players=players,
             ball_x=ball_x,
             ball_y=ball_y,
@@ -188,6 +191,51 @@ def prepare_gsr_clip_list(
 
     logger.info("Prepared %d clips for GSR processing -> %s", len(clips), output_list)
     return clips
+
+
+def _detect_corner_taker_team(
+    frames: List[Frame],
+) -> Optional[str]:
+    """Detect which GSR team label ("left"/"right") is the corner-taking (attacking) team.
+
+    Searches all frames for the player closest to any corner flag, since the
+    corner taker approaches the flag before delivery but moves away after.
+    Corner flags are at (0, 0), (0, 68), (105, 0), (105, 68) in pitch coordinates.
+
+    Args:
+        frames: All frames from the clip (searched globally)
+
+    Returns:
+        "left" or "right" (the GSR team label of the attacking team), or None if unknown
+    """
+    if not frames:
+        return None
+
+    corner_flags = [
+        (0.0, 0.0), (0.0, PITCH_WIDTH),
+        (PITCH_LENGTH, 0.0), (PITCH_LENGTH, PITCH_WIDTH),
+    ]
+
+    best_dist = float("inf")
+    best_team = None
+
+    # Search all frames for the player closest to any corner flag
+    for frame in frames:
+        for player in frame.players:
+            if player.team not in ("left", "right"):
+                continue
+            for fx, fy in corner_flags:
+                dist = math.sqrt((player.x - fx) ** 2 + (player.y - fy) ** 2)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_team = player.team
+
+    # Only trust if the nearest player is within ~10 meters of a corner flag.
+    # Broadcast tracking has positional noise, so we use a generous threshold.
+    if best_dist > 10.0:
+        return None
+
+    return best_team
 
 
 def _resolve_teams(
@@ -266,38 +314,47 @@ def _filter_position_jumps(
 def gsr_to_corner_tracking(
     gsr_output_path: Path,
     corner_metadata: Dict[str, Any],
-    pre_seconds: float = 5.0,
-    post_seconds: float = 5.0,
-    fps: float = DEFAULT_FPS,
+    pre_seconds: float = 10.0,
+    post_seconds: float = 0.0,
+    clip_duration_s: float = 30.0,
 ) -> Optional[CornerTrackingData]:
     """Convert GSR output for a single clip to CornerTrackingData.
+
+    FAANTRA clips are 30s of pre-delivery observation, so the corner delivery
+    is at the end of the clip. GSR subsamples frames (~250 output frames for
+    a 750-frame 25fps input), so frame indices are sequential output indices.
 
     Args:
         gsr_output_path: Path to GSR JSON output for this clip
         corner_metadata: Dict from prepare_gsr_clip_list() entry
         pre_seconds: Seconds before delivery to include
         post_seconds: Seconds after delivery to include
-        fps: Video frame rate
+        clip_duration_s: Duration of source clip in seconds
 
     Returns:
         CornerTrackingData or None if insufficient quality
     """
-    # Parse GSR output
-    all_frames = parse_gsr_output(gsr_output_path, fps=fps)
+    # Parse GSR output (timestamps set below once gsr_fps is known)
+    all_frames = parse_gsr_output(gsr_output_path)
     if not all_frames:
         logger.warning("No valid frames in GSR output: %s", gsr_output_path)
         return None
 
-    # Determine delivery frame from corner timing
-    # Clips start at clip_start_ms, corner is at corner_time_ms
-    clip_start_ms = corner_metadata["clip_start_ms"]
-    corner_time_ms = corner_metadata["corner_time_ms"]
-    delivery_time_in_clip_s = (corner_time_ms - clip_start_ms) / 1000.0
-    delivery_frame = int(delivery_time_in_clip_s * fps)
+    # Detect actual GSR output frame rate from the data.
+    # GSR subsamples: ~250 output frames for a 30s clip ≈ 8.33 fps.
+    max_frame_idx = max(f.frame_idx for f in all_frames)
+    gsr_fps = (max_frame_idx + 1) / clip_duration_s
 
-    # Extract window around delivery
-    pre_frames = int(pre_seconds * fps)
-    post_frames = int(post_seconds * fps)
+    # Delivery is at the end of the clip (clips are pre-delivery observation)
+    delivery_frame = max_frame_idx
+
+    # Fix timestamps to use GSR output fps
+    for f in all_frames:
+        f.timestamp_ms = (f.frame_idx / gsr_fps) * 1000.0
+
+    # Extract window: pre_seconds before delivery, post_seconds after
+    pre_frames = int(pre_seconds * gsr_fps)
+    post_frames = int(post_seconds * gsr_fps)
     start_frame = delivery_frame - pre_frames
     end_frame = delivery_frame + post_frames
 
@@ -306,17 +363,20 @@ def gsr_to_corner_tracking(
         if start_frame <= f.frame_idx <= end_frame
     ]
 
-    if len(window_frames) < 50:
+    min_frames = 20  # Lower threshold since GSR is ~8 fps
+    if len(window_frames) < min_frames:
         logger.warning(
-            "Corner %s: only %d frames in window (need >=50)",
-            corner_metadata["corner_id"], len(window_frames),
+            "Corner %s: only %d frames in window (need >=%d)",
+            corner_metadata["corner_id"], len(window_frames), min_frames,
         )
         return None
 
-    # Filter wild position jumps
-    window_frames = _filter_position_jumps(window_frames, max_jump_m=5.0, fps=fps)
+    # Filter wild position jumps (threshold scaled for GSR fps)
+    window_frames = _filter_position_jumps(
+        window_frames, max_jump_m=5.0, fps=gsr_fps,
+    )
 
-    if len(window_frames) < 50:
+    if len(window_frames) < min_frames:
         logger.warning(
             "Corner %s: only %d frames after jump filter",
             corner_metadata["corner_id"], len(window_frames),
@@ -324,13 +384,17 @@ def gsr_to_corner_tracking(
         return None
 
     # Resolve team labels from "left"/"right" to "attacking"/"defending"
-    # Corner taker's team can be inferred from the corner_dataset.json
-    # For now, use "left"/"right" as-is since we don't know which side
-    # the corner-taking team is on without additional match context.
-    # TODO: resolve once GSR pipeline provides camera orientation info
+    # Search ALL frames (not just window) since the corner taker is near
+    # the flag earlier in the clip, before the observation window starts.
+    corner_team_side = _detect_corner_taker_team(all_frames)
+    if corner_team_side:
+        for frame in window_frames:
+            _resolve_teams(frame.players, corner_team_side)
+    else:
+        logger.debug("Could not resolve team sides for %s", corner_metadata["corner_id"])
 
-    # Compute velocities
-    compute_velocities_central_diff(window_frames, fps=fps)
+    # Compute velocities using GSR output fps
+    compute_velocities_central_diff(window_frames, fps=gsr_fps)
 
     # Map outcome from corner_dataset.json
     raw_outcome = corner_metadata.get("outcome", "")
@@ -340,11 +404,7 @@ def gsr_to_corner_tracking(
         outcome = "no_shot"
 
     # Find delivery frame index within window
-    delivery_idx = 0
-    for i, f in enumerate(window_frames):
-        if f.frame_idx >= delivery_frame:
-            delivery_idx = i
-            break
+    delivery_idx = len(window_frames) - 1  # Delivery is at end of clip
 
     corner_id = f"gsr_{corner_metadata['corner_id']}"
 
@@ -353,14 +413,15 @@ def gsr_to_corner_tracking(
         source="soccernet_gsr",
         match_id=corner_metadata.get("match_dir", ""),
         delivery_frame=delivery_idx,
-        fps=fps,
+        fps=gsr_fps,
         outcome=outcome,
         frames=window_frames,
         metadata={
             "raw_outcome": raw_outcome,
-            "corner_time_ms": corner_time_ms,
-            "clip_start_ms": clip_start_ms,
+            "corner_time_ms": corner_metadata["corner_time_ms"],
+            "clip_start_ms": corner_metadata["clip_start_ms"],
             "gsr_output": str(gsr_output_path),
+            "gsr_fps": gsr_fps,
         },
     )
 
@@ -368,9 +429,8 @@ def gsr_to_corner_tracking(
 def process_gsr_outputs(
     gsr_output_dir: Path,
     clip_list_path: Path,
-    pre_seconds: float = 5.0,
-    post_seconds: float = 5.0,
-    fps: float = DEFAULT_FPS,
+    pre_seconds: float = 10.0,
+    post_seconds: float = 0.0,
 ) -> List[CornerTrackingData]:
     """Process all GSR outputs from a batch run.
 
@@ -381,7 +441,6 @@ def process_gsr_outputs(
         clip_list_path: Path to clip list from prepare_gsr_clip_list()
         pre_seconds: Seconds before delivery
         post_seconds: Seconds after delivery
-        fps: Video frame rate
 
     Returns:
         List of CornerTrackingData
@@ -402,7 +461,6 @@ def process_gsr_outputs(
             gsr_path, meta,
             pre_seconds=pre_seconds,
             post_seconds=post_seconds,
-            fps=fps,
         )
         if corner_data is not None:
             results.append(corner_data)
