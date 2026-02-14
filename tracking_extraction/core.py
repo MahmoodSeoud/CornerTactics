@@ -78,9 +78,10 @@ def normalize_to_pitch(x: float, y: float, source: str) -> tuple[float, float]:
         x_m = x * PITCH_LENGTH
         y_m = y * PITCH_WIDTH
     elif source == "soccernet_gsr":
-        # GSR: depends on calibration, assume already pitch-relative meters
-        x_m = x
-        y_m = y
+        # GSR: center-origin coordinates (0,0) at pitch center.
+        # x in [-52.5, 52.5], y in [-34, 34]. Shift to (0,0) at corner.
+        x_m = x + (PITCH_LENGTH / 2.0)
+        y_m = y + (PITCH_WIDTH / 2.0)
     else:
         raise ValueError(f"Unknown source: {source}")
 
