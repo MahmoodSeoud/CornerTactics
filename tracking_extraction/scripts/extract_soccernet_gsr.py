@@ -94,6 +94,7 @@ def main():
         "--max-corners", type=int, default=None,
         help="Limit number of corners to process",
     )
+    prep.add_argument("-v", "--verbose", action="store_true")
 
     # Parse command
     parse_cmd = subparsers.add_parser("parse", help="Parse GSR outputs")
@@ -111,14 +112,12 @@ def main():
         help="Output directory for extracted corners",
     )
     parse_cmd.add_argument(
-        "--pre-seconds", type=float, default=5.0,
+        "--pre-seconds", type=float, default=10.0,
     )
     parse_cmd.add_argument(
-        "--post-seconds", type=float, default=5.0,
+        "--post-seconds", type=float, default=0.0,
     )
-
-    # Common
-    parser.add_argument("--verbose", "-v", action="store_true")
+    parse_cmd.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
 
