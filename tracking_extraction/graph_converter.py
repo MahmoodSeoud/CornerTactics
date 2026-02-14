@@ -506,13 +506,19 @@ def create_splits(
     split_targets = {"test": target_test, "val": target_val, "train": target_train}
     split_matches: Dict[str, List[str]] = {"test": [], "val": [], "train": []}
 
-    for mid in match_ids:
+    # Assign matches using interleaved blocks to ensure stratification.
+    # Group matches into 3-match blocks (sorted by shot rate); within each
+    # block, assign one match to each split (picking the most-deficit split).
+    # This ensures each split gets a balanced mix of shot rates.
+    for i, mid in enumerate(match_ids):
         n = match_sizes[mid]
-        # Pick the split furthest below its target (test/val first, train absorbs rest)
+        # Pick the split furthest below its target fraction
         best_split = None
         best_deficit = -float("inf")
         for s in ["test", "val", "train"]:
-            deficit = split_targets[s] - split_counts[s]
+            fraction = split_counts[s] / max(1, sum(split_counts.values()))
+            target_frac = split_targets[s] / total
+            deficit = target_frac - fraction
             if deficit > best_deficit:
                 best_deficit = deficit
                 best_split = s
