@@ -175,6 +175,39 @@ def run_ablation(args):
         save_results(results, name=f"ablation_{args.ablation}", output_dir=args.output_dir)
 
 
+def run_baselines(args):
+    """Run baseline comparisons."""
+    from corner_prediction.baselines.run_baselines import (
+        load_dataset as load_bl_dataset,
+        run_heuristic,
+        run_mlp,
+        run_random,
+        run_xgboost,
+        print_baseline_comparison,
+    )
+
+    dataset = load_bl_dataset()
+    all_results = {}
+
+    if args.baselines == "all":
+        baselines_to_run = ["random", "heuristic", "xgboost", "mlp"]
+    else:
+        baselines_to_run = [args.baselines]
+
+    runners = {
+        "random": lambda ds: run_random(ds, args.seed, args.output_dir),
+        "heuristic": lambda ds: run_heuristic(ds, args.seed, args.output_dir),
+        "xgboost": lambda ds: run_xgboost(ds, args.seed, args.output_dir),
+        "mlp": lambda ds: run_mlp(ds, args.seed, args.output_dir, no_gpu=args.no_gpu),
+    }
+
+    for name in baselines_to_run:
+        all_results[name] = runners[name](dataset)
+
+    if len(all_results) > 1:
+        print_baseline_comparison(all_results)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Corner kick prediction: training & evaluation pipeline",
@@ -191,6 +224,9 @@ def main():
                        help="Run a single ablation")
     group.add_argument("--all-ablations", action="store_true",
                        help="Run all ablation configs")
+    group.add_argument("--baselines", type=str, default=None,
+                       choices=["random", "heuristic", "xgboost", "mlp", "all"],
+                       help="Run baseline comparisons")
 
     # Model config
     parser.add_argument("--mode", choices=["pretrained", "scratch"],
@@ -228,6 +264,8 @@ def main():
         run_permutation(args)
     elif args.ablation or args.all_ablations:
         run_ablation(args)
+    elif args.baselines:
+        run_baselines(args)
     else:
         run_eval(args)
 
