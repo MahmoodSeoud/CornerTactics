@@ -227,6 +227,8 @@ def main():
     group.add_argument("--baselines", type=str, default=None,
                        choices=["random", "heuristic", "xgboost", "mlp", "all"],
                        help="Run baseline comparisons")
+    group.add_argument("--visualize", action="store_true",
+                       help="Generate all thesis-ready figures from results")
 
     # Model config
     parser.add_argument("--mode", choices=["pretrained", "scratch"],
@@ -266,6 +268,11 @@ def main():
         run_ablation(args)
     elif args.baselines:
         run_baselines(args)
+    elif args.visualize:
+        from corner_prediction.visualization.generate_all import generate_all
+        results_dir = Path(args.output_dir)
+        figures_dir = results_dir / "figures"
+        generate_all(results_dir, figures_dir, show=False)
     else:
         run_eval(args)
 
