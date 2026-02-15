@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=baselines
-#SBATCH --partition=short
+#SBATCH --partition=dgpu
 #SBATCH --account=researchers
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
