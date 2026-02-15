@@ -288,6 +288,7 @@ def corner_record_to_graph(
         match_id=str(record["match_id"]),
         corner_id=record["corner_id"],
         detection_rate=record["detection_rate"],
+        source=record.get("source", "skillcorner"),
     )
 
 
@@ -382,6 +383,16 @@ def print_summary(graphs: List[Data]) -> None:
     det_rates = [g.detection_rate for g in graphs]
     print(f"Detection rate: min={min(det_rates):.2f}, max={max(det_rates):.2f}, "
           f"mean={sum(det_rates) / n:.2f}")
+
+    # Source distribution
+    sources = {}
+    for g in graphs:
+        src = getattr(g, "source", "skillcorner")
+        sources[src] = sources.get(src, 0) + 1
+    if len(sources) > 1:
+        print(f"\nSource distribution:")
+        for src, count in sorted(sources.items()):
+            print(f"  {src}: {count} ({100 * count / n:.1f}%)")
 
     print(f"{'=' * 60}\n")
 

@@ -34,6 +34,9 @@ class CornerKickDataset(InMemoryDataset):
         root: Directory containing extracted_corners.pkl.
               Processed graphs are cached in root/processed/.
         records: Pre-loaded corner records (skips file loading if provided).
+        records_file: Filename for corner records within root
+                      (default: "extracted_corners.pkl").
+                      Use "combined_corners.pkl" for DFL integration.
         edge_type: "knn" or "dense" edge construction.
         k: Number of neighbors for KNN edges.
         transform: PyG transform applied per-access.
@@ -44,12 +47,14 @@ class CornerKickDataset(InMemoryDataset):
         self,
         root: str,
         records: list = None,
+        records_file: str = "extracted_corners.pkl",
         edge_type: str = "knn",
         k: int = 6,
         transform=None,
         pre_transform=None,
     ):
         self._records = records
+        self._records_file = records_file
         self._edge_type = edge_type
         self._k = k
         super().__init__(root, transform, pre_transform)
@@ -64,17 +69,21 @@ class CornerKickDataset(InMemoryDataset):
     def raw_file_names(self) -> List[str]:
         if self._records is not None:
             return []  # no raw files needed when records are provided
-        return ["extracted_corners.pkl"]
+        return [self._records_file]
 
     @property
     def processed_file_names(self) -> List[str]:
-        return [f"graphs_{self._edge_type}{self._k}.pt"]
+        # Include records_file stem in processed name to avoid cache collisions
+        stem = Path(self._records_file).stem
+        if stem == "extracted_corners":
+            return [f"graphs_{self._edge_type}{self._k}.pt"]
+        return [f"graphs_{stem}_{self._edge_type}{self._k}.pt"]
 
     def process(self):
         if self._records is not None:
             records = self._records
         else:
-            raw_path = Path(self.raw_dir) / "extracted_corners.pkl"
+            raw_path = Path(self.raw_dir) / self._records_file
             with open(raw_path, "rb") as f:
                 records = pickle.load(f)
 

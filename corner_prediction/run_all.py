@@ -16,6 +16,12 @@ Usage:
 
     # All ablations
     python -m corner_prediction.run_all --all-ablations
+
+    # DFL Integration (Task 7): extract DFL corners, merge, and evaluate
+    python -m corner_prediction.run_all --extract-dfl --combined
+
+    # Combined dataset evaluation (after DFL extraction is done)
+    python -m corner_prediction.run_all --combined
 """
 
 import argparse
@@ -32,6 +38,7 @@ from corner_prediction.config import (
     ABLATION_CONFIGS,
     BATCH_SIZE,
     DATA_DIR,
+    DFL_DATA_DIR,
     N_PERMUTATIONS,
     PRETRAINED_PATH,
     RESULTS_DIR,
@@ -39,31 +46,75 @@ from corner_prediction.config import (
 )
 
 
-def load_dataset(edge_type: str = "knn", k: int = 6):
-    """Load the corner kick dataset."""
+def load_dataset(edge_type: str = "knn", k: int = 6, combined: bool = False):
+    """Load the corner kick dataset.
+
+    Args:
+        edge_type: "knn" or "dense".
+        k: Number of KNN neighbors.
+        combined: If True, load the combined SkillCorner + DFL dataset.
+    """
     from corner_prediction.data.dataset import CornerKickDataset
 
+    records_file = "combined_corners.pkl" if combined else "extracted_corners.pkl"
     dataset = CornerKickDataset(
         root=str(DATA_DIR),
+        records_file=records_file,
         edge_type=edge_type,
         k=k,
     )
-    print(f"Loaded {len(dataset)} graphs from {DATA_DIR}")
+    label = "combined (SC + DFL)" if combined else "SkillCorner"
+    print(f"Loaded {len(dataset)} graphs ({label}) from {DATA_DIR}")
     return dataset
 
 
-def load_records():
+def load_records(combined: bool = False):
     """Load raw corner records (for edge_type rebuilding)."""
-    records_path = DATA_DIR / "extracted_corners.pkl"
+    fname = "combined_corners.pkl" if combined else "extracted_corners.pkl"
+    records_path = DATA_DIR / fname
     with open(records_path, "rb") as f:
         return pickle.load(f)
+
+
+def run_extract_dfl():
+    """Extract DFL corners and merge with SkillCorner dataset."""
+    from corner_prediction.data.extract_dfl_corners import extract_all_dfl_corners
+    from corner_prediction.data.merge_datasets import merge_records
+
+    # Step 1: Extract DFL corners from raw tracking data
+    print("\n--- Step 1: Extracting DFL corners ---")
+    dfl_records = extract_all_dfl_corners(data_dir=DFL_DATA_DIR)
+    print(f"Extracted {len(dfl_records)} DFL corners")
+
+    # Save DFL records separately
+    dfl_path = DATA_DIR / "dfl_extracted_corners.pkl"
+    with open(dfl_path, "wb") as f:
+        pickle.dump(dfl_records, f)
+    print(f"Saved DFL records to {dfl_path}")
+
+    # Step 2: Load SkillCorner records and merge
+    print("\n--- Step 2: Merging datasets ---")
+    sc_path = DATA_DIR / "extracted_corners.pkl"
+    with open(sc_path, "rb") as f:
+        sc_records = pickle.load(f)
+    print(f"Loaded {len(sc_records)} SkillCorner records")
+
+    combined = merge_records(sc_records, dfl_records)
+
+    # Step 3: Save combined dataset
+    combined_path = DATA_DIR / "combined_corners.pkl"
+    with open(combined_path, "wb") as f:
+        pickle.dump(combined, f)
+    print(f"Saved {len(combined)} combined records to {combined_path}")
+
+    return combined
 
 
 def run_eval(args):
     """Run LOMO cross-validation."""
     from corner_prediction.training.evaluate import lomo_cv, save_results
 
-    dataset = load_dataset()
+    dataset = load_dataset(combined=args.combined)
 
     pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
     if pretrained_path and not pretrained_path.exists():
@@ -86,7 +137,8 @@ def run_eval(args):
         verbose=True,
     )
 
-    save_results(results, name=f"lomo_{args.mode}", output_dir=args.output_dir)
+    prefix = "combined_" if args.combined else ""
+    save_results(results, name=f"{prefix}lomo_{args.mode}", output_dir=args.output_dir)
     return results
 
 
@@ -98,7 +150,7 @@ def run_permutation(args):
         permutation_test_shot,
     )
 
-    dataset = load_dataset()
+    dataset = load_dataset(combined=args.combined)
 
     pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
     if pretrained_path and not pretrained_path.exists():
@@ -115,6 +167,8 @@ def run_permutation(args):
         device=device,
     )
 
+    prefix = "combined_" if args.combined else ""
+
     if args.permutation_target in ("receiver", "both"):
         recv_results = permutation_test_receiver(
             dataset,
@@ -122,7 +176,7 @@ def run_permutation(args):
             seed=args.seed,
             **lomo_kwargs,
         )
-        save_results(recv_results, name="perm_receiver", output_dir=args.output_dir)
+        save_results(recv_results, name=f"{prefix}perm_receiver", output_dir=args.output_dir)
 
     if args.permutation_target in ("shot", "both"):
         shot_results = permutation_test_shot(
@@ -132,7 +186,7 @@ def run_permutation(args):
             receiver_mode="oracle",
             **lomo_kwargs,
         )
-        save_results(shot_results, name="perm_shot", output_dir=args.output_dir)
+        save_results(shot_results, name=f"{prefix}perm_shot", output_dir=args.output_dir)
 
 
 def run_ablation(args):
@@ -143,8 +197,8 @@ def run_ablation(args):
     )
     from corner_prediction.training.evaluate import save_results
 
-    dataset = load_dataset()
-    records = load_records()
+    dataset = load_dataset(combined=args.combined)
+    records = load_records(combined=args.combined)
 
     pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
     if pretrained_path and not pretrained_path.exists():
@@ -161,18 +215,20 @@ def run_ablation(args):
         device=device,
     )
 
+    prefix = "combined_" if args.combined else ""
+
     if args.all_ablations:
         all_results = run_all_ablations(
             dataset, records=records, seed=args.seed,
             output_dir=args.output_dir, **lomo_kwargs,
         )
-        save_results(all_results, name="ablation_all", output_dir=args.output_dir)
+        save_results(all_results, name=f"{prefix}ablation_all", output_dir=args.output_dir)
     elif args.ablation:
         results = run_single_ablation(
             args.ablation, dataset, records=records, seed=args.seed,
             **lomo_kwargs,
         )
-        save_results(results, name=f"ablation_{args.ablation}", output_dir=args.output_dir)
+        save_results(results, name=f"{prefix}ablation_{args.ablation}", output_dir=args.output_dir)
 
 
 def run_baselines(args):
@@ -230,6 +286,12 @@ def main():
     group.add_argument("--visualize", action="store_true",
                        help="Generate all thesis-ready figures from results")
 
+    # DFL integration (Task 7)
+    parser.add_argument("--combined", action="store_true",
+                        help="Use combined SkillCorner + DFL dataset")
+    parser.add_argument("--extract-dfl", action="store_true",
+                        help="Extract DFL corners from raw data before evaluation")
+
     # Model config
     parser.add_argument("--mode", choices=["pretrained", "scratch"],
                         default="pretrained",
@@ -258,9 +320,23 @@ def main():
     print(f"{'=' * 60}")
     print(f"Timestamp: {datetime.now()}")
     print(f"Mode: {args.mode}")
+    print(f"Dataset: {'combined (SC + DFL)' if args.combined else 'SkillCorner only'}")
     print(f"Seed: {args.seed}")
     print(f"PyTorch: {torch.__version__}")
     print(f"CUDA: {torch.cuda.is_available()}")
+
+    # DFL extraction (if requested)
+    if args.extract_dfl:
+        run_extract_dfl()
+        if not args.combined:
+            print("NOTE: --extract-dfl implies --combined, enabling combined mode")
+            args.combined = True
+
+    # Determine which pipeline step to run
+    has_explicit_mode = (
+        args.eval_only or args.permutation_only or args.ablation
+        or args.all_ablations or args.baselines or args.visualize
+    )
 
     if args.permutation_only:
         run_permutation(args)
@@ -273,6 +349,9 @@ def main():
         results_dir = Path(args.output_dir)
         figures_dir = results_dir / "figures"
         generate_all(results_dir, figures_dir, show=False)
+    elif args.extract_dfl and not has_explicit_mode:
+        # Extract-only: don't fall through to eval
+        print("DFL extraction complete. Use --eval-only --combined to evaluate.")
     else:
         run_eval(args)
 

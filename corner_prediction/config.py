@@ -11,6 +11,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "corner_prediction" / "data"
+DFL_DATA_DIR = PROJECT_ROOT / "data" / "dfl"
 PRETRAINED_PATH = PROJECT_ROOT / "transfer_learning" / "weights" / "ussf_backbone_dense.pt"
 RESULTS_DIR = PROJECT_ROOT / "results" / "corner_prediction"
 
@@ -22,6 +23,19 @@ MATCH_IDS = [
     "1886347", "1899585", "1925299", "1953632", "1996435",
     "2006229", "2011166", "2013725", "2015213", "2017461",
 ]
+
+# ---------------------------------------------------------------------------
+# DFL Match IDs (7 Bundesliga matches)
+# ---------------------------------------------------------------------------
+
+DFL_MATCH_IDS = [
+    "DFL-MAT-J03WMX", "DFL-MAT-J03WN1", "DFL-MAT-J03WOH",
+    "DFL-MAT-J03WOY", "DFL-MAT-J03WPY", "DFL-MAT-J03WQQ",
+    "DFL-MAT-J03WR9",
+]
+
+# Combined match IDs for DFL integration (Task 7)
+COMBINED_MATCH_IDS = MATCH_IDS + DFL_MATCH_IDS
 
 # ---------------------------------------------------------------------------
 # Training — Stage 1 (Receiver Prediction)
