@@ -88,7 +88,7 @@ def _flatten_graph(graph) -> np.ndarray:
 def _build_tensors(data_list: List) -> tuple:
     """Build flat feature and label tensors from a list of graphs."""
     X = np.array([_flatten_graph(g) for g in data_list], dtype=np.float32)
-    y = np.array([g.shot_label for g in data_list], dtype=np.float32)
+    y = np.array([g.shot_label for g in data_list], dtype=np.float32).ravel()
     return torch.from_numpy(X), torch.from_numpy(y)
 
 
