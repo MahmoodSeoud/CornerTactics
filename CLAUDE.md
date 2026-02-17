@@ -319,8 +319,8 @@ Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three mod
 
 ### Known Gaps
 
-1. **Baselines not on combined dataset:** MLP (0.802) and XGBoost (0.743) only evaluated on SkillCorner-only (86 corners, 10 folds). Combined LOMO (143 corners) only has GNN results.
-2. **No permutation tests on baselines:** MLP/XGBoost significance not formally tested.
+1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost now evaluated on combined (143 corners, 17 folds). GNN has highest mean AUC (0.730 vs XGBoost 0.695 vs MLP 0.665), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
+2. **No permutation tests on baselines:** MLP/XGBoost significance not formally tested on either dataset.
 3. **Single seed:** Multi-seed averaging not implemented despite SEEDS list in config.
 4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
 
