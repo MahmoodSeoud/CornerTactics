@@ -4,51 +4,110 @@ Context for Claude Code when working with this repository.
 
 ## Project Overview
 
-CornerTactics predicts corner kick outcomes from SoccerNet broadcast videos using FAANTRA (Football Action ANticipation TRAnsformer).
+CornerTactics predicts corner kick shot outcomes using a two-stage GNN pipeline with USSF-pretrained CrystalConv backbone. Stage 1 predicts the receiver, Stage 2 predicts whether the corner leads to a shot. Earlier work used FAANTRA (video-based) and StatsBomb (event-based); the current approach uses tracking data from SkillCorner and DFL.
 
 ## Current Status
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1. Build Dataset | **Complete** | Corner metadata from SoccerNet labels |
-| 2. Video Clip Extraction | **Complete** | 4,836 clips extracted (114GB) |
-| 3. Frame Extraction | **Complete** | Frames extracted for all splits |
-| 4. Model Training | **Complete** | FAANTRA trained on corner outcomes |
-| 5. Evaluation | **Complete** | 12.6% mAP@∞ (8-class), 50% mAP@∞ (binary) |
+| Component | Status | Key Result |
+|-----------|--------|------------|
+| FAANTRA (video) | Complete | mAP@∞ = 50% binary (random) |
+| StatsBomb (events) | Complete | AUC = 0.43 |
+| Transfer Learning | Complete | 0.86 AUC open-play; corners ~0.55 (n=57) |
+| **Two-Stage GNN** | **Complete** | **Shot AUC = 0.730 (combined), p=0.010** |
 
 ## Results Summary
 
+All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters** — numbers differ between SkillCorner-only and combined.
+
+### Two-Stage GNN (Main Results)
+
+**Combined dataset (143 corners, 17 LOMO folds):**
+
+| Metric | Value |
+|--------|-------|
+| Receiver Top-1 | 0.289 ± 0.226 (10 folds with labels) |
+| Receiver Top-3 | 0.458 ± 0.341 (10 folds with labels) |
+| Shot AUC (oracle) | 0.730 ± 0.202 (17 folds) |
+| Shot AUC (predicted) | 0.715 ± 0.193 (17 folds) |
+| Shot AUC (unconditional) | 0.730 ± 0.204 (17 folds) |
+| Permutation p-value (shot) | **0.010** (100 perms) |
+| Permutation p-value (receiver) | **0.050** (100 perms) |
+
+**SkillCorner-only (86 corners, 10 LOMO folds):**
+
+| Metric | Value |
+|--------|-------|
+| Receiver Top-3 | 0.308 ± 0.279 |
+| Shot AUC (oracle) | 0.751 ± 0.213 |
+| Permutation p-value (shot) | **0.020** (100 perms) |
+| Permutation p-value (receiver) | 0.406 (not significant) |
+
+### Ablations (SkillCorner-only, 10 folds)
+
+| Config | Active Features | Receiver Top-3 | Shot AUC |
+|--------|----------------|----------------|----------|
+| position_only | x,y + team/role flags (9 feat) | 0.408 ± 0.290 | 0.583 ± 0.280 |
+| plus_velocity | + vx, vy, speed (12 feat) | 0.398 ± 0.330 | 0.747 ± 0.238 |
+| plus_detection | + is_detected (all 13) | 0.308 ± 0.279 | 0.751 ± 0.213 |
+| full_features | all 13, KNN k=6 (default) | 0.308 ± 0.279 | 0.748 ± 0.218 |
+| full_fc_edges | all 13, fully connected | 0.525 ± 0.364 | 0.713 ± 0.198 |
+
+### Baselines (SkillCorner-only, 10 folds)
+
+| Model | Input | Shot AUC |
+|-------|-------|----------|
+| MLP | 22×13 flattened (286 feat) | 0.802 ± 0.214 |
+| XGBoost | 27 aggregate features | 0.743 ± 0.232 |
+| GNN (pretrained) | graph (13 node, 4 edge feat) | 0.751 ± 0.213 |
+| Random baseline | — | 0.500 |
+
+**Note:** Baselines have no permutation tests. MLP and XGBoost only run on SkillCorner-only (86 corners). Combined LOMO (143 corners) only has GNN results.
+
+### Earlier Approaches
+
 | Task | Model | Result |
 |------|-------|--------|
-| 8-class outcome | FAANTRA | mAP@∞ = 12.6% |
-| Binary shot/no-shot | FAANTRA | mAP@∞ = 50% (random) |
-| Binary shot (StatsBomb) | Classical ML | AUC = 0.43 |
-| Ball actions (baseline) | FAANTRA | mAP@∞ = 18.48% |
-
-**Key Finding**: Shot prediction from pre-corner observation achieves random performance (~50%), confirming outcome depends on post-corner events.
+| 8-class outcome | FAANTRA (video) | mAP@∞ = 12.6% |
+| Binary shot/no-shot | FAANTRA (video) | mAP@∞ = 50% (random) |
+| Binary shot | StatsBomb (events) | AUC = 0.43 |
+| Open-play transfer | USSF→DFL linear probe | AUC = 0.86 |
 
 ## Project Structure
 
 ```
 CornerTactics/
-├── scripts/                           # Data pipeline (run from project root)
-│   ├── 01_build_corner_dataset.py     # Build metadata from SoccerNet labels
-│   ├── 02_extract_video_clips.py      # Extract 30s video clips
-│   ├── 03_prepare_faantra_data.py     # Create splits + extract frames
-│   └── slurm/
-│       └── extract_frames.sbatch      # Parallel frame extraction
-├── FAANTRA/                           # FAANTRA model code
+├── corner_prediction/                 # Two-stage GNN pipeline (MAIN)
+│   ├── config.py                      # All hyperparameters and paths
+│   ├── run_all.py                     # Entry point (eval, ablation, baselines, permutation)
 │   ├── data/
-│   │   ├── corners/
-│   │   │   ├── corner_dataset.json    # Metadata for 4,836 corners
-│   │   │   └── clips/                 # Video clips (114GB)
-│   │   └── corner_anticipation/       # FAANTRA-formatted frames
-│   │       ├── train/, valid/, test/  # Split directories
-│   │       └── *.json, class.txt      # Labels and config
-│   ├── main.py, train.py, test.py     # Training/evaluation
-│   └── venv/                          # Python environment
-├── data/misc/soccernet/videos/        # Source SoccerNet videos (1.1TB)
-├── plan.md                            # Detailed project plan
+│   │   ├── extract_corners.py         # SkillCorner corner extraction
+│   │   ├── extract_dfl_corners.py     # DFL Bundesliga corner extraction
+│   │   ├── build_graphs.py            # Graph construction (nodes, edges)
+│   │   ├── merge_datasets.py          # Combine SkillCorner + DFL
+│   │   ├── dataset.py                 # LOMO splits, data loading
+│   │   ├── extracted_corners.pkl      # 86 SkillCorner corners
+│   │   ├── dfl_extracted_corners.pkl  # 57 DFL corners
+│   │   └── combined_corners.pkl       # 143 combined corners
+│   ├── models/
+│   │   ├── backbone.py                # CrystalConv GNN (pretrained/scratch)
+│   │   ├── two_stage.py               # TwoStageModel orchestration
+│   │   ├── receiver_head.py           # Stage 1: per-node receiver prediction
+│   │   └── shot_head.py               # Stage 2: graph-level shot prediction
+│   ├── training/
+│   │   ├── train.py                   # Training loops for both stages
+│   │   ├── evaluate.py                # LOMO cross-validation
+│   │   ├── permutation_test.py        # Statistical validation
+│   │   └── ablation.py                # Feature ablation experiments
+│   ├── baselines/
+│   │   ├── mlp_baseline.py            # Flattened MLP (286 features)
+│   │   └── xgboost_baseline.py        # Aggregate features (27 features)
+│   └── visualization/                 # Thesis-ready plots
+├── transfer_learning/                 # USSF transfer experiments
+├── FAANTRA/                           # Video-based model (earlier work)
+│   └── venv/                          # Python environment (shared)
+├── results/corner_prediction/         # All result JSON/pickle files
+├── scripts/                           # Data pipeline + SLURM jobs
+├── tests/                             # pytest test suite
 └── CLAUDE.md                          # This file
 ```
 
@@ -144,6 +203,145 @@ python main.py config/corner_config.json corner_model
 3. **Large data** - Clips are 114GB, source videos are 1.1TB (gitignored)
 4. **Class imbalance** - 40% NOT_DANGEROUS vs 0.5% CORNER_WON - use weighted loss
 5. **SLURM for parallelism** - Use array jobs for frame extraction
+
+## Two-Stage GNN Pipeline (Complete)
+
+### Dataset
+
+| Source | Corners | Matches | Receiver Labels | Shots | Shot Rate |
+|--------|---------|---------|-----------------|-------|-----------|
+| SkillCorner (A-League) | 86 | 10 | 66 (76.7%) | 29 | 33.7% |
+| DFL (Bundesliga) | 57 | 7 | 0 (0%) | 16 | 28.1% |
+| **Combined** | **143** | **17** | **66 (46.2%)** | **45** | **31.5%** |
+
+**Receiver labels (SkillCorner only):** 3 methods in priority order — (1) `player_targeted_name`, (2) `passing_option` targeted+received, (3) `player_possession`. DFL XML lacks event-level data.
+
+**Shot labels:** SkillCorner uses `lead_to_shot` column directly; DFL derives from `ShotAtGoal` XML events matched via `BuildUp=cornerKick`.
+
+**Quality filters:** SkillCorner `min_detection_rate=0.0` (no filtering). DFL requires 20-24 players, `max_gap=25` frames (1s at 25Hz).
+
+### Graph Construction
+
+**13 node features per player** (indices for ablation configs):
+- 0-1: x_norm (x/52.5), y_norm (y/34.0) — range [-1, 1]
+- 2-4: vx, vy, speed — raw m/s, backward frame difference, not smoothed
+- 5-7: is_attacking, is_corner_taker, is_goalkeeper — binary
+- 8: is_detected — binary
+- 9-12: position group one-hot (GK, DEF, MID, FWD)
+
+**14th feature** appended at forward time: receiver indicator (0 for Stage 1, 1.0 at receiver for Stage 2).
+
+**4 edge features:** dx, dy, distance, same_team.
+
+**Edge construction:** KNN k=6 (default, 132 edges) or fully connected (462 edges).
+
+**Coordinate normalization:** All corners flipped so attacking team attacks toward +x. Both SkillCorner and DFL apply identical direction normalization.
+
+**Velocity:** Raw backward difference. SkillCorner: `(x_t - x_{t-1}) / 0.1` at 10Hz. DFL: `(x_nearest - x_prev) / dt` at 25Hz.
+
+### Architecture
+
+```
+Input: [N=22, 13] node features + [E, 4] edge features
+  → Augment with receiver indicator → [N, 14]
+  → node_proj: Linear(14, 12)                 [TRAINABLE]
+  → edge_proj: Linear(4, 6)                   [TRAINABLE]
+  → conv1: CGConv(12, dim=6) + ReLU           [FROZEN — USSF pretrained]
+  → lin_in: Linear(12, 128)                   [FROZEN]
+  → convs[0]: CGConv(128, dim=6) + ReLU       [FROZEN]
+  → convs[1]: CGConv(128, dim=6) + ReLU       [FROZEN]
+  → Per-node embeddings: [N, 128]
+
+Stage 1 (Receiver):
+  → ReceiverHead: Linear(128,64) + ReLU + Dropout(0.3) + Linear(64,1)
+  → masked_softmax over valid candidates → [N] probabilities
+
+Stage 2 (Shot):
+  → global_mean_pool → [B, 128]
+  → cat(graph_emb, corner_side) → [B, 129]
+  → ShotHead: Linear(129,32) + ReLU + Dropout(0.3) + Linear(32,1) → logit
+```
+
+**USSF backbone:** Trained on 20,863 counterattack graphs, AUC=0.693 on original task. Weights: `transfer_learning/weights/ussf_backbone_dense.pt`.
+
+### Training
+
+| Parameter | Stage 1 (Receiver) | Stage 2 (Shot) |
+|-----------|-------------------|-----------------|
+| Optimizer | Adam | Adam |
+| Learning rate | 1e-3 | 1e-3 |
+| Weight decay | 1e-3 | 1e-3 |
+| Max epochs | 100 | 100 |
+| Early stopping patience | 20 (val CE loss) | 20 (val BCE loss) |
+| Batch size | 8 | 8 |
+| Class weight | — | pos_weight=2.0 |
+
+Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three modes (oracle, predicted, unconditional). Receiver head frozen during Stage 2 training.
+
+**Seed:** 42 (single seed). `SEEDS = [42, 123, 456, 789, 1234]` defined but multi-seed averaging not implemented.
+
+### Per-Fold Combined LOMO Results (Pretrained, Frozen)
+
+**Shot AUC (oracle), 17 folds:**
+
+| Fold | Match | Source | n_test | AUC |
+|------|-------|--------|--------|-----|
+| 1 | 1886347 | SK | 8 | 1.000 |
+| 2 | 1899585 | SK | 7 | 0.600 |
+| 3 | 1925299 | SK | 4 | 1.000 |
+| 4 | 1953632 | SK | 8 | 0.875 |
+| 5 | 1996435 | SK | 14 | 0.825 |
+| 6 | 2006229 | SK | 4 | 1.000 |
+| 7 | 2011166 | SK | 12 | 0.600 |
+| 8 | 2013725 | SK | 13 | 0.533 |
+| 9 | 2015213 | SK | 4 | 1.000 |
+| 10 | 2017461 | SK | 12 | 0.700 |
+| 11 | J03WMX | DFL | 10 | 0.571 |
+| 12 | J03WN1 | DFL | 7 | 0.700 |
+| 13 | J03WOH | DFL | 6 | 0.750 |
+| 14 | J03WOY | DFL | 2 | 0.500 |
+| 15 | J03WPY | DFL | 11 | 0.900 |
+| 16 | J03WQQ | DFL | 15 | 0.364 |
+| 17 | J03WR9 | DFL | 6 | 0.500 |
+
+4 folds hit AUC=1.0 (all small SK matches, 4-8 corners). Fold 16 worst at 0.364.
+
+### Permutation Tests
+
+| Dataset | Metric | Real | Null mean±std | Null range | p-value |
+|---------|--------|------|---------------|------------|---------|
+| Combined (143, 17 folds) | Shot AUC (oracle) | 0.715 | 0.508±0.059 | [0.341, 0.633] | **0.010** |
+| Combined (143, 17 folds) | Receiver Top-3 | 0.458 | 0.300±0.086 | [0.058, 0.535] | **0.050** |
+| SkillCorner (86, 10 folds) | Shot AUC (oracle) | 0.751 | 0.502±0.087 | — | **0.020** |
+| SkillCorner (86, 10 folds) | Receiver Top-3 | 0.308 | 0.284±0.087 | — | 0.406 |
+
+100 permutations each. Both real and shuffled use identical LOMO CV (apples-to-apples). No multi-seed permutation stability testing.
+
+### Known Gaps
+
+1. **Baselines not on combined dataset:** MLP (0.802) and XGBoost (0.743) only evaluated on SkillCorner-only (86 corners, 10 folds). Combined LOMO (143 corners) only has GNN results.
+2. **No permutation tests on baselines:** MLP/XGBoost significance not formally tested.
+3. **Single seed:** Multi-seed averaging not implemented despite SEEDS list in config.
+4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
+
+### Running the Pipeline
+
+```bash
+cd /home/mseo/CornerTactics
+source FAANTRA/venv/bin/activate
+
+# Full evaluation (combined dataset, pretrained backbone)
+python -m corner_prediction.run_all --eval --combined
+
+# Ablations (SkillCorner-only)
+python -m corner_prediction.run_all --ablation position_only plus_velocity plus_detection full_features full_fc_edges
+
+# Baselines (SkillCorner-only)
+python -m corner_prediction.run_all --baselines
+
+# Permutation tests (combined dataset)
+python -m corner_prediction.run_all --permutation-only --combined
+```
 
 ## Transfer Learning Experiment (Complete)
 
