@@ -242,8 +242,9 @@ def run_baselines(args):
         print_baseline_comparison,
     )
 
-    dataset = load_bl_dataset()
+    dataset = load_bl_dataset(combined=args.combined)
     all_results = {}
+    prefix = "combined_" if args.combined else ""
 
     if args.baselines == "all":
         baselines_to_run = ["random", "heuristic", "xgboost", "mlp"]
@@ -251,10 +252,10 @@ def run_baselines(args):
         baselines_to_run = [args.baselines]
 
     runners = {
-        "random": lambda ds: run_random(ds, args.seed, args.output_dir),
-        "heuristic": lambda ds: run_heuristic(ds, args.seed, args.output_dir),
-        "xgboost": lambda ds: run_xgboost(ds, args.seed, args.output_dir),
-        "mlp": lambda ds: run_mlp(ds, args.seed, args.output_dir, no_gpu=args.no_gpu),
+        "random": lambda ds: run_random(ds, args.seed, args.output_dir, prefix=prefix),
+        "heuristic": lambda ds: run_heuristic(ds, args.seed, args.output_dir, prefix=prefix),
+        "xgboost": lambda ds: run_xgboost(ds, args.seed, args.output_dir, prefix=prefix),
+        "mlp": lambda ds: run_mlp(ds, args.seed, args.output_dir, no_gpu=args.no_gpu, prefix=prefix),
     }
 
     for name in baselines_to_run:

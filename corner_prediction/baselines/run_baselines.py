@@ -27,43 +27,52 @@ import torch
 from corner_prediction.config import DATA_DIR, RESULTS_DIR
 
 
-def load_dataset():
-    """Load the corner kick dataset."""
+def load_dataset(combined: bool = False):
+    """Load the corner kick dataset.
+
+    Args:
+        combined: If True, load the combined SkillCorner + DFL dataset.
+    """
     from corner_prediction.data.dataset import CornerKickDataset
 
-    dataset = CornerKickDataset(root=str(DATA_DIR), edge_type="knn", k=6)
-    print(f"Loaded {len(dataset)} graphs from {DATA_DIR}")
+    records_file = "combined_corners.pkl" if combined else "extracted_corners.pkl"
+    dataset = CornerKickDataset(
+        root=str(DATA_DIR), records_file=records_file, edge_type="knn", k=6,
+    )
+    label = "combined (SC + DFL)" if combined else "SkillCorner"
+    print(f"Loaded {len(dataset)} graphs ({label}) from {DATA_DIR}")
     return dataset
 
 
-def run_random(dataset, seed: int, output_dir: str) -> Dict:
+def run_random(dataset, seed: int, output_dir: str, prefix: str = "") -> Dict:
     from corner_prediction.baselines.random_baseline import random_baseline_lomo
     from corner_prediction.training.evaluate import save_results
 
     results = random_baseline_lomo(dataset, seed=seed, verbose=True)
-    save_results(results, name="baseline_random", output_dir=output_dir)
+    save_results(results, name=f"{prefix}baseline_random", output_dir=output_dir)
     return results
 
 
-def run_heuristic(dataset, seed: int, output_dir: str) -> Dict:
+def run_heuristic(dataset, seed: int, output_dir: str, prefix: str = "") -> Dict:
     from corner_prediction.baselines.heuristic_receiver import heuristic_receiver_lomo
     from corner_prediction.training.evaluate import save_results
 
     results = heuristic_receiver_lomo(dataset, seed=seed, verbose=True)
-    save_results(results, name="baseline_heuristic", output_dir=output_dir)
+    save_results(results, name=f"{prefix}baseline_heuristic", output_dir=output_dir)
     return results
 
 
-def run_xgboost(dataset, seed: int, output_dir: str) -> Dict:
+def run_xgboost(dataset, seed: int, output_dir: str, prefix: str = "") -> Dict:
     from corner_prediction.baselines.xgboost_baseline import xgboost_baseline_lomo
     from corner_prediction.training.evaluate import save_results
 
     results = xgboost_baseline_lomo(dataset, seed=seed, verbose=True)
-    save_results(results, name="baseline_xgboost", output_dir=output_dir)
+    save_results(results, name=f"{prefix}baseline_xgboost", output_dir=output_dir)
     return results
 
 
-def run_mlp(dataset, seed: int, output_dir: str, no_gpu: bool = False) -> Dict:
+def run_mlp(dataset, seed: int, output_dir: str, no_gpu: bool = False,
+            prefix: str = "") -> Dict:
     from corner_prediction.baselines.mlp_baseline import mlp_baseline_lomo
     from corner_prediction.training.evaluate import save_results
 
@@ -72,7 +81,7 @@ def run_mlp(dataset, seed: int, output_dir: str, no_gpu: bool = False) -> Dict:
     print(f"MLP device: {device}")
 
     results = mlp_baseline_lomo(dataset, seed=seed, device=device, verbose=True)
-    save_results(results, name="baseline_mlp", output_dir=output_dir)
+    save_results(results, name=f"{prefix}baseline_mlp", output_dir=output_dir)
     return results
 
 
@@ -124,6 +133,8 @@ def main():
         choices=["random", "heuristic", "xgboost", "mlp", "all"],
         help="Which baseline to run (default: all)",
     )
+    parser.add_argument("--combined", action="store_true",
+                        help="Use combined SkillCorner + DFL dataset")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-gpu", action="store_true")
     parser.add_argument("--output-dir", type=str, default=str(RESULTS_DIR))
@@ -142,8 +153,9 @@ def main():
     print(f"Seed: {args.seed}")
     print(f"Output: {args.output_dir}")
 
-    dataset = load_dataset()
+    dataset = load_dataset(combined=args.combined)
     all_results = {}
+    prefix = "combined_" if args.combined else ""
 
     if args.baseline == "all":
         baselines_to_run = ["random", "heuristic", "xgboost", "mlp"]
@@ -158,10 +170,11 @@ def main():
         if name == "mlp":
             all_results[name] = run_mlp(
                 dataset, args.seed, args.output_dir, no_gpu=args.no_gpu,
+                prefix=prefix,
             )
         else:
             all_results[name] = BASELINE_RUNNERS[name](
-                dataset, args.seed, args.output_dir,
+                dataset, args.seed, args.output_dir, prefix=prefix,
             )
 
     if len(all_results) > 1:
