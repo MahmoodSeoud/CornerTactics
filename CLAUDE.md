@@ -61,7 +61,9 @@ All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters**
 | GNN (pretrained) | graph (13 node, 4 edge feat) | 0.751 ± 0.213 |
 | Random baseline | — | 0.500 |
 
-**Note:** Baselines have no permutation tests. MLP and XGBoost only run on SkillCorner-only (86 corners). Combined LOMO (143 corners) only has GNN results.
+**Baseline permutation tests (SkillCorner-only, 100 perms):** MLP p=0.010 (real=0.804), XGBoost p=0.010 (real=0.743). Both statistically significant.
+
+**Note:** MLP and XGBoost baselines run on SkillCorner-only (86 corners) and combined (143 corners). Combined LOMO has GNN, MLP, and XGBoost results but permutation tests only on SkillCorner-only.
 
 ### Earlier Approaches
 
@@ -319,10 +321,13 @@ Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three mod
 
 ### Known Gaps
 
-1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost now evaluated on combined (143 corners, 17 folds). GNN has highest mean AUC (0.730 vs XGBoost 0.695 vs MLP 0.665), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
-2. **No permutation tests on baselines:** MLP/XGBoost significance not formally tested on either dataset.
+1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost evaluated on combined (143 corners, 17 folds). GNN has highest mean AUC (0.730 vs XGBoost 0.695 vs MLP 0.665), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
+2. **Baseline permutation tests on combined dataset:** MLP/XGBoost permutation tests only run on SkillCorner-only (both p=0.010). No combined-dataset permutation tests for baselines.
 3. **Single seed:** Multi-seed averaging not implemented despite SEEDS list in config.
 4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
+5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.730. Both use seed=42 and `lomo_cv` computes all three modes — the 0.015 gap is training non-determinism across separate runs. The p=0.010 is computed against 0.715; 0.730 would be equally or more significant.
+6. **Duplicate ablation files:** Three ablation configs (position_only, plus_velocity, full_fc_edges) have two result files each from separate runs on Feb 15. Canonical values are in `ablation_all_20260215_141055.pkl` (the batch run). Differences are small (0.003–0.042 shot AUC) from training non-determinism.
+7. **No loss curves saved:** Training loops compute per-epoch losses for early stopping but discard them. No train/val loss history persisted for MLP, GNN, or any model.
 
 ### Running the Pipeline
 
