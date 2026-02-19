@@ -265,6 +265,52 @@ def run_baselines(args):
         print_baseline_comparison(all_results)
 
 
+def run_baseline_permutation(args):
+    """Run permutation tests on baseline models."""
+    from corner_prediction.baselines.permutation_test_baselines import (
+        permutation_test_baseline,
+    )
+    from corner_prediction.training.evaluate import save_results
+
+    dataset = load_dataset(combined=args.combined)
+    prefix = "combined_" if args.combined else ""
+
+    targets = (
+        ["mlp", "xgboost"] if args.baseline_permutation == "both"
+        else [args.baseline_permutation]
+    )
+
+    device = torch.device("cpu" if args.no_gpu else
+                          ("cuda" if torch.cuda.is_available() else "cpu"))
+
+    for name in targets:
+        if name == "mlp":
+            from corner_prediction.baselines.mlp_baseline import mlp_baseline_lomo
+            result = permutation_test_baseline(
+                dataset,
+                baseline_fn=mlp_baseline_lomo,
+                baseline_name="mlp",
+                n_permutations=args.n_permutations,
+                seed=args.seed,
+                verbose=True,
+                device=device,
+            )
+        elif name == "xgboost":
+            from corner_prediction.baselines.xgboost_baseline import (
+                xgboost_baseline_lomo,
+            )
+            result = permutation_test_baseline(
+                dataset,
+                baseline_fn=xgboost_baseline_lomo,
+                baseline_name="xgboost",
+                n_permutations=args.n_permutations,
+                seed=args.seed,
+                verbose=True,
+            )
+
+        save_results(result, name=f"{prefix}perm_{name}", output_dir=args.output_dir)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Corner kick prediction: training & evaluation pipeline",
@@ -284,6 +330,9 @@ def main():
     group.add_argument("--baselines", type=str, default=None,
                        choices=["random", "heuristic", "xgboost", "mlp", "all"],
                        help="Run baseline comparisons")
+    group.add_argument("--baseline-permutation", type=str, default=None,
+                       choices=["mlp", "xgboost", "both"],
+                       help="Run permutation tests on baseline models")
     group.add_argument("--visualize", action="store_true",
                        help="Generate all thesis-ready figures from results")
 
@@ -336,7 +385,8 @@ def main():
     # Determine which pipeline step to run
     has_explicit_mode = (
         args.eval_only or args.permutation_only or args.ablation
-        or args.all_ablations or args.baselines or args.visualize
+        or args.all_ablations or args.baselines or args.baseline_permutation
+        or args.visualize
     )
 
     if args.permutation_only:
@@ -345,6 +395,8 @@ def main():
         run_ablation(args)
     elif args.baselines:
         run_baselines(args)
+    elif args.baseline_permutation:
+        run_baseline_permutation(args)
     elif args.visualize:
         from corner_prediction.visualization.generate_all import generate_all
         results_dir = Path(args.output_dir)
