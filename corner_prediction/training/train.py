@@ -421,16 +421,24 @@ def train_fold(
     shot_pos_weight: float = 2.0,
     batch_size: int = 8,
     receiver_mode: str = "oracle",
-) -> TwoStageModel:
+) -> Tuple[TwoStageModel, Dict]:
     """Train both stages sequentially on one fold.
 
     Phase 1: Train receiver head with early stopping on val receiver loss.
     Phase 2: Freeze receiver head, train shot head with early stopping on val shot loss.
 
-    Returns the trained model (best checkpoint).
+    Returns:
+        Tuple of (trained model, loss_history dict).
+        loss_history has keys 'receiver' and 'shot', each a dict with
+        'train' and 'val' lists of per-epoch loss values.
     """
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+
+    loss_history: Dict[str, Dict[str, List[float]]] = {
+        "receiver": {"train": [], "val": []},
+        "shot": {"train": [], "val": []},
+    }
 
     # ---- Phase 1: Receiver ----
     # In pretrained mode: train projection layers + receiver head (backbone frozen)
@@ -471,6 +479,9 @@ def train_fold(
                     n_val += 1
 
             val_loss /= max(n_val, 1)
+
+            loss_history["receiver"]["train"].append(train_loss)
+            loss_history["receiver"]["val"].append(val_loss)
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -535,6 +546,9 @@ def train_fold(
 
             val_loss /= max(n_val, 1)
 
+            loss_history["shot"]["train"].append(train_loss)
+            loss_history["shot"]["val"].append(val_loss)
+
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_state = copy.deepcopy(model.state_dict())
@@ -552,4 +566,4 @@ def train_fold(
     for param in model.receiver_head.parameters():
         param.requires_grad = True
 
-    return model
+    return model, loss_history

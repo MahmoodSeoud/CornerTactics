@@ -338,7 +338,7 @@ class TestTrainFold:
 
         model = build_model(backbone_mode="scratch", freeze=False).to(device)
 
-        trained = train_fold(
+        trained, loss_history = train_fold(
             model, train_data, val_data, device,
             receiver_epochs=3,
             shot_epochs=3,
@@ -401,6 +401,41 @@ class TestTrainFold:
                 backbone_changed = True
                 break
         assert backbone_changed, "Backbone params did not change in scratch mode"
+
+    def test_loss_history_returned(self, device):
+        """Verify train_fold returns per-epoch loss history for both stages."""
+        train_data = _make_dataset(n_graphs=12, n_matches=3)
+        val_data = _make_dataset(n_graphs=4, n_matches=1)
+
+        model = build_model(backbone_mode="scratch", freeze=False).to(device)
+
+        _, loss_history = train_fold(
+            model, train_data, val_data, device,
+            receiver_epochs=5,
+            shot_epochs=5,
+            receiver_patience=10,
+            shot_patience=10,
+            batch_size=4,
+        )
+
+        assert "receiver" in loss_history
+        assert "shot" in loss_history
+
+        # Both stages should have train and val lists
+        for stage in ("receiver", "shot"):
+            assert "train" in loss_history[stage]
+            assert "val" in loss_history[stage]
+            assert len(loss_history[stage]["train"]) > 0
+            assert len(loss_history[stage]["val"]) > 0
+            assert len(loss_history[stage]["train"]) == len(loss_history[stage]["val"])
+
+            # All values should be finite floats
+            for v in loss_history[stage]["train"]:
+                assert isinstance(v, float)
+                assert not np.isnan(v)
+            for v in loss_history[stage]["val"]:
+                assert isinstance(v, float)
+                assert not np.isnan(v)
 
 
 # ---------------------------------------------------------------------------

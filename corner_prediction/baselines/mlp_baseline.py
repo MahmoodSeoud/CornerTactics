@@ -125,9 +125,13 @@ def _mlp_fold(
     best_val_loss = float("inf")
     best_state = copy.deepcopy(model.state_dict())
     patience_counter = 0
+    train_losses: list = []
+    val_losses: list = []
 
     for epoch in range(1, epochs + 1):
         model.train()
+        epoch_loss = 0.0
+        n_batches = 0
         for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
             optimizer.zero_grad()
@@ -137,6 +141,10 @@ def _mlp_fold(
             )
             loss.backward()
             optimizer.step()
+            epoch_loss += loss.item()
+            n_batches += 1
+
+        train_losses.append(epoch_loss / max(n_batches, 1))
 
         # Validate
         model.eval()
@@ -145,6 +153,8 @@ def _mlp_fold(
             val_loss = F.binary_cross_entropy_with_logits(
                 val_logits, y_val.to(device), pos_weight=pw,
             ).item()
+
+        val_losses.append(val_loss)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -195,6 +205,7 @@ def _mlp_fold(
         "labels": y_test_np.tolist(),
         "n_samples": n_samples,
         "n_positive": int(y_test_np.sum()),
+        "loss_history": {"train": train_losses, "val": val_losses},
     }
 
 
@@ -252,6 +263,10 @@ def mlp_baseline_lomo(
             "shot_oracle": shot,
             "shot_predicted": shot,
             "shot_unconditional": shot,
+            "loss_history": {
+                "receiver": {"train": [], "val": []},
+                "shot": shot.get("loss_history", {"train": [], "val": []}),
+            },
         }
         fold_results.append(fold_result)
 

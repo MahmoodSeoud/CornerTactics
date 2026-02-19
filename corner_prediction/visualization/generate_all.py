@@ -171,6 +171,14 @@ def generate_all(
     if path:
         generated.append(path)
 
+    # Figure 7: Loss curves
+    print("\n--- Figure 7: Loss Curves ---")
+    from corner_prediction.visualization.plot_loss_curves import generate as gen_loss
+    mlp_results = baselines.get("mlp") if baselines else None
+    loss_paths = gen_loss(output_dir, lomo_results=lomo, mlp_results=mlp_results,
+                          show=show)
+    generated.extend(loss_paths)
+
     # Summary
     print(f"\n{'=' * 60}")
     print(f"Generated {len(generated)} figures:")

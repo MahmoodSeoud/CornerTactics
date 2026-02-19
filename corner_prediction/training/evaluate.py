@@ -178,7 +178,7 @@ def lomo_cv(
         ).to(device)
 
         # Train both stages
-        model = train_fold(
+        model, loss_history = train_fold(
             model, inner_train, val_data, device,
             receiver_lr=receiver_lr,
             receiver_epochs=receiver_epochs,
@@ -210,6 +210,7 @@ def lomo_cv(
             "shot_oracle": shot_oracle,
             "shot_predicted": shot_predicted,
             "shot_unconditional": shot_unconditional,
+            "loss_history": loss_history,
         }
         fold_results.append(fold_result)
 
