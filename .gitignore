@@ -94,7 +94,6 @@ output/
 outputs/
 tracking_extraction/output/
 # results/ - now tracked for reproducibility
-results/corner_prediction/figures/
 exports/
 clips/
 runs/
