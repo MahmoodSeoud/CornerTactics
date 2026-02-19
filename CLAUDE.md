@@ -326,8 +326,8 @@ Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three mod
 3. **Single seed:** Multi-seed averaging not implemented despite SEEDS list in config.
 4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
 5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.730. Both use seed=42 and `lomo_cv` computes all three modes — the 0.015 gap is training non-determinism across separate runs. The p=0.010 is computed against 0.715; 0.730 would be equally or more significant.
-6. **Duplicate ablation files:** Three ablation configs (position_only, plus_velocity, full_fc_edges) have two result files each from separate runs on Feb 15. Canonical values are in `ablation_all_20260215_141055.pkl` (the batch run). Differences are small (0.003–0.042 shot AUC) from training non-determinism.
-7. **No loss curves saved:** Training loops compute per-epoch losses for early stopping but discard them. No train/val loss history persisted for MLP, GNN, or any model.
+6. ~~**Duplicate ablation files:**~~ **RESOLVED.** Deleted 3 duplicate individual-run ablation files. Canonical batch run (`ablation_all_20260215_141055.pkl`) retained.
+7. ~~**No loss curves saved:**~~ **RESOLVED.** `train_fold()` and `_mlp_fold()` now return per-epoch train/val loss histories. `lomo_cv` persists them in result pickles. Visualization via `plot_loss_curves.py` (fig7). Result pickles from before Feb 19 lack `loss_history` — rerun needed (SLURM job 52797 submitted).
 
 ### Running the Pipeline
 
