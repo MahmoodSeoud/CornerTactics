@@ -328,6 +328,7 @@ Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three mod
 5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.730. Both use seed=42 and `lomo_cv` computes all three modes — the 0.015 gap is training non-determinism across separate runs. The p=0.010 is computed against 0.715; 0.730 would be equally or more significant.
 6. ~~**Duplicate ablation files:**~~ **RESOLVED.** Deleted 3 duplicate individual-run ablation files. Canonical batch run (`ablation_all_20260215_141055.pkl`) retained.
 7. ~~**No loss curves saved:**~~ **RESOLVED.** `train_fold()` and `_mlp_fold()` now return per-epoch train/val loss histories. `lomo_cv` persists them in result pickles. Visualization via `plot_loss_curves.py` (fig7). Result pickles from before Feb 19 lack `loss_history` — rerun needed (SLURM job 52797 submitted).
+8. ~~**Loss curve y-axis unreadable:**~~ **RESOLVED.** Linear head initialization caused fold 7 epoch-1 shot loss spike to 21.9, blowing y-axis to 0-20. Fixed with 5th-95th percentile y-axis clipping in `plot_loss_curves.py`. Clipped folds annotated on figure. Investigation confirmed: shot losses are normal BCE range (0.4-0.8 train, 0.5-1.6 val), class balance is 31.5% (not imbalanced), "near-zero" appearance was purely a visual artifact of the outlier axis scaling.
 
 ### Running the Pipeline
 
