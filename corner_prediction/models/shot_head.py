@@ -29,16 +29,20 @@ class ShotHead(nn.Module):
         graph_feature_dim: int = 1,
         hidden_dim: int = 32,
         dropout: float = 0.3,
+        linear_only: bool = False,
     ):
         super().__init__()
         self.graph_feature_dim = graph_feature_dim
         total_input = input_dim + graph_feature_dim
-        self.mlp = nn.Sequential(
-            nn.Linear(total_input, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
+        if linear_only:
+            self.mlp = nn.Linear(total_input, 1)
+        else:
+            self.mlp = nn.Sequential(
+                nn.Linear(total_input, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, 1),
+            )
 
     def forward(
         self,

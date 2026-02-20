@@ -117,6 +117,7 @@ def lomo_cv(
     shot_weight_decay: float = SHOT_WEIGHT_DECAY,
     shot_pos_weight: float = SHOT_POS_WEIGHT,
     batch_size: int = BATCH_SIZE,
+    linear_heads: bool = False,
 ) -> Dict[str, Any]:
     """Run 10-fold Leave-One-Match-Out cross-validation.
 
@@ -175,6 +176,7 @@ def lomo_cv(
             receiver_dropout=RECEIVER_DROPOUT,
             shot_hidden=SHOT_HIDDEN,
             shot_dropout=SHOT_DROPOUT,
+            linear_heads=linear_heads,
         ).to(device)
 
         # Train both stages
@@ -237,6 +239,7 @@ def lomo_cv(
             "freeze": freeze,
             "seed": seed,
             "n_folds": len(fold_results),
+            "linear_heads": linear_heads,
         },
         "per_fold": fold_results,
         "aggregated": {

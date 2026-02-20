@@ -66,6 +66,7 @@ SHOT_POS_WEIGHT = 2.0  # upweight shots (33.7% minority)
 
 BATCH_SIZE = 8
 SEEDS = [42, 123, 456, 789, 1234]
+LINEAR_HEADS = False  # Use linear probes instead of MLP heads (reduces overfitting)
 
 # ---------------------------------------------------------------------------
 # Permutation Test

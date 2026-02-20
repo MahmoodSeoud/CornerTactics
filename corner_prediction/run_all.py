@@ -39,6 +39,7 @@ from corner_prediction.config import (
     BATCH_SIZE,
     DATA_DIR,
     DFL_DATA_DIR,
+    LINEAR_HEADS,
     N_PERMUTATIONS,
     PRETRAINED_PATH,
     RESULTS_DIR,
@@ -135,10 +136,12 @@ def run_eval(args):
         seed=args.seed,
         device=device,
         verbose=True,
+        linear_heads=args.linear_heads,
     )
 
     prefix = "combined_" if args.combined else ""
-    save_results(results, name=f"{prefix}lomo_{args.mode}", output_dir=args.output_dir)
+    suffix = "_linear" if args.linear_heads else ""
+    save_results(results, name=f"{prefix}lomo_{args.mode}{suffix}", output_dir=args.output_dir)
     return results
 
 
@@ -165,6 +168,7 @@ def run_permutation(args):
         pretrained_path=str(pretrained_path) if pretrained_path else None,
         freeze=(args.mode == "pretrained"),
         device=device,
+        linear_heads=args.linear_heads,
     )
 
     prefix = "combined_" if args.combined else ""
@@ -213,6 +217,7 @@ def run_ablation(args):
         pretrained_path=str(pretrained_path) if pretrained_path else None,
         freeze=(args.mode == "pretrained"),
         device=device,
+        linear_heads=args.linear_heads,
     )
 
     prefix = "combined_" if args.combined else ""
@@ -255,7 +260,8 @@ def run_baselines(args):
         "random": lambda ds: run_random(ds, args.seed, args.output_dir, prefix=prefix),
         "heuristic": lambda ds: run_heuristic(ds, args.seed, args.output_dir, prefix=prefix),
         "xgboost": lambda ds: run_xgboost(ds, args.seed, args.output_dir, prefix=prefix),
-        "mlp": lambda ds: run_mlp(ds, args.seed, args.output_dir, no_gpu=args.no_gpu, prefix=prefix),
+        "mlp": lambda ds: run_mlp(ds, args.seed, args.output_dir, no_gpu=args.no_gpu,
+                                  prefix=prefix, linear_only=args.linear_mlp),
     }
 
     for name in baselines_to_run:
@@ -346,6 +352,10 @@ def main():
     parser.add_argument("--mode", choices=["pretrained", "scratch"],
                         default="pretrained",
                         help="Backbone mode (default: pretrained)")
+    parser.add_argument("--linear-heads", action="store_true", default=LINEAR_HEADS,
+                        help="Use linear probes instead of MLP heads (reduces overfitting)")
+    parser.add_argument("--linear-mlp", action="store_true",
+                        help="Use linear probe for MLP baseline (reduces overfitting)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-gpu", action="store_true")
 
@@ -370,6 +380,7 @@ def main():
     print(f"{'=' * 60}")
     print(f"Timestamp: {datetime.now()}")
     print(f"Mode: {args.mode}")
+    print(f"Linear heads: {args.linear_heads}")
     print(f"Dataset: {'combined (SC + DFL)' if args.combined else 'SkillCorner only'}")
     print(f"Seed: {args.seed}")
     print(f"PyTorch: {torch.__version__}")

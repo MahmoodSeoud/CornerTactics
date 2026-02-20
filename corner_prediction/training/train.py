@@ -42,6 +42,7 @@ def build_model(
     shot_hidden: int = 32,
     shot_dropout: float = 0.3,
     graph_feature_dim: int = 1,
+    linear_heads: bool = False,
 ) -> TwoStageModel:
     """Construct the full two-stage model.
 
@@ -70,6 +71,7 @@ def build_model(
         input_dim=backbone.output_dim,
         hidden_dim=receiver_hidden,
         dropout=receiver_dropout,
+        linear_only=linear_heads,
     )
 
     shot_head = ShotHead(
@@ -77,6 +79,7 @@ def build_model(
         graph_feature_dim=graph_feature_dim,
         hidden_dim=shot_hidden,
         dropout=shot_dropout,
+        linear_only=linear_heads,
     )
 
     return TwoStageModel(backbone, receiver_head, shot_head)

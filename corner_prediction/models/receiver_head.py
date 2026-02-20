@@ -23,14 +23,18 @@ class ReceiverHead(nn.Module):
         dropout: Dropout rate.
     """
 
-    def __init__(self, input_dim: int = 128, hidden_dim: int = 64, dropout: float = 0.3):
+    def __init__(self, input_dim: int = 128, hidden_dim: int = 64, dropout: float = 0.3,
+                 linear_only: bool = False):
         super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
-        )
+        if linear_only:
+            self.mlp = nn.Linear(input_dim, 1)
+        else:
+            self.mlp = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, 1),
+            )
 
     def forward(self, node_embeddings: torch.Tensor) -> torch.Tensor:
         """Compute per-node logits.

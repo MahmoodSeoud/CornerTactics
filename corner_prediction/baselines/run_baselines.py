@@ -72,7 +72,7 @@ def run_xgboost(dataset, seed: int, output_dir: str, prefix: str = "") -> Dict:
 
 
 def run_mlp(dataset, seed: int, output_dir: str, no_gpu: bool = False,
-            prefix: str = "") -> Dict:
+            prefix: str = "", linear_only: bool = False) -> Dict:
     from corner_prediction.baselines.mlp_baseline import mlp_baseline_lomo
     from corner_prediction.training.evaluate import save_results
 
@@ -80,8 +80,10 @@ def run_mlp(dataset, seed: int, output_dir: str, no_gpu: bool = False,
                           ("cuda" if torch.cuda.is_available() else "cpu"))
     print(f"MLP device: {device}")
 
-    results = mlp_baseline_lomo(dataset, seed=seed, device=device, verbose=True)
-    save_results(results, name=f"{prefix}baseline_mlp", output_dir=output_dir)
+    results = mlp_baseline_lomo(dataset, seed=seed, device=device, verbose=True,
+                                linear_only=linear_only)
+    suffix = "_linear" if linear_only else ""
+    save_results(results, name=f"{prefix}baseline_mlp{suffix}", output_dir=output_dir)
     return results
 
 

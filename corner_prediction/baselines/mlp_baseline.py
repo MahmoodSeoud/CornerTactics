@@ -66,6 +66,20 @@ class ShotMLP(nn.Module):
         return self.net(x)
 
 
+class ShotLinear(nn.Module):
+    """Linear probe for shot prediction from flattened player features.
+
+    Single linear layer (287 params) to combat overfitting on small datasets.
+    """
+
+    def __init__(self, input_dim: int = FLAT_DIM):
+        super().__init__()
+        self.net = nn.Linear(input_dim, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
 def _flatten_graph(graph) -> np.ndarray:
     """Flatten a graph's node features into a single vector.
 
@@ -106,6 +120,7 @@ def _mlp_fold(
     weight_decay: float = SHOT_WEIGHT_DECAY,
     pos_weight: float = SHOT_POS_WEIGHT,
     batch_size: int = BATCH_SIZE,
+    linear_only: bool = False,
 ) -> Dict:
     """Train and evaluate MLP on one fold."""
     torch.manual_seed(seed)
@@ -118,7 +133,10 @@ def _mlp_fold(
     train_ds = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
-    model = ShotMLP(input_dim=FLAT_DIM, hidden_dim=hidden_dim, dropout=dropout).to(device)
+    if linear_only:
+        model = ShotLinear(input_dim=FLAT_DIM).to(device)
+    else:
+        model = ShotMLP(input_dim=FLAT_DIM, hidden_dim=hidden_dim, dropout=dropout).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     pw = torch.tensor([pos_weight], device=device)
 
@@ -214,6 +232,7 @@ def mlp_baseline_lomo(
     seed: int = 42,
     device: Optional[torch.device] = None,
     verbose: bool = True,
+    linear_only: bool = False,
 ) -> Dict[str, Any]:
     """Run MLP baseline with LOMO cross-validation.
 
@@ -251,7 +270,8 @@ def mlp_baseline_lomo(
             val_data = train_data[:n_val]
             inner_train = train_data[n_val:]
 
-        shot = _mlp_fold(inner_train, val_data, test_data, seed + fold_idx, device)
+        shot = _mlp_fold(inner_train, val_data, test_data, seed + fold_idx, device,
+                         linear_only=linear_only)
 
         fold_result = {
             "fold_idx": fold_idx,
@@ -285,10 +305,11 @@ def mlp_baseline_lomo(
 
     results = {
         "config": {
-            "baseline": "mlp",
+            "baseline": "mlp_linear" if linear_only else "mlp",
             "seed": seed,
             "input_dim": FLAT_DIM,
-            "hidden_dim": 64,
+            "hidden_dim": 0 if linear_only else 64,
+            "linear_only": linear_only,
             "n_folds": len(fold_results),
         },
         "per_fold": fold_results,
@@ -308,10 +329,14 @@ def mlp_baseline_lomo(
 
 def _print_mlp_results(results: Dict) -> None:
     s = results["aggregated"]["shot_oracle"]
+    is_linear = results.get("config", {}).get("linear_only", False)
+    label = "Linear Baseline" if is_linear else "MLP Baseline"
+    arch = (f"Linear({FLAT_DIM}, 1)" if is_linear
+            else f"Linear({FLAT_DIM}, 64) → ReLU → Dropout → Linear(64, 1)")
     print(f"\n{'=' * 60}")
-    print("MLP Baseline Results (Shot Prediction Only)")
+    print(f"{label} Results (Shot Prediction Only)")
     print(f"{'=' * 60}")
-    print(f"Architecture: Linear({FLAT_DIM}, 64) → ReLU → Dropout → Linear(64, 1)")
+    print(f"Architecture: {arch}")
     print(f"Shot AUC: {s['auc_mean']:.3f} +/- {s['auc_std']:.3f}")
     print(f"Shot F1:  {s['f1_mean']:.3f} +/- {s['f1_std']:.3f}")
     print(f"{'=' * 60}")

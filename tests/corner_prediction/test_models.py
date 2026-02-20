@@ -237,6 +237,35 @@ class TestReceiverHead:
         loss = receiver_loss(logits, receiver_label, receiver_mask, batch, has_label)
         assert loss.item() == 0.0
 
+    def test_linear_only_output_shape(self):
+        head = ReceiverHead(input_dim=128, linear_only=True)
+        emb = torch.randn(22, 128)
+        logits = head(emb)
+        assert logits.shape == (22,)
+
+    def test_linear_only_fewer_params(self):
+        mlp_head = ReceiverHead(input_dim=128, linear_only=False)
+        linear_head = ReceiverHead(input_dim=128, linear_only=True)
+        mlp_params = sum(p.numel() for p in mlp_head.parameters())
+        linear_params = sum(p.numel() for p in linear_head.parameters())
+        assert linear_params < mlp_params
+
+    def test_linear_only_gradient_flows(self):
+        head = ReceiverHead(input_dim=128, linear_only=True)
+        emb = torch.randn(22, 128, requires_grad=True)
+        logits = head(emb)
+
+        receiver_label = torch.zeros(22)
+        receiver_label[3] = 1.0
+        receiver_mask = torch.zeros(22, dtype=torch.bool)
+        receiver_mask[1:11] = True
+        batch = torch.zeros(22, dtype=torch.long)
+        has_label = torch.tensor([True])
+
+        loss = receiver_loss(logits, receiver_label, receiver_mask, batch, has_label)
+        loss.backward()
+        assert emb.grad is not None
+
 
 # ---------------------------------------------------------------------------
 # TestShotHead
@@ -268,6 +297,29 @@ class TestShotHead:
     def test_gradient_flows(self):
         head = ShotHead(input_dim=64, graph_feature_dim=1)
         graph_emb = torch.randn(2, 64, requires_grad=True)
+        graph_feat = torch.randn(2, 1)
+        out = head(graph_emb, graph_feat)
+        loss = out.sum()
+        loss.backward()
+        assert graph_emb.grad is not None
+
+    def test_linear_only_output_shape(self):
+        head = ShotHead(input_dim=128, graph_feature_dim=1, linear_only=True)
+        graph_emb = torch.randn(4, 128)
+        graph_feat = torch.randn(4, 1)
+        out = head(graph_emb, graph_feat)
+        assert out.shape == (4, 1)
+
+    def test_linear_only_fewer_params(self):
+        mlp_head = ShotHead(input_dim=128, graph_feature_dim=1, linear_only=False)
+        linear_head = ShotHead(input_dim=128, graph_feature_dim=1, linear_only=True)
+        mlp_params = sum(p.numel() for p in mlp_head.parameters())
+        linear_params = sum(p.numel() for p in linear_head.parameters())
+        assert linear_params < mlp_params
+
+    def test_linear_only_gradient_flows(self):
+        head = ShotHead(input_dim=128, graph_feature_dim=1, linear_only=True)
+        graph_emb = torch.randn(2, 128, requires_grad=True)
         graph_feat = torch.randn(2, 1)
         out = head(graph_emb, graph_feat)
         loss = out.sum()
@@ -408,6 +460,25 @@ class TestTwoStageModel:
 
         assert not torch.allclose(logit_uncond, logit_cond), \
             "Receiver conditioning should change shot prediction"
+
+    def test_linear_heads_end_to_end(self):
+        """TwoStageModel works with linear probe heads."""
+        backbone = CornerBackbone(mode="scratch")  # 64-dim output
+        receiver_head = ReceiverHead(input_dim=64, linear_only=True)
+        shot_head = ShotHead(input_dim=64, graph_feature_dim=1, linear_only=True)
+        model = TwoStageModel(backbone, receiver_head, shot_head)
+
+        batch = _make_batch()
+        result = model.forward_two_stage(
+            batch.x, batch.edge_index, batch.edge_attr,
+            batch.receiver_mask, batch.batch,
+        )
+
+        n_nodes = batch.x.shape[0]
+        n_graphs = batch.batch.max().item() + 1
+
+        assert result["receiver_probs"].shape == (n_nodes,)
+        assert result["shot_logit"].shape == (n_graphs, 1)
 
     def test_receiver_loss_mixed_batch(self):
         """Loss works with a batch where some graphs have labels and some don't."""
