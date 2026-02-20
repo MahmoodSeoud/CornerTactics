@@ -25,6 +25,24 @@ def _pad_to_length(curves: List[List[float]], length: int) -> np.ndarray:
     return padded
 
 
+def _compute_ylim(train_arr: np.ndarray, val_arr: np.ndarray) -> tuple:
+    """Compute y-axis limits using the 5th-95th percentile range.
+
+    Prevents outlier folds (e.g. first-epoch loss spikes from linear head
+    initialization) from blowing up the axis and hiding meaningful dynamics.
+    """
+    all_vals = np.concatenate([train_arr.ravel(), val_arr.ravel()])
+    all_vals = all_vals[~np.isnan(all_vals)]
+    if len(all_vals) == 0:
+        return (0, 1)
+    p5 = np.percentile(all_vals, 5)
+    p95 = np.percentile(all_vals, 95)
+    margin = (p95 - p5) * 0.15
+    ymin = max(0, p5 - margin)
+    ymax = p95 + margin
+    return (ymin, ymax)
+
+
 def plot_loss_curves(
     fold_results: List[Dict],
     model_name: str = "GNN",
@@ -86,6 +104,7 @@ def plot_loss_curves(
 
         train_arr = _pad_to_length(train_curves, max_len)
         val_arr = _pad_to_length(val_curves, max_len)
+        ymin, ymax = _compute_ylim(train_arr, val_arr)
         epochs = np.arange(1, max_len + 1)
 
         # Individual fold curves (light)
@@ -122,6 +141,18 @@ def plot_loss_curves(
         ax.legend(fontsize=9, loc="upper right", framealpha=0.9)
         ax.grid(alpha=0.3)
         ax.set_xlim(1, max_len)
+        ax.set_ylim(ymin, ymax)
+
+        # Annotate if any folds were clipped by the y-axis range
+        train_maxes = np.nanmax(train_arr, axis=1)
+        val_maxes = np.nanmax(val_arr, axis=1)
+        n_clipped = int(np.sum((train_maxes > ymax) | (val_maxes > ymax)))
+        if n_clipped > 0:
+            ax.annotate(
+                f"{n_clipped} fold(s) clipped",
+                xy=(0.02, 0.98), xycoords="axes fraction",
+                fontsize=8, color="gray", va="top",
+            )
 
         panel_idx += 1
 
