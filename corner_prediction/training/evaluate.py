@@ -7,6 +7,7 @@ under oracle, predicted, and unconditional receiver modes.
 
 import json
 import logging
+import os
 import pickle
 from datetime import datetime
 from pathlib import Path
@@ -132,6 +133,14 @@ def lomo_cv(
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # CUDA determinism: reduce run-to-run variance with same seed.
+    # warn_only=True avoids crashing if a non-deterministic CUDA kernel is
+    # called (e.g. scatter in CGConv) — logs a warning instead.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
     match_ids = get_match_ids(dataset)
     fold_results = []
