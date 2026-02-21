@@ -145,6 +145,78 @@ def run_eval(args):
     return results
 
 
+def run_multi_seed(args):
+    """Run LOMO evaluation across all seeds and print summary table."""
+    from corner_prediction.training.evaluate import lomo_cv, save_results
+
+    dataset = load_dataset(combined=args.combined)
+
+    pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
+    if pretrained_path and not pretrained_path.exists():
+        print(f"WARNING: Pretrained weights not found at {pretrained_path}")
+        args.mode = "scratch"
+        pretrained_path = None
+
+    device = torch.device("cpu" if args.no_gpu else
+                          ("cuda" if torch.cuda.is_available() else "cpu"))
+    print(f"Device: {device}")
+
+    prefix = "combined_" if args.combined else ""
+    suffix = "_linear" if args.linear_heads else ""
+    all_results = {}
+
+    for seed in SEEDS:
+        print(f"\n{'#' * 60}")
+        print(f"  SEED = {seed}")
+        print(f"{'#' * 60}")
+
+        results = lomo_cv(
+            dataset,
+            backbone_mode=args.mode,
+            pretrained_path=str(pretrained_path) if pretrained_path else None,
+            freeze=(args.mode == "pretrained"),
+            seed=seed,
+            device=device,
+            verbose=True,
+            linear_heads=args.linear_heads,
+        )
+
+        save_results(results, name=f"{prefix}lomo_{args.mode}{suffix}_seed{seed}",
+                     output_dir=args.output_dir)
+        all_results[seed] = results
+
+    # Print summary table
+    print(f"\n{'=' * 90}")
+    print("MULTI-SEED SUMMARY")
+    print(f"{'=' * 90}")
+    print(f"{'Seed':>6s} | {'Shot AUC (oracle)':>18s} | {'Shot AUC (pred)':>16s} | "
+          f"{'Shot AUC (uncond)':>18s} | {'Recv Top-3':>11s}")
+    print("-" * 90)
+
+    oracle_aucs, pred_aucs, uncond_aucs, recv_top3s = [], [], [], []
+    for seed in SEEDS:
+        r = all_results[seed]
+        a = r["aggregated"]
+        o = a["shot_oracle"]["auc_mean"]
+        p = a["shot_predicted"]["auc_mean"]
+        u = a["shot_unconditional"]["auc_mean"]
+        t3 = a["receiver"]["top3_mean"]
+        oracle_aucs.append(o)
+        pred_aucs.append(p)
+        uncond_aucs.append(u)
+        recv_top3s.append(t3)
+        print(f"{seed:6d} | {o:18.3f} | {p:16.3f} | {u:18.3f} | {t3:11.3f}")
+
+    print("-" * 90)
+    print(f"{'Mean':>6s} | {np.mean(oracle_aucs):18.3f} | {np.mean(pred_aucs):16.3f} | "
+          f"{np.mean(uncond_aucs):18.3f} | {np.mean(recv_top3s):11.3f}")
+    print(f"{'Std':>6s} | {np.std(oracle_aucs):18.3f} | {np.std(pred_aucs):16.3f} | "
+          f"{np.std(uncond_aucs):18.3f} | {np.std(recv_top3s):11.3f}")
+    print(f"{'=' * 90}")
+
+    return all_results
+
+
 def run_permutation(args):
     """Run permutation tests."""
     from corner_prediction.training.evaluate import save_results
@@ -339,6 +411,8 @@ def main():
     group.add_argument("--baseline-permutation", type=str, default=None,
                        choices=["mlp", "xgboost", "both"],
                        help="Run permutation tests on baseline models")
+    group.add_argument("--multi-seed", action="store_true",
+                       help="Run LOMO evaluation across all 5 seeds")
     group.add_argument("--visualize", action="store_true",
                        help="Generate all thesis-ready figures from results")
 
@@ -397,10 +471,12 @@ def main():
     has_explicit_mode = (
         args.eval_only or args.permutation_only or args.ablation
         or args.all_ablations or args.baselines or args.baseline_permutation
-        or args.visualize
+        or args.multi_seed or args.visualize
     )
 
-    if args.permutation_only:
+    if args.multi_seed:
+        run_multi_seed(args)
+    elif args.permutation_only:
         run_permutation(args)
     elif args.ablation or args.all_ablations:
         run_ablation(args)
