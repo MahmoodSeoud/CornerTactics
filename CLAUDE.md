@@ -13,7 +13,7 @@ CornerTactics predicts corner kick shot outcomes using a two-stage GNN pipeline 
 | FAANTRA (video) | Complete | mAP@∞ = 50% binary (random) |
 | StatsBomb (events) | Complete | AUC = 0.43 |
 | Transfer Learning | Complete | 0.86 AUC open-play; corners ~0.55 (n=57) |
-| **Two-Stage GNN** | **Complete** | **Shot AUC = 0.730 (combined), p=0.010** |
+| **Two-Stage GNN** | **Complete** | **Shot AUC = 0.633 ± 0.051 (5-seed mean), p=0.010** |
 
 ## Results Summary
 
@@ -21,17 +21,17 @@ All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters**
 
 ### Two-Stage GNN (Main Results)
 
-**Combined dataset (143 corners, 17 LOMO folds):**
+**Combined dataset (143 corners, 17 LOMO folds, 5 seeds [42,123,456,789,1234]):**
 
 | Metric | Value |
 |--------|-------|
-| Receiver Top-1 | 0.289 ± 0.226 (10 folds with labels) |
-| Receiver Top-3 | 0.458 ± 0.341 (10 folds with labels) |
-| Shot AUC (oracle) | 0.730 ± 0.202 (17 folds) |
-| Shot AUC (predicted) | 0.715 ± 0.193 (17 folds) |
-| Shot AUC (unconditional) | 0.730 ± 0.204 (17 folds) |
-| Permutation p-value (shot) | **0.010** (100 perms) |
-| Permutation p-value (receiver) | **0.050** (100 perms) |
+| Receiver Top-1 | 0.227 ± 0.057 (5-seed mean across 10 labeled folds) |
+| Receiver Top-3 | 0.418 ± 0.037 (5-seed mean across 10 labeled folds) |
+| Shot AUC (oracle) | 0.633 ± 0.051 (5-seed mean) |
+| Shot AUC (predicted) | 0.640 ± 0.054 (5-seed mean) |
+| Shot AUC (unconditional) | 0.633 ± 0.050 (5-seed mean) |
+| Permutation p-value (shot) | **0.010** (100 perms, seed 42) |
+| Permutation p-value (receiver) | **0.050** (100 perms, seed 42) |
 
 **SkillCorner-only (86 corners, 10 LOMO folds):**
 
@@ -61,9 +61,12 @@ All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters**
 | GNN (pretrained) | graph (13 node, 4 edge feat) | 0.751 ± 0.213 |
 | Random baseline | — | 0.500 |
 
-**Baseline permutation tests (SkillCorner-only, 100 perms):** MLP p=0.010 (real=0.804), XGBoost p=0.010 (real=0.743). Both statistically significant.
+**Baseline permutation tests (100 perms each):**
+- SkillCorner-only: MLP p=0.010 (real=0.804), XGBoost p=0.010 (real=0.743).
+- Combined: MLP p=0.040 (real=0.666), XGBoost p=0.020 (real=0.695).
+- All statistically significant (p<0.05).
 
-**Note:** MLP and XGBoost baselines run on SkillCorner-only (86 corners) and combined (143 corners). Combined LOMO has GNN, MLP, and XGBoost results but permutation tests only on SkillCorner-only.
+**Note:** MLP and XGBoost baselines run on both SkillCorner-only (86 corners) and combined (143 corners). Permutation tests completed for both datasets.
 
 ### Earlier Approaches
 
@@ -274,39 +277,43 @@ Stage 2 (Shot):
 | Learning rate | 1e-3 | 1e-3 |
 | Weight decay | 1e-3 | 1e-3 |
 | Max epochs | 100 | 100 |
-| Early stopping patience | 20 (val CE loss) | 20 (val BCE loss) |
+| Early stopping patience | 10 (val CE loss; falls back to train loss if val has no receiver labels) | 20 (val BCE loss) |
 | Batch size | 8 | 8 |
 | Class weight | — | pos_weight=2.0 |
 
 Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three modes (oracle, predicted, unconditional). Receiver head frozen during Stage 2 training.
 
-**Seed:** 42 (single seed). `SEEDS = [42, 123, 456, 789, 1234]` defined but multi-seed averaging not implemented.
+**Seed:** Multi-seed evaluation implemented via `--multi-seed` flag. `SEEDS = [42, 123, 456, 789, 1234]`. Results report mean ± std across seeds. Permutation tests use seed=42 only.
 
-### Per-Fold Combined LOMO Results (Pretrained, Frozen)
+**CUDA determinism:** `cudnn.deterministic=True`, `cudnn.benchmark=False`, `CUBLAS_WORKSPACE_CONFIG=:4096:8`, `torch.use_deterministic_algorithms(True, warn_only=True)` set in `lomo_cv()`.
 
-**Shot AUC (oracle), 17 folds:**
+**Early stopping fallback:** When the validation set has no receiver labels (DFL folds), Stage 1 early stopping uses training loss instead of validation loss to avoid premature stopping at epoch patience+1.
+
+### Per-Fold Combined LOMO Results (Pretrained, Frozen, Seed 42)
+
+**Shot AUC (oracle), 17 folds (post-fix: early stopping fallback + patience=10):**
 
 | Fold | Match | Source | n_test | AUC |
 |------|-------|--------|--------|-----|
-| 1 | 1886347 | SK | 8 | 1.000 |
+| 1 | 1886347 | SK | 8 | 0.917 |
 | 2 | 1899585 | SK | 7 | 0.600 |
 | 3 | 1925299 | SK | 4 | 1.000 |
 | 4 | 1953632 | SK | 8 | 0.875 |
-| 5 | 1996435 | SK | 14 | 0.825 |
-| 6 | 2006229 | SK | 4 | 1.000 |
-| 7 | 2011166 | SK | 12 | 0.600 |
+| 5 | 1996435 | SK | 14 | 0.550 |
+| 6 | 2006229 | SK | 4 | 0.667 |
+| 7 | 2011166 | SK | 12 | 0.686 |
 | 8 | 2013725 | SK | 13 | 0.533 |
 | 9 | 2015213 | SK | 4 | 1.000 |
-| 10 | 2017461 | SK | 12 | 0.700 |
-| 11 | J03WMX | DFL | 10 | 0.571 |
-| 12 | J03WN1 | DFL | 7 | 0.700 |
-| 13 | J03WOH | DFL | 6 | 0.750 |
+| 10 | 2017461 | SK | 12 | 0.650 |
+| 11 | J03WMX | DFL | 10 | 0.476 |
+| 12 | J03WN1 | DFL | 7 | 0.600 |
+| 13 | J03WOH | DFL | 6 | 0.875 |
 | 14 | J03WOY | DFL | 2 | 0.500 |
-| 15 | J03WPY | DFL | 11 | 0.900 |
-| 16 | J03WQQ | DFL | 15 | 0.364 |
+| 15 | J03WPY | DFL | 11 | 0.100 |
+| 16 | J03WQQ | DFL | 15 | 0.477 |
 | 17 | J03WR9 | DFL | 6 | 0.500 |
 
-4 folds hit AUC=1.0 (all small SK matches, 4-8 corners). Fold 16 worst at 0.364.
+Mean AUC = 0.647. Fold 15 worst at 0.100 (DFL, 11 corners). 2 folds hit AUC=1.0 (small SK matches).
 
 ### Permutation Tests
 
@@ -321,11 +328,11 @@ Stage 2 trains with **oracle receiver** conditioning. Evaluated in all three mod
 
 ### Known Gaps
 
-1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost evaluated on combined (143 corners, 17 folds). GNN has highest mean AUC (0.730 vs XGBoost 0.695 vs MLP 0.665), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
-2. **Baseline permutation tests on combined dataset:** MLP/XGBoost permutation tests only run on SkillCorner-only (both p=0.010). No combined-dataset permutation tests for baselines.
-3. **Single seed:** Multi-seed averaging not implemented despite SEEDS list in config.
+1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost evaluated on combined (143 corners, 17 folds). XGBoost has highest mean AUC (0.695 vs MLP 0.666 vs GNN 0.633), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
+2. ~~**Baseline permutation tests on combined dataset:**~~ **RESOLVED.** Combined-dataset permutation tests completed: MLP p=0.040 (real=0.666), XGBoost p=0.020 (real=0.695). Both significant.
+3. ~~**Single seed:**~~ **RESOLVED.** Multi-seed evaluation implemented via `--multi-seed` flag in `run_all.py`. 5 seeds [42,123,456,789,1234]: Shot AUC (oracle) = 0.633 ± 0.051. Per-seed results saved to individual pickle files.
 4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
-5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.730. Both use seed=42 and `lomo_cv` computes all three modes — the 0.015 gap is training non-determinism across separate runs. The p=0.010 is computed against 0.715; 0.730 would be equally or more significant.
+5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.647 (seed 42, post-fix). The 0.715 was from a pre-fix run. The p=0.010 is computed against 0.715; post-fix values may differ. CUDA determinism flags now reduce (but don't eliminate) run-to-run variance.
 6. ~~**Duplicate ablation files:**~~ **RESOLVED.** Deleted 3 duplicate individual-run ablation files. Canonical batch run (`ablation_all_20260215_141055.pkl`) retained.
 7. ~~**No loss curves saved:**~~ **RESOLVED.** `train_fold()` and `_mlp_fold()` now return per-epoch train/val loss histories. `lomo_cv` persists them in result pickles. Visualization via `plot_loss_curves.py` (fig7). Result pickles from before Feb 19 lack `loss_history` — rerun needed (SLURM job 52797 submitted).
 8. ~~**Loss curve y-axis unreadable:**~~ **RESOLVED.** Linear head initialization caused fold 7 epoch-1 shot loss spike to 21.9, blowing y-axis to 0-20. Fixed with 5th-95th percentile y-axis clipping in `plot_loss_curves.py`. Clipped folds annotated on figure. Investigation confirmed: shot losses are normal BCE range (0.4-0.8 train, 0.5-1.6 val), class balance is 31.5% (not imbalanced), "near-zero" appearance was purely a visual artifact of the outlier axis scaling.
@@ -339,14 +346,21 @@ source FAANTRA/venv/bin/activate
 # Full evaluation (combined dataset, pretrained backbone)
 python -m corner_prediction.run_all --eval --combined
 
+# Multi-seed evaluation (5 seeds, combined dataset)
+python -m corner_prediction.run_all --multi-seed --combined --mode pretrained
+
 # Ablations (SkillCorner-only)
 python -m corner_prediction.run_all --ablation position_only plus_velocity plus_detection full_features full_fc_edges
 
-# Baselines (SkillCorner-only)
+# Baselines (SkillCorner-only or combined)
 python -m corner_prediction.run_all --baselines
+python -m corner_prediction.run_all --baselines --combined
 
 # Permutation tests (combined dataset)
 python -m corner_prediction.run_all --permutation-only --combined
+
+# Baseline permutation tests (combined dataset)
+python -m corner_prediction.run_all --permutation-baselines --combined
 ```
 
 ## Transfer Learning Experiment (Complete)
