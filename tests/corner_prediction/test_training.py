@@ -402,6 +402,34 @@ class TestTrainFold:
                 break
         assert backbone_changed, "Backbone params did not change in scratch mode"
 
+    def test_no_receiver_labels_in_val_trains_longer(self, device):
+        """When val set has no receiver labels, receiver training should NOT
+        early-stop at patience+1. It should fall back to training loss."""
+        train_data = _make_dataset(n_graphs=12, n_matches=3)
+        # Val set with ALL has_receiver_label=False
+        val_data = [_make_graph(has_receiver=False, match_id="val") for _ in range(4)]
+
+        patience = 3
+        model = build_model(backbone_mode="scratch", freeze=False).to(device)
+
+        _, loss_history = train_fold(
+            model, train_data, val_data, device,
+            receiver_epochs=20,
+            shot_epochs=3,
+            receiver_patience=patience,
+            shot_patience=2,
+            batch_size=4,
+        )
+
+        recv_epochs = len(loss_history["receiver"]["train"])
+        # Without the fix, this would stop at patience+1 (= 4) because val
+        # loss is always 0.0. With the fix using train loss, it should train
+        # longer (train loss decreases then plateaus).
+        assert recv_epochs > patience + 1, (
+            f"Receiver trained only {recv_epochs} epochs (patience={patience}). "
+            f"Expected > {patience + 1} with train-loss early stopping."
+        )
+
     def test_loss_history_returned(self, device):
         """Verify train_fold returns per-epoch loss history for both stages."""
         train_data = _make_dataset(n_graphs=12, n_matches=3)

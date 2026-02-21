@@ -456,8 +456,20 @@ def train_fold(
             trainable_params.append(param)
 
     if trainable_params:
+        # Check if validation set has any receiver labels. If not, fall back
+        # to training loss for early stopping (prevents premature stopping at
+        # epoch patience+1 when val receiver loss is always 0.0).
+        val_has_receiver_labels = any(
+            getattr(g, "has_receiver_label", False) for g in val_data
+        )
+        if val_has_receiver_labels:
+            logger.info("Stage 1 early stopping: using VALIDATION receiver loss")
+        else:
+            logger.info("Stage 1 early stopping: using TRAINING receiver loss "
+                        "(no receiver labels in validation set)")
+
         optimizer = Adam(trainable_params, lr=receiver_lr, weight_decay=receiver_weight_decay)
-        best_val_loss = float("inf")
+        best_loss = float("inf")
         best_state = copy.deepcopy(model.state_dict())
         patience_counter = 0
 
@@ -486,8 +498,11 @@ def train_fold(
             loss_history["receiver"]["train"].append(train_loss)
             loss_history["receiver"]["val"].append(val_loss)
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            # Use training loss for early stopping when val has no receiver labels
+            es_loss = train_loss if not val_has_receiver_labels else val_loss
+
+            if es_loss < best_loss:
+                best_loss = es_loss
                 best_state = copy.deepcopy(model.state_dict())
                 patience_counter = 0
             else:
