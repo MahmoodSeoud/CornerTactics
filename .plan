@@ -1,0 +1,113 @@
+# Implementation Plan: Post-Fix USSF-Aligned Experiments
+
+## Overview
+
+Fix edge feature leakage in velocity ablation, then launch all remaining SLURM jobs.
+
+## Step 1: Fix edge masking in ablation infrastructure
+
+**File:** `corner_prediction/training/ablation.py`
+
+**Change:** Extend `apply_feature_mask()` to accept optional `edge_mask_indices` parameter.
+When provided, zero out those edge feature columns in `edge_attr`.
+
+```python
+def apply_feature_mask(dataset, active_features, n_features=13,
+                       edge_mask_indices=None):
+    # ... existing node masking ...
+    # NEW: if edge_mask_indices provided, zero those edge_attr columns
+    if edge_mask_indices:
+        for idx in edge_mask_indices:
+            g_copy.edge_attr[:, idx] = 0.0
+```
+
+**Test criterion:** When `edge_mask_indices=[1, 4, 5]` is passed, edge_attr columns 1, 4, 5 are all zeros in the output.
+
+## Step 2: Add edge_mask_indices to USSF ablation config
+
+**File:** `corner_prediction/config.py`
+
+**Change:** Add `edge_mask_indices` to `ussf_position_only`:
+
+```python
+"ussf_position_only": {
+    "description": "Position + spatial + team (no velocity features)",
+    "active_features": [0, 1, 6, 7, 8, 9, 10, 11],
+    "n_features": 12,
+    "edge_mask_indices": [1, 4, 5],  # speed_diff, vel_sin, vel_cos
+},
+```
+
+No change to `ussf_plus_velocity` (all features active, no masking needed).
+
+## Step 3: Pass edge_mask_indices through in run_single_ablation()
+
+**File:** `corner_prediction/training/ablation.py`
+
+**Change:** In `run_single_ablation()`, extract `edge_mask_indices` from config and pass to `apply_feature_mask()`:
+
+```python
+edge_mask = config.get("edge_mask_indices", None)
+abl_dataset = apply_feature_mask(abl_dataset, config["active_features"],
+                                  n_features=n_features,
+                                  edge_mask_indices=edge_mask)
+```
+
+## Step 4: Create SLURM script for multi-seed ablation + baseline perms
+
+**File:** `scripts/slurm/run_ussf_ablation_multiseed.sbatch`
+
+Array job with 3 tasks:
+- Task 0: ussf_position_only ablation, 5 seeds
+- Task 1: ussf_plus_velocity ablation, 5 seeds
+- Task 2: Baseline permutation tests (MLP + XGBoost), USSF-aligned
+
+Each ablation task loops over seeds [42, 123, 456, 789, 1234].
+
+## Step 5: Run tests to verify edge masking
+
+```bash
+cd /home/mseo/CornerTactics
+source FAANTRA/venv/bin/activate
+pytest tests/corner_prediction/test_models.py -v
+```
+
+Also add a quick smoke test that verifies edge masking works.
+
+## Step 6: Submit SLURM jobs
+
+```bash
+sbatch --array=0-2 scripts/slurm/run_ussf_ablation_multiseed.sbatch
+```
+
+## Step 7 (optional): Adapter-based permutation test
+
+If time permits, submit a separate job:
+```bash
+sbatch scripts/slurm/run_adapter_permutation.sbatch
+```
+
+## Summary of SLURM Jobs
+
+| Job | Task | Time Estimate | Priority |
+|-----|------|---------------|----------|
+| 52940_3 (existing) | USSF permutation test | ~3h remaining | P1 (already running) |
+| New array[0] | position_only × 5 seeds | ~20 min | P2 |
+| New array[1] | plus_velocity × 5 seeds | ~20 min | P2 |
+| New array[2] | Baseline permutation tests | ~2-3h | P3 |
+| New (optional) | Adapter permutation test | ~6h | P5 |
+
+## Expected Results
+
+After all jobs complete:
+
+| Experiment | Expected Result | Source |
+|---|---|---|
+| USSF GNN: 5-seed mean | 0.687 ± 0.048 | Already done |
+| USSF GNN permutation p-value | TBD (expect <0.05) | Job 52940_3 |
+| Position-only: 5-seed mean | TBD (expect lower than 0.687) | New job |
+| Full features: 5-seed mean | Should match 0.687 | New job (validation) |
+| MLP: 5-seed mean | 0.602 ± 0.024 | Already done |
+| XGBoost | 0.703 | Already done |
+| MLP perm p-value | TBD | New job |
+| XGBoost perm p-value | TBD | New job |
