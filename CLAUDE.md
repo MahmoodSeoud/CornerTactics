@@ -13,60 +13,81 @@ CornerTactics predicts corner kick shot outcomes using a two-stage GNN pipeline 
 | FAANTRA (video) | Complete | mAP@∞ = 50% binary (random) |
 | StatsBomb (events) | Complete | AUC = 0.43 |
 | Transfer Learning | Complete | 0.86 AUC open-play; corners ~0.55 (n=57) |
-| **Two-Stage GNN** | **Complete** | **Shot AUC = 0.633 ± 0.051 (5-seed mean), p=0.010** |
+| **Two-Stage GNN (USSF-aligned)** | **Complete** | **Shot AUC = 0.687 ± 0.048 (5-seed mean), p=0.010** |
 
 ## Results Summary
 
 All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters** — numbers differ between SkillCorner-only and combined.
 
-### Two-Stage GNN (Main Results)
+### Two-Stage GNN — USSF-Aligned (Thesis Main Results)
 
-**Combined dataset (143 corners, 17 LOMO folds, 5 seeds [42,123,456,789,1234]):**
+**Combined dataset (143 corners, 17 LOMO folds, 5 seeds [42,123,456,789,1234], USSF-aligned features):**
+
+| Model | AUC (5-seed mean ± across-seed std) | p-value |
+|-------|--------------------------------------|---------|
+| GNN (frozen USSF backbone) | **0.687 ± 0.048** | **0.010** |
+| XGBoost (27 aggregate features) | 0.681 ± 0.000 | 0.030 |
+| GNN position-only (no velocity) | 0.648 ± 0.050 | — |
+| MLP (23×12 flattened = 276 feat) | 0.602 ± 0.022 | 0.040 |
+| Random baseline | 0.500 | — |
+
+GNN per-seed: 42→0.651, 123→0.630, 456→0.764, 789→0.675, 1234→0.714.
+Permutation tests use seed=42 only (real AUC may differ from 5-seed mean).
+
+**Receiver prediction (USSF-aligned, combined):**
 
 | Metric | Value |
 |--------|-------|
-| Receiver Top-1 | 0.227 ± 0.057 (5-seed mean across 10 labeled folds) |
-| Receiver Top-3 | 0.418 ± 0.037 (5-seed mean across 10 labeled folds) |
-| Shot AUC (oracle) | 0.633 ± 0.051 (5-seed mean) |
-| Shot AUC (predicted) | 0.640 ± 0.054 (5-seed mean) |
-| Shot AUC (unconditional) | 0.633 ± 0.050 (5-seed mean) |
-| Permutation p-value (shot) | **0.010** (100 perms, seed 42) |
-| Permutation p-value (receiver) | **0.050** (100 perms, seed 42) |
+| Receiver Top-1 | 0.211 ± 0.033 (5-seed mean across 10 labeled folds) |
+| Receiver Top-3 | 0.416 ± 0.037 (5-seed mean across 10 labeled folds) |
+| Permutation p-value (receiver) | 0.050 (100 perms, seed 42, Feb 22 run) |
 
-**SkillCorner-only (86 corners, 10 LOMO folds):**
+### Velocity Ablation (Combined, 5-seed)
 
-| Metric | Value |
-|--------|-------|
-| Receiver Top-3 | 0.308 ± 0.279 |
-| Shot AUC (oracle) | 0.751 ± 0.213 |
-| Permutation p-value (shot) | **0.020** (100 perms) |
-| Permutation p-value (receiver) | 0.406 (not significant) |
+**Old 13-feature schema (cleaner velocity isolation):**
 
-### Ablations (SkillCorner-only, 10 folds)
+| Config | Features | Shot AUC |
+|--------|----------|----------|
+| position_only | x,y + team/role flags (9 feat) | 0.594 ± 0.044 |
+| + velocity | + vx, vy, speed (12 feat) | 0.681 ± 0.031 |
+| **Delta** | | **+0.088** |
 
-| Config | Active Features | Receiver Top-3 | Shot AUC |
-|--------|----------------|----------------|----------|
-| position_only | x,y + team/role flags (9 feat) | 0.408 ± 0.290 | 0.583 ± 0.280 |
-| plus_velocity | + vx, vy, speed (12 feat) | 0.398 ± 0.330 | 0.747 ± 0.238 |
-| plus_detection | + is_detected (all 13) | 0.308 ± 0.279 | 0.751 ± 0.213 |
-| full_features | all 13, KNN k=6 (default) | 0.308 ± 0.279 | 0.748 ± 0.218 |
-| full_fc_edges | all 13, fully connected | 0.525 ± 0.364 | 0.713 ± 0.198 |
+**USSF 12-feature schema (richer position features):**
 
-### Baselines (SkillCorner-only, 10 folds)
+| Config | Features | Shot AUC |
+|--------|----------|----------|
+| ussf_position_only | 8 USSF spatial features | 0.648 ± 0.050 |
+| full USSF features | all 12 USSF features | 0.687 ± 0.048 |
+| **Delta** | | **+0.039** |
 
-| Model | Input | Shot AUC |
-|-------|-------|----------|
-| MLP | 22×13 flattened (286 feat) | 0.802 ± 0.214 |
-| XGBoost | 27 aggregate features | 0.743 ± 0.232 |
-| GNN (pretrained) | graph (13 node, 4 edge feat) | 0.751 ± 0.213 |
-| Random baseline | — | 0.500 |
+USSF delta is smaller because dist_goal, angle_goal, dist_ball, angle_ball encode geometric relationships that raw x,y don't — raising the position-only floor.
 
-**Baseline permutation tests (100 perms each):**
-- SkillCorner-only: MLP p=0.010 (real=0.804), XGBoost p=0.010 (real=0.743).
-- Combined: MLP p=0.040 (real=0.666), XGBoost p=0.020 (real=0.695).
-- All statistically significant (p<0.05).
+### Permutation Tests (USSF-aligned, combined, 100 perms, seed 42)
 
-**Note:** MLP and XGBoost baselines run on both SkillCorner-only (86 corners) and combined (143 corners). Permutation tests completed for both datasets.
+| Test | Real AUC | p-value |
+|------|----------|---------|
+| GNN shot (oracle) | 0.651 | **0.010** |
+| XGBoost shot | 0.681 | **0.030** |
+| MLP shot | 0.631 | **0.040** |
+| GNN receiver top-3 | 0.473 | **0.050** |
+
+### Earlier Results (Pretrained Mode, for Reference)
+
+These used the original 13-feature schema with learned projection layers (node_proj, edge_proj).
+
+**Combined (pretrained, 5 seeds):** Shot AUC (oracle) = 0.633 ± 0.051, p=0.010.
+**SkillCorner-only (pretrained):** Shot AUC = 0.751 ± 0.213, p=0.020.
+**Combined baselines (pretrained):** MLP 0.666, XGBoost 0.695.
+
+**SkillCorner-only ablations (pretrained, 10 folds):**
+
+| Config | Active Features | Shot AUC |
+|--------|----------------|----------|
+| position_only | x,y + team/role flags (9 feat) | 0.583 ± 0.280 |
+| plus_velocity | + vx, vy, speed (12 feat) | 0.747 ± 0.238 |
+| plus_detection | + is_detected (all 13) | 0.751 ± 0.213 |
+| full_features | all 13, KNN k=6 (default) | 0.748 ± 0.218 |
+| full_fc_edges | all 13, fully connected | 0.713 ± 0.198 |
 
 ### Earlier Approaches
 
@@ -167,6 +188,15 @@ SPLIT=test CHUNKS=5 sbatch scripts/slurm/extract_frames.sbatch    # Test
 - Valid: 483 clips (10%)
 - Test: 485 clips (10%)
 
+## SLURM Resource Policy
+
+Always max out SLURM resource requests — jobs run overnight and must not get killed.
+- `--time=10-00:00:00` (10 days, partition max)
+- `--mem=28G` (node max is 30G, 28G is the usable limit)
+- `--gres=gpu:1`, `--cpus-per-task=4`
+
+Never be conservative with time/memory. A killed job wastes more time than a generous allocation.
+
 ## Environment Setup
 
 ```bash
@@ -227,7 +257,29 @@ python main.py config/corner_config.json corner_model
 
 ### Graph Construction
 
-**13 node features per player** (indices for ablation configs):
+Two feature schemas exist. USSF-aligned is used for all thesis main results.
+
+#### USSF-Aligned Schema (thesis main results)
+
+**23 nodes** (22 players + 1 ball node). **12 node features:**
+- 0-1: x, y — pitch-normalized [0, 1]
+- 2-3: vx_unit, vy_unit — velocity unit direction [-1, 1]
+- 4: velocity_mag — speed / max_speed_in_frame [0, 1]
+- 5: velocity_angle — atan2(vy, vx), normalized [0, 1]
+- 6-7: dist_goal, angle_goal — Euclidean + atan2, normalized
+- 8-9: dist_ball, angle_ball — Euclidean + atan2, normalized
+- 10: attacking_team — 1.0 attacking, 0.0 defending
+- 11: potential_receiver — written at forward time (0 for Stage 1, 1.0 at receiver for Stage 2)
+
+**6 edge features:** distance, speed_diff, pos_sin, pos_cos, vel_sin, vel_cos.
+
+**Edges:** Dense with self-loops (23×23 = 529 edges). No projections needed — features match USSF backbone dims directly.
+
+**Ablation note:** Edge features 1, 4, 5 depend on velocity. The ussf_position_only ablation masks both node velocity features AND edge velocity features via `edge_mask_indices`.
+
+#### Original Schema (pretrained mode, earlier experiments)
+
+**22 nodes** (players only). **13 node features:**
 - 0-1: x_norm (x/52.5), y_norm (y/34.0) — range [-1, 1]
 - 2-4: vx, vy, speed — raw m/s, backward frame difference, not smoothed
 - 5-7: is_attacking, is_corner_taker, is_goalkeeper — binary
@@ -240,23 +292,45 @@ python main.py config/corner_config.json corner_model
 
 **Edge construction:** KNN k=6 (default, 132 edges) or fully connected (462 edges).
 
+#### Common
+
 **Coordinate normalization:** All corners flipped so attacking team attacks toward +x. Both SkillCorner and DFL apply identical direction normalization.
 
 **Velocity:** Raw backward difference. SkillCorner: `(x_t - x_{t-1}) / 0.1` at 10Hz. DFL: `(x_nearest - x_prev) / dt` at 25Hz.
 
 ### Architecture
 
+Two modes share the same frozen CGConv backbone but differ in input handling.
+
+**USSF-aligned mode (thesis main results):**
 ```
-Input: [N=22, 13] node features + [E, 4] edge features
-  → Augment with receiver indicator → [N, 14]
-  → node_proj: Linear(14, 12)                 [TRAINABLE]
-  → edge_proj: Linear(4, 6)                   [TRAINABLE]
+Input: [N=23, 12] node features + [E=529, 6] edge features
+  → Receiver indicator written to feature index 11 → [N, 12]
+  → No projection layers (features match backbone dims)
   → conv1: CGConv(12, dim=6) + ReLU           [FROZEN — USSF pretrained]
   → lin_in: Linear(12, 128)                   [FROZEN]
   → convs[0]: CGConv(128, dim=6) + ReLU       [FROZEN]
   → convs[1]: CGConv(128, dim=6) + ReLU       [FROZEN]
   → Per-node embeddings: [N, 128]
+```
+Trainable: ~12.5K params (heads only). Frozen: ~137K params (backbone).
 
+**Pretrained mode (earlier experiments):**
+```
+Input: [N=22, 13] node features + [E=132, 4] edge features
+  → Augment with receiver indicator → [N, 14]
+  → node_proj: Linear(14, 12)                 [TRAINABLE]
+  → edge_proj: Linear(4, 6)                   [TRAINABLE]
+  → conv1: CGConv(12, dim=6) + ReLU           [FROZEN]
+  → lin_in: Linear(12, 128)                   [FROZEN]
+  → convs[0]: CGConv(128, dim=6) + ReLU       [FROZEN]
+  → convs[1]: CGConv(128, dim=6) + ReLU       [FROZEN]
+  → Per-node embeddings: [N, 128]
+```
+Trainable: ~12.7K params (projections + heads). Frozen: ~137K params (backbone).
+
+**Prediction heads (shared by both modes):**
+```
 Stage 1 (Receiver):
   → ReceiverHead: Linear(128,64) + ReLU + Dropout(0.3) + Linear(64,1)
   → masked_softmax over valid candidates → [N] probabilities
@@ -328,14 +402,15 @@ Mean AUC = 0.647. Fold 15 worst at 0.100 (DFL, 11 corners). 2 folds hit AUC=1.0 
 
 ### Known Gaps
 
-1. **Baselines on combined dataset (PARTIAL):** MLP and XGBoost evaluated on combined (143 corners, 17 folds). XGBoost has highest mean AUC (0.695 vs MLP 0.666 vs GNN 0.633), but no formal paired significance test between models. Random and heuristic baselines not yet run on combined.
-2. ~~**Baseline permutation tests on combined dataset:**~~ **RESOLVED.** Combined-dataset permutation tests completed: MLP p=0.040 (real=0.666), XGBoost p=0.020 (real=0.695). Both significant.
-3. ~~**Single seed:**~~ **RESOLVED.** Multi-seed evaluation implemented via `--multi-seed` flag in `run_all.py`. 5 seeds [42,123,456,789,1234]: Shot AUC (oracle) = 0.633 ± 0.051. Per-seed results saved to individual pickle files.
+1. ~~**Baselines on combined dataset:**~~ **RESOLVED.** All baselines (MLP, XGBoost, random, heuristic) run on USSF-aligned combined dataset. All permutation tests complete and significant (p<0.05).
+2. ~~**Baseline permutation tests on combined dataset:**~~ **RESOLVED.** USSF-aligned combined permutation tests: MLP p=0.040 (real=0.631), XGBoost p=0.030 (real=0.681), GNN p=0.010 (real=0.651).
+3. ~~**Single seed:**~~ **RESOLVED.** Multi-seed evaluation: USSF-aligned GNN 0.687 ± 0.048, MLP 0.602 ± 0.022, XGBoost 0.681 ± 0.000.
 4. **DFL has no receiver labels:** Stage 1 receiver evaluation limited to 10 SkillCorner folds.
-5. **Permutation test AUC variance:** The permutation test's real-label run reports shot oracle AUC=0.715 (combined) vs main eval's 0.647 (seed 42, post-fix). The 0.715 was from a pre-fix run. The p=0.010 is computed against 0.715; post-fix values may differ. CUDA determinism flags now reduce (but don't eliminate) run-to-run variance.
-6. ~~**Duplicate ablation files:**~~ **RESOLVED.** Deleted 3 duplicate individual-run ablation files. Canonical batch run (`ablation_all_20260215_141055.pkl`) retained.
-7. ~~**No loss curves saved:**~~ **RESOLVED.** `train_fold()` and `_mlp_fold()` now return per-epoch train/val loss histories. `lomo_cv` persists them in result pickles. Visualization via `plot_loss_curves.py` (fig7). Result pickles from before Feb 19 lack `loss_history` — rerun needed (SLURM job 52797 submitted).
-8. ~~**Loss curve y-axis unreadable:**~~ **RESOLVED.** Linear head initialization caused fold 7 epoch-1 shot loss spike to 21.9, blowing y-axis to 0-20. Fixed with 5th-95th percentile y-axis clipping in `plot_loss_curves.py`. Clipped folds annotated on figure. Investigation confirmed: shot losses are normal BCE range (0.4-0.8 train, 0.5-1.6 val), class balance is 31.5% (not imbalanced), "near-zero" appearance was purely a visual artifact of the outlier axis scaling.
+5. ~~**Permutation test AUC variance:**~~ **RESOLVED.** USSF-aligned permutation tests (Feb 22) use seed=42: GNN real=0.651, p=0.010. The 5-seed mean (0.687) differs from the seed-42 permutation real (0.651) due to normal seed variance.
+6. ~~**Duplicate ablation files:**~~ **RESOLVED.**
+7. ~~**No loss curves saved:**~~ **RESOLVED.**
+8. ~~**Loss curve y-axis unreadable:**~~ **RESOLVED.**
+9. **No paired significance test between models:** GNN (0.687) vs XGBoost (0.681) gap is within noise. No formal test (e.g., paired t-test across folds) to compare model architectures.
 
 ### Running the Pipeline
 
