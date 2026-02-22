@@ -3,6 +3,7 @@
 All hyperparameters, paths, and constants in one place.
 """
 
+import math
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,25 @@ SHOT_POS_WEIGHT = 2.0  # upweight shots (33.7% minority)
 BATCH_SIZE = 8
 SEEDS = [42, 123, 456, 789, 1234]
 LINEAR_HEADS = False  # Use linear probes instead of MLP heads (reduces overfitting)
+FEATURE_MODE = "pretrained"  # "pretrained" (learned adapters) or "ussf_aligned" (deterministic)
+
+# ---------------------------------------------------------------------------
+# USSF-Aligned Feature Constants
+# ---------------------------------------------------------------------------
+
+PITCH_LENGTH = 105.0   # meters
+PITCH_WIDTH = 68.0     # meters
+HALF_PITCH_WIDTH = 34.0  # 0.5 * PITCH_WIDTH
+
+# Normalization divisors (verified against USSF combined.pkl)
+DIST_GOAL_NORM = math.sqrt(PITCH_LENGTH**2 + HALF_PITCH_WIDTH**2)   # ≈ 110.37
+DIST_BALL_NORM = math.sqrt(PITCH_LENGTH**2 + PITCH_WIDTH**2)        # ≈ 124.88 (pitch diagonal)
+EDGE_DIST_NORM = math.sqrt(PITCH_LENGTH**2 + PITCH_WIDTH**2)        # ≈ 124.88 (same as dist_ball)
+SPEED_NORM = 10.0  # m/s → [0,1]
+
+# Goal position in [0,1] normalized pitch coordinates
+GOAL_X = 1.0
+GOAL_Y = 0.5
 
 # ---------------------------------------------------------------------------
 # Permutation Test
@@ -117,5 +137,32 @@ ABLATION_CONFIGS = {
         "active_features": list(range(13)),
         "edge_type": "dense",
         "k": 6,
+    },
+}
+
+# ---------------------------------------------------------------------------
+# USSF-Aligned Ablation Configurations
+#
+# 12 USSF node features:
+#   0: x, 1: y, 2: vx_unit, 3: vy_unit, 4: vel_mag, 5: vel_angle,
+#   6: dist_goal, 7: angle_goal, 8: dist_ball, 9: angle_ball,
+#   10: attacking_team, 11: potential_receiver
+#
+# Note: feature 11 (potential_receiver) is set at forward time for Stage 2.
+# Ablations zero out features but never touch index 11.
+# Edge type is always "dense" with self-loops for USSF-aligned.
+# ---------------------------------------------------------------------------
+
+USSF_ABLATION_CONFIGS = {
+    "ussf_position_only": {
+        "description": "Position + spatial + team (no velocity features)",
+        "active_features": [0, 1, 6, 7, 8, 9, 10, 11],
+        "n_features": 12,
+        "edge_mask_indices": [1, 4, 5],  # speed_diff, vel_sin, vel_cos
+    },
+    "ussf_plus_velocity": {
+        "description": "Position + spatial + team + velocity",
+        "active_features": list(range(12)),
+        "n_features": 12,
     },
 }

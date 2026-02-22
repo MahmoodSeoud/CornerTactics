@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 N_PLAYERS = 22
 NODE_FEATURES = 13
-FLAT_DIM = N_PLAYERS * NODE_FEATURES  # 286
+FLAT_DIM = N_PLAYERS * NODE_FEATURES  # 286 (default; computed dynamically)
 
 
 class ShotMLP(nn.Module):
@@ -80,28 +80,39 @@ class ShotLinear(nn.Module):
         return self.net(x)
 
 
-def _flatten_graph(graph) -> np.ndarray:
+def _flatten_graph(graph, expected_nodes: int = None,
+                   expected_features: int = None) -> np.ndarray:
     """Flatten a graph's node features into a single vector.
 
     Nodes are already in a consistent order from graph construction.
-    Output shape: [N_PLAYERS * NODE_FEATURES] = [286].
+    Detects dimensions from graph if expected_* not provided.
     """
-    x = graph.x.numpy()  # [n_nodes, 13]
-    n_nodes = x.shape[0]
+    x = graph.x.numpy()
+    n_nodes, n_feat = x.shape
 
-    if n_nodes < N_PLAYERS:
-        # Pad with zeros if fewer players
-        pad = np.zeros((N_PLAYERS - n_nodes, NODE_FEATURES))
+    target_nodes = expected_nodes or N_PLAYERS
+    target_feat = expected_features or NODE_FEATURES
+
+    if n_nodes < target_nodes:
+        pad = np.zeros((target_nodes - n_nodes, n_feat))
         x = np.vstack([x, pad])
-    elif n_nodes > N_PLAYERS:
-        x = x[:N_PLAYERS]
+    elif n_nodes > target_nodes:
+        x = x[:target_nodes]
 
     return x.flatten()
 
 
-def _build_tensors(data_list: List) -> tuple:
+def _detect_dims(data_list: List) -> tuple:
+    """Detect (n_nodes, n_features) from the first graph in the list."""
+    g0 = data_list[0]
+    return g0.x.shape[0], g0.x.shape[1]
+
+
+def _build_tensors(data_list: List, expected_nodes: int = None,
+                   expected_features: int = None) -> tuple:
     """Build flat feature and label tensors from a list of graphs."""
-    X = np.array([_flatten_graph(g) for g in data_list], dtype=np.float32)
+    X = np.array([_flatten_graph(g, expected_nodes, expected_features)
+                  for g in data_list], dtype=np.float32)
     y = np.array([g.shot_label for g in data_list], dtype=np.float32).ravel()
     return torch.from_numpy(X), torch.from_numpy(y)
 
@@ -126,17 +137,21 @@ def _mlp_fold(
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    X_train, y_train = _build_tensors(train_data)
-    X_val, y_val = _build_tensors(val_data)
-    X_test, y_test = _build_tensors(test_data)
+    # Detect dimensions from data
+    n_nodes, n_feat = _detect_dims(train_data)
+    flat_dim = n_nodes * n_feat
+
+    X_train, y_train = _build_tensors(train_data, n_nodes, n_feat)
+    X_val, y_val = _build_tensors(val_data, n_nodes, n_feat)
+    X_test, y_test = _build_tensors(test_data, n_nodes, n_feat)
 
     train_ds = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
     if linear_only:
-        model = ShotLinear(input_dim=FLAT_DIM).to(device)
+        model = ShotLinear(input_dim=flat_dim).to(device)
     else:
-        model = ShotMLP(input_dim=FLAT_DIM, hidden_dim=hidden_dim, dropout=dropout).to(device)
+        model = ShotMLP(input_dim=flat_dim, hidden_dim=hidden_dim, dropout=dropout).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     pw = torch.tensor([pos_weight], device=device)
 
@@ -303,11 +318,19 @@ def mlp_baseline_lomo(
         "n_folds": 0, "per_fold_top1": [], "per_fold_top3": [],
     }
 
+    # Detect actual dimensions for config reporting
+    if dataset:
+        g0 = dataset[0]
+        actual_nodes, actual_feat = g0.x.shape
+        actual_flat_dim = actual_nodes * actual_feat
+    else:
+        actual_flat_dim = FLAT_DIM
+
     results = {
         "config": {
             "baseline": "mlp_linear" if linear_only else "mlp",
             "seed": seed,
-            "input_dim": FLAT_DIM,
+            "input_dim": actual_flat_dim,
             "hidden_dim": 0 if linear_only else 64,
             "linear_only": linear_only,
             "n_folds": len(fold_results),
@@ -330,9 +353,10 @@ def mlp_baseline_lomo(
 def _print_mlp_results(results: Dict) -> None:
     s = results["aggregated"]["shot_oracle"]
     is_linear = results.get("config", {}).get("linear_only", False)
+    input_dim = results.get("config", {}).get("input_dim", FLAT_DIM)
     label = "Linear Baseline" if is_linear else "MLP Baseline"
-    arch = (f"Linear({FLAT_DIM}, 1)" if is_linear
-            else f"Linear({FLAT_DIM}, 64) → ReLU → Dropout → Linear(64, 1)")
+    arch = (f"Linear({input_dim}, 1)" if is_linear
+            else f"Linear({input_dim}, 64) → ReLU → Dropout → Linear(64, 1)")
     print(f"\n{'=' * 60}")
     print(f"{label} Results (Shot Prediction Only)")
     print(f"{'=' * 60}")

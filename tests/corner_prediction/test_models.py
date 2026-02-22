@@ -503,3 +503,217 @@ class TestTwoStageModel:
         loss = receiver_loss(logits, receiver_label, receiver_mask, batch, has_label)
         assert loss.shape == ()
         assert loss.item() > 0
+
+
+# ---------------------------------------------------------------------------
+# USSF-Aligned Mode Tests
+# ---------------------------------------------------------------------------
+
+def _make_ussf_dummy_graph(
+    n_nodes: int = 23,
+    n_attackers: int = 11,
+    node_dim: int = 12,
+    has_receiver: bool = True,
+    receiver_idx: int = 3,
+    shot_label: int = 0,
+) -> Data:
+    """Create a synthetic USSF-aligned corner kick graph.
+
+    23 nodes (22 players + 1 ball), 12 node features, dense adjacency (529 edges),
+    6 edge features.
+    """
+    x = torch.randn(n_nodes, node_dim)
+    # Ball node at index 22: zero velocity, zero dist_ball
+    x[22, 2:6] = 0.0   # vx_unit, vy_unit, vel_mag, vel_angle
+    x[22, 8:10] = 0.0   # dist_ball, angle_ball
+
+    # Dense adjacency with self-loops
+    src, dst = [], []
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            src.append(i)
+            dst.append(j)
+    edge_index = torch.tensor([src, dst], dtype=torch.long)
+    edge_attr = torch.randn(n_nodes * n_nodes, 6)
+    # Self-loops get fixed features
+    for i in range(n_nodes):
+        idx = i * n_nodes + i
+        edge_attr[idx] = torch.tensor([0.0, 0.0, 1.0, 0.5, 0.5, 0.5])
+
+    # Receiver mask: first n_attackers are attacking; exclude node 0 (GK) and node 22 (ball)
+    receiver_mask = torch.zeros(n_nodes, dtype=torch.bool)
+    for i in range(1, n_attackers):
+        receiver_mask[i] = True
+
+    receiver_label = torch.zeros(n_nodes, dtype=torch.float32)
+    if has_receiver and receiver_mask[receiver_idx]:
+        receiver_label[receiver_idx] = 1.0
+
+    return Data(
+        x=x,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        receiver_mask=receiver_mask,
+        receiver_label=receiver_label,
+        has_receiver_label=has_receiver,
+        shot_label=shot_label,
+        goal_label=0,
+        corner_side=1.0,
+        match_id="test_match_ussf_1",
+        corner_id="test_corner_ussf_1",
+        detection_rate=0.85,
+    )
+
+
+def _make_ussf_batch(n_graphs: int = 4) -> Batch:
+    """Create a batch of USSF-aligned dummy graphs."""
+    graphs = []
+    for i in range(n_graphs):
+        g = _make_ussf_dummy_graph(
+            shot_label=1 if i % 3 == 0 else 0,
+            has_receiver=i % 2 == 0,
+        )
+        g.match_id = f"match_ussf_{i}"
+        g.corner_id = f"corner_ussf_{i}"
+        graphs.append(g)
+    return Batch.from_data_list(graphs)
+
+
+class TestUSSFAlignedBackbone:
+    """Tests for CornerBackbone in ussf_aligned mode."""
+
+    def test_ussf_aligned_output_shape(self):
+        backbone = CornerBackbone(mode="ussf_aligned", freeze=False)
+        batch = _make_ussf_batch()
+        out = backbone(batch.x, batch.edge_index, batch.edge_attr)
+        assert out.shape == (batch.x.shape[0], 128)
+
+    def test_ussf_aligned_no_projection_layers(self):
+        backbone = CornerBackbone(mode="ussf_aligned", freeze=False)
+        assert backbone.node_proj is None
+        assert backbone.edge_proj is None
+
+    def test_ussf_aligned_frozen_params(self):
+        backbone = CornerBackbone(mode="ussf_aligned", freeze=True)
+        for param in backbone.conv1.parameters():
+            assert not param.requires_grad
+        for param in backbone.lin_in.parameters():
+            assert not param.requires_grad
+        for conv in backbone.convs:
+            for param in conv.parameters():
+                assert not param.requires_grad
+
+    def test_ussf_aligned_output_dim(self):
+        assert CornerBackbone(mode="ussf_aligned", freeze=False).output_dim == 128
+
+    def test_ussf_aligned_no_nan(self):
+        backbone = CornerBackbone(mode="ussf_aligned", freeze=False)
+        batch = _make_ussf_batch()
+        out = backbone(batch.x, batch.edge_index, batch.edge_attr)
+        assert not torch.isnan(out).any()
+        assert not torch.isinf(out).any()
+
+
+class TestUSSFAlignedTwoStage:
+    """Tests for TwoStageModel with ussf_aligned backbone."""
+
+    @pytest.fixture
+    def model(self):
+        backbone = CornerBackbone(mode="ussf_aligned", freeze=False)
+        receiver_head = ReceiverHead(input_dim=128)
+        shot_head = ShotHead(input_dim=128, graph_feature_dim=1)
+        return TwoStageModel(backbone, receiver_head, shot_head)
+
+    def test_predict_receiver(self, model):
+        batch = _make_ussf_batch()
+        probs = model.predict_receiver(
+            batch.x, batch.edge_index, batch.edge_attr,
+            batch.receiver_mask, batch.batch,
+        )
+        assert probs.shape == (batch.x.shape[0],)
+        assert (probs >= 0).all()
+        assert (probs[~batch.receiver_mask] == 0).all()
+
+    def test_predict_shot_unconditional(self, model):
+        batch = _make_ussf_batch()
+        n_graphs = batch.batch.max().item() + 1
+        logit = model.predict_shot(
+            batch.x, batch.edge_index, batch.edge_attr, batch.batch,
+        )
+        assert logit.shape == (n_graphs, 1)
+
+    def test_predict_shot_with_receiver(self, model):
+        batch = _make_ussf_batch()
+        n_graphs = batch.batch.max().item() + 1
+        receiver_indicator = torch.zeros(batch.x.shape[0])
+        for g in range(n_graphs):
+            graph_nodes = (batch.batch == g).nonzero(as_tuple=True)[0]
+            receiver_indicator[graph_nodes[3]] = 1.0
+
+        logit = model.predict_shot(
+            batch.x, batch.edge_index, batch.edge_attr,
+            batch.batch, receiver_indicator=receiver_indicator,
+        )
+        assert logit.shape == (n_graphs, 1)
+
+    def test_prepare_features_ussf_mode(self, model):
+        """In USSF mode, receiver indicator writes to feature 11 (not appended)."""
+        x = torch.randn(23, 12)
+        indicator = torch.zeros(23)
+        indicator[5] = 1.0
+
+        x_out = model._prepare_features(x, indicator)
+        # Shape unchanged — no column appended
+        assert x_out.shape == (23, 12)
+        # Feature 11 set to receiver indicator
+        assert x_out[5, 11] == 1.0
+        assert x_out[0, 11] == 0.0
+
+    def test_prepare_features_no_indicator(self, model):
+        """Without indicator, features are unchanged (cloned)."""
+        x = torch.randn(23, 12)
+        x_out = model._prepare_features(x)
+        assert x_out.shape == (23, 12)
+        assert torch.allclose(x_out, x)
+
+    def test_end_to_end(self, model):
+        batch = _make_ussf_batch()
+        result = model.forward_two_stage(
+            batch.x, batch.edge_index, batch.edge_attr,
+            batch.receiver_mask, batch.batch,
+        )
+        n_nodes = batch.x.shape[0]
+        n_graphs = batch.batch.max().item() + 1
+
+        assert result["receiver_probs"].shape == (n_nodes,)
+        assert result["predicted_receiver"].shape == (n_nodes,)
+        assert result["shot_logit"].shape == (n_graphs, 1)
+
+        for g in range(n_graphs):
+            graph_mask = batch.batch == g
+            n_selected = result["predicted_receiver"][graph_mask].sum()
+            assert n_selected.item() == 1.0
+
+    def test_receiver_conditioning_changes_output(self, model):
+        """Adding receiver indicator must change shot prediction in USSF mode."""
+        model.eval()
+        batch = _make_ussf_batch(n_graphs=2)
+        n_graphs = batch.batch.max().item() + 1
+
+        with torch.no_grad():
+            logit_uncond = model.predict_shot(
+                batch.x, batch.edge_index, batch.edge_attr, batch.batch,
+            )
+
+            indicator = torch.zeros(batch.x.shape[0])
+            for g in range(n_graphs):
+                nodes = (batch.batch == g).nonzero(as_tuple=True)[0]
+                indicator[nodes[3]] = 1.0
+
+            logit_cond = model.predict_shot(
+                batch.x, batch.edge_index, batch.edge_attr, batch.batch,
+                receiver_indicator=indicator,
+            )
+
+        assert not torch.allclose(logit_uncond, logit_cond), \
+            "Receiver conditioning should change shot prediction in USSF mode"

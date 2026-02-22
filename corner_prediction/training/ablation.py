@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
-from corner_prediction.config import ABLATION_CONFIGS, RESULTS_DIR
+from corner_prediction.config import ABLATION_CONFIGS, RESULTS_DIR, USSF_ABLATION_CONFIGS
 from corner_prediction.data.build_graphs import build_graph_dataset
 from corner_prediction.data.dataset import CornerKickDataset
 from corner_prediction.training.evaluate import lomo_cv, print_results_table, save_results
@@ -27,22 +27,28 @@ from corner_prediction.training.evaluate import lomo_cv, print_results_table, sa
 logger = logging.getLogger(__name__)
 
 
-def apply_feature_mask(dataset, active_features: List[int]) -> list:
-    """Zero out inactive node features in the dataset.
+def apply_feature_mask(dataset, active_features: List[int],
+                       n_features: int = 13,
+                       edge_mask_indices: Optional[List[int]] = None) -> list:
+    """Zero out inactive node features (and optionally edge features) in the dataset.
 
     Creates deep copies to avoid modifying the original data.
 
     Args:
-        dataset: Iterable of PyG Data objects (13 node features each).
-        active_features: List of feature indices (0-12) to keep.
+        dataset: Iterable of PyG Data objects.
+        active_features: List of feature indices to keep.
+        n_features: Total number of node features (13 or 12 for USSF).
+        edge_mask_indices: Optional list of edge feature indices to zero out.
+            Used for USSF ablations to remove velocity-dependent edge features
+            (speed_diff, vel_sin, vel_cos) alongside node velocity features.
 
     Returns:
         New list of Data objects with inactive features zeroed.
     """
-    all_indices = set(range(13))
+    all_indices = set(range(n_features))
     inactive = sorted(all_indices - set(active_features))
 
-    if not inactive:
+    if not inactive and not edge_mask_indices:
         # No masking needed, but still copy
         return [copy.deepcopy(g) for g in dataset]
 
@@ -51,6 +57,9 @@ def apply_feature_mask(dataset, active_features: List[int]) -> list:
         g_copy = copy.deepcopy(g)
         for idx in inactive:
             g_copy.x[:, idx] = 0.0
+        if edge_mask_indices and g_copy.edge_attr is not None:
+            for idx in edge_mask_indices:
+                g_copy.edge_attr[:, idx] = 0.0
         masked.append(g_copy)
     return masked
 
@@ -88,22 +97,25 @@ def run_single_ablation(
     Returns:
         Dict with ablation name, config, and LOMO results.
     """
-    if ablation_name not in ABLATION_CONFIGS:
+    all_configs = {**ABLATION_CONFIGS, **USSF_ABLATION_CONFIGS}
+    if ablation_name not in all_configs:
         raise ValueError(f"Unknown ablation: {ablation_name!r}. "
-                         f"Choose from: {list(ABLATION_CONFIGS.keys())}")
+                         f"Choose from: {list(all_configs.keys())}")
 
-    config = ABLATION_CONFIGS[ablation_name]
+    config = all_configs[ablation_name]
 
     if verbose:
         print(f"\n{'#' * 60}")
         print(f"# Ablation: {ablation_name}")
         print(f"# {config['description']}")
         print(f"# Active features: {config['active_features']}")
-        print(f"# Edge type: {config['edge_type']}")
+        print(f"# Edge type: {config.get('edge_type', 'dense (from dataset)')}")
         print(f"{'#' * 60}")
 
-    # Handle edge type change (needs rebuilding from records)
-    if config["edge_type"] == "dense":
+    # USSF ablations are always dense (already in dataset), no edge rebuild needed
+    n_features = config.get("n_features", 13)
+
+    if "edge_type" in config and config["edge_type"] == "dense":
         if records is None:
             raise ValueError(
                 f"Ablation {ablation_name!r} requires edge_type='dense' but "
@@ -113,8 +125,11 @@ def run_single_ablation(
     else:
         abl_dataset = list(dataset)
 
-    # Apply feature mask
-    abl_dataset = apply_feature_mask(abl_dataset, config["active_features"])
+    # Apply feature mask (node features + optional edge features)
+    edge_mask = config.get("edge_mask_indices", None)
+    abl_dataset = apply_feature_mask(abl_dataset, config["active_features"],
+                                     n_features=n_features,
+                                     edge_mask_indices=edge_mask)
 
     # Run LOMO CV
     results = lomo_cv(abl_dataset, seed=seed, verbose=verbose, **lomo_kwargs)

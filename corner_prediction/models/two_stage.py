@@ -27,8 +27,11 @@ class TwoStageModel(nn.Module):
         shot_head: Stage 2 head for shot prediction.
     """
 
-    # Index of the receiver indicator feature (appended as 14th column)
+    # Index of the receiver indicator feature
+    # Original mode: appended as 14th column (index 13)
+    # USSF-aligned mode: written into existing slot 11 (potential_receiver)
     RECEIVER_FEATURE_IDX = 13
+    USSF_RECEIVER_FEATURE_IDX = 11
 
     def __init__(
         self,
@@ -46,7 +49,7 @@ class TwoStageModel(nn.Module):
         x: torch.Tensor,
         receiver_indicator: torch.Tensor = None,
     ) -> torch.Tensor:
-        """Append receiver indicator as 14th node feature.
+        """Append receiver indicator as 14th node feature (original mode).
 
         Args:
             x: Node features [N, 13].
@@ -63,6 +66,24 @@ class TwoStageModel(nn.Module):
             indicator = receiver_indicator.unsqueeze(-1)
         return torch.cat([x, indicator], dim=-1)
 
+    def _prepare_features(
+        self,
+        x: torch.Tensor,
+        receiver_indicator: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """Prepare node features with receiver indicator for the current mode.
+
+        For original/pretrained/scratch modes: appends 14th column.
+        For ussf_aligned mode: writes into feature index 11.
+        """
+        if self.backbone.mode == "ussf_aligned":
+            x_out = x.clone()
+            if receiver_indicator is not None:
+                x_out[:, self.USSF_RECEIVER_FEATURE_IDX] = receiver_indicator
+            return x_out
+        else:
+            return self._augment_with_receiver(x, receiver_indicator)
+
     def predict_receiver(
         self,
         x: torch.Tensor,
@@ -74,17 +95,17 @@ class TwoStageModel(nn.Module):
         """Stage 1: Predict receiver probabilities.
 
         Args:
-            x: Node features [N, 13] (from build_graphs).
+            x: Node features [N, F] (13 for original, 12 for ussf_aligned).
             edge_index: Edge indices [2, E].
-            edge_attr: Edge features [E, 4].
+            edge_attr: Edge features [E, F_e] (4 for original, 6 for ussf_aligned).
             receiver_mask: Boolean mask [N] — True for valid candidates.
             batch: Graph membership [N].
 
         Returns:
             Receiver probabilities [N]. Valid candidates sum to 1.0 per graph.
         """
-        # Augment with zeros (no receiver info for Stage 1)
-        x_aug = self._augment_with_receiver(x)
+        # Prepare features (no receiver info for Stage 1)
+        x_aug = self._prepare_features(x)
 
         # Backbone → per-node embeddings
         node_emb = self.backbone(x_aug, edge_index, edge_attr)
@@ -106,9 +127,9 @@ class TwoStageModel(nn.Module):
         """Stage 2: Predict shot probability.
 
         Args:
-            x: Node features [N, 13].
+            x: Node features [N, F] (13 for original, 12 for ussf_aligned).
             edge_index: Edge indices [2, E].
-            edge_attr: Edge features [E, 4].
+            edge_attr: Edge features [E, F_e] (4 for original, 6 for ussf_aligned).
             batch: Graph membership [N].
             graph_features: Optional graph-level features [B, graph_feature_dim].
             receiver_indicator: Optional [N] tensor with 1.0 at predicted receiver.
@@ -117,8 +138,8 @@ class TwoStageModel(nn.Module):
         Returns:
             Shot logit [B, 1].
         """
-        # Augment with receiver indicator (or zeros for unconditional)
-        x_aug = self._augment_with_receiver(x, receiver_indicator)
+        # Prepare features with receiver indicator (or unchanged for unconditional)
+        x_aug = self._prepare_features(x, receiver_indicator)
 
         # Backbone → per-node embeddings
         node_emb = self.backbone(x_aug, edge_index, edge_attr)
@@ -149,9 +170,9 @@ class TwoStageModel(nn.Module):
         """Full two-stage inference: predict receiver then shot.
 
         Args:
-            x: Node features [N, 13].
+            x: Node features [N, F] (13 for original, 12 for ussf_aligned).
             edge_index: Edge indices [2, E].
-            edge_attr: Edge features [E, 4].
+            edge_attr: Edge features [E, F_e].
             receiver_mask: Boolean mask [N].
             batch: Graph membership [N].
             graph_features: Optional graph-level features [B, graph_feature_dim].

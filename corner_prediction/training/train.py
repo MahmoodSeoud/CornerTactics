@@ -47,9 +47,9 @@ def build_model(
     """Construct the full two-stage model.
 
     Args:
-        backbone_mode: "pretrained" or "scratch".
+        backbone_mode: "pretrained", "scratch", or "ussf_aligned".
         pretrained_path: Path to USSF backbone weights. Ignored for scratch.
-        freeze: Freeze backbone conv layers (only for pretrained mode).
+        freeze: Freeze backbone conv layers (only for pretrained/ussf_aligned).
         receiver_hidden: Hidden dim for receiver head.
         receiver_dropout: Dropout for receiver head.
         shot_hidden: Hidden dim for shot head.
@@ -59,10 +59,17 @@ def build_model(
     Returns:
         TwoStageModel ready for training.
     """
+    if backbone_mode == "ussf_aligned":
+        node_features = 12
+        edge_features = 6
+    else:
+        node_features = 14  # 13 graph features + 1 receiver indicator
+        edge_features = 4
+
     backbone = CornerBackbone(
         mode=backbone_mode,
-        node_features=14,  # 13 graph features + 1 receiver indicator
-        edge_features=4,
+        node_features=node_features,
+        edge_features=edge_features,
         pretrained_path=str(pretrained_path) if pretrained_path else None,
         freeze=freeze,
     )
@@ -111,8 +118,8 @@ def train_receiver_epoch(
         batch = batch.to(device)
         optimizer.zero_grad()
 
-        # Augment with zeros for receiver indicator (Stage 1)
-        x_aug = TwoStageModel._augment_with_receiver(batch.x)
+        # Prepare features (no receiver info for Stage 1)
+        x_aug = model._prepare_features(batch.x)
 
         # Backbone → per-node embeddings
         node_emb = model.backbone(x_aug, batch.edge_index, batch.edge_attr)
@@ -483,7 +490,7 @@ def train_fold(
             with torch.no_grad():
                 for batch in val_loader:
                     batch = batch.to(device)
-                    x_aug = TwoStageModel._augment_with_receiver(batch.x)
+                    x_aug = model._prepare_features(batch.x)
                     node_emb = model.backbone(x_aug, batch.edge_index, batch.edge_attr)
                     logits = model.receiver_head(node_emb)
                     loss = receiver_loss(

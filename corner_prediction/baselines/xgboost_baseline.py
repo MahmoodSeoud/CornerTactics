@@ -19,7 +19,8 @@ from corner_prediction.training.evaluate import (
 
 logger = logging.getLogger(__name__)
 
-# Goal center in normalized coordinates
+# --- Original (13-feature) coordinate system ---
+# Goal center in normalized coordinates (y in [-1,1])
 GOAL_X = 1.0
 GOAL_Y = 0.0
 
@@ -27,35 +28,75 @@ GOAL_Y = 0.0
 BOX_X_MIN = (52.5 - 16.5) / 52.5   # ~0.686
 BOX_Y_ABS_MAX = 20.15 / 34.0        # ~0.593
 
+# --- USSF (12-feature) coordinate system ---
+# Goal center in [0,1] pitch coordinates
+USSF_GOAL_X = 1.0
+USSF_GOAL_Y = 0.5
+
+# Penalty box in [0,1] coords: 16.5m from goal line, 20.15m each side of center
+USSF_BOX_X_MIN = (105.0 - 16.5) / 105.0    # ~0.843
+USSF_BOX_Y_MIN = (34.0 - 20.15) / 68.0     # ~0.204
+USSF_BOX_Y_MAX = (34.0 + 20.15) / 68.0     # ~0.796
+
+
+def _detect_layout(graph) -> str:
+    """Detect feature layout from graph dimensions.
+
+    Returns 'ussf' for 12-feature/23-node graphs, 'original' otherwise.
+    """
+    n_feat = graph.x.shape[1]
+    return "ussf" if n_feat == 12 else "original"
+
 
 def extract_features(graph) -> np.ndarray:
     """Extract aggregate feature vector from a corner kick graph.
 
+    Works with both original (22×13) and USSF-aligned (23×12) graphs.
     Returns a 1D numpy array of 27 features.
     """
-    x = graph.x.numpy()  # [22, 13]
-    n_nodes = x.shape[0]
+    layout = _detect_layout(graph)
+    x = graph.x.numpy()
+
+    if layout == "ussf":
+        # USSF: N+1 nodes (N players + ball as last node), 12 features
+        # Exclude ball node (always last) for aggregate features
+        x = x[:-1]
+        team_idx = 10      # is_attacking at index 10
+        vel_indices = (2, 3, 4)  # vx_unit, vy_unit, vel_mag
+        goal_x, goal_y = USSF_GOAL_X, USSF_GOAL_Y
+    else:
+        # Original: 22 nodes, 13 features
+        team_idx = 5       # is_attacking at index 5
+        vel_indices = (2, 3, 4)  # vx, vy, speed
+        goal_x, goal_y = GOAL_X, GOAL_Y
 
     # Split by team
-    is_atk = x[:, 5].astype(bool)
+    is_atk = x[:, team_idx].astype(bool)
     is_def = ~is_atk
 
     atk_x, atk_y = x[is_atk, 0], x[is_atk, 1]
     def_x, def_y = x[is_def, 0], x[is_def, 1]
 
-    atk_vx, atk_vy, atk_speed = x[is_atk, 2], x[is_atk, 3], x[is_atk, 4]
-    def_vx, def_vy, def_speed = x[is_def, 2], x[is_def, 3], x[is_def, 4]
+    vi0, vi1, vi2 = vel_indices
+    atk_vx, atk_vy, atk_speed = x[is_atk, vi0], x[is_atk, vi1], x[is_atk, vi2]
+    def_vx, def_vy, def_speed = x[is_def, vi0], x[is_def, vi1], x[is_def, vi2]
 
     # Distance to goal
     def _dist_to_goal(px, py):
-        return np.sqrt((px - GOAL_X) ** 2 + (py - GOAL_Y) ** 2)
+        return np.sqrt((px - goal_x) ** 2 + (py - goal_y) ** 2)
 
     atk_dist_goal = _dist_to_goal(atk_x, atk_y)
     def_dist_goal = _dist_to_goal(def_x, def_y)
 
     # Players in penalty box
-    def _in_box(px, py):
-        return ((px >= BOX_X_MIN) & (np.abs(py) <= BOX_Y_ABS_MAX)).sum()
+    if layout == "ussf":
+        def _in_box(px, py):
+            return ((px >= USSF_BOX_X_MIN) &
+                    (py >= USSF_BOX_Y_MIN) &
+                    (py <= USSF_BOX_Y_MAX)).sum()
+    else:
+        def _in_box(px, py):
+            return ((px >= BOX_X_MIN) & (np.abs(py) <= BOX_Y_ABS_MAX)).sum()
 
     features = []
 

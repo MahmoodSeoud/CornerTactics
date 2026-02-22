@@ -56,8 +56,8 @@ class CornerBackbone(nn.Module):
     ):
         super().__init__()
 
-        if mode not in ("pretrained", "scratch"):
-            raise ValueError(f"Unknown mode: {mode!r}. Use 'pretrained' or 'scratch'.")
+        if mode not in ("pretrained", "scratch", "ussf_aligned"):
+            raise ValueError(f"Unknown mode: {mode!r}. Use 'pretrained', 'scratch', or 'ussf_aligned'.")
 
         self.mode = mode
         self.node_features = node_features
@@ -67,6 +67,13 @@ class CornerBackbone(nn.Module):
         if mode == "pretrained":
             self._hidden_channels = hidden_channels or _USSF_HIDDEN
             self._init_pretrained(node_features, edge_features, num_conv_layers)
+            if pretrained_path is not None:
+                self.load_pretrained(pretrained_path)
+            if freeze:
+                self._freeze_backbone()
+        elif mode == "ussf_aligned":
+            self._hidden_channels = hidden_channels or _USSF_HIDDEN
+            self._init_ussf_aligned(num_conv_layers)
             if pretrained_path is not None:
                 self.load_pretrained(pretrained_path)
             if freeze:
@@ -91,6 +98,19 @@ class CornerBackbone(nn.Module):
         self.edge_proj = nn.Linear(edge_features, _USSF_EDGE_DIM)
 
         # CGConv backbone (architecture matches USSF exactly)
+        self.conv1 = CGConv(channels=_USSF_NODE_DIM, dim=_USSF_EDGE_DIM, aggr="add")
+        self.lin_in = nn.Linear(_USSF_NODE_DIM, self._hidden_channels)
+        self.convs = nn.ModuleList([
+            CGConv(channels=self._hidden_channels, dim=_USSF_EDGE_DIM, aggr="add")
+            for _ in range(num_conv_layers - 1)
+        ])
+
+    def _init_ussf_aligned(self, num_conv_layers: int):
+        """Set up USSF-aligned layers — no projection, features match backbone directly."""
+        self.node_proj = None
+        self.edge_proj = None
+
+        # Architecture matches pretrained exactly: 12 node, 6 edge features
         self.conv1 = CGConv(channels=_USSF_NODE_DIM, dim=_USSF_EDGE_DIM, aggr="add")
         self.lin_in = nn.Linear(_USSF_NODE_DIM, self._hidden_channels)
         self.convs = nn.ModuleList([

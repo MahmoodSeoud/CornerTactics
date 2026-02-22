@@ -19,7 +19,7 @@ from typing import List, Tuple
 import torch
 from torch_geometric.data import Data, InMemoryDataset
 
-from .build_graphs import build_graph_dataset
+from .build_graphs import build_graph_dataset, build_ussf_graph_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ class CornerKickDataset(InMemoryDataset):
         records_file: str = "extracted_corners.pkl",
         edge_type: str = "knn",
         k: int = 6,
+        feature_mode: str = "pretrained",
         transform=None,
         pre_transform=None,
     ):
@@ -57,6 +58,7 @@ class CornerKickDataset(InMemoryDataset):
         self._records_file = records_file
         self._edge_type = edge_type
         self._k = k
+        self._feature_mode = feature_mode
         super().__init__(root, transform, pre_transform)
         self.load(self.processed_paths[0])
 
@@ -75,9 +77,10 @@ class CornerKickDataset(InMemoryDataset):
     def processed_file_names(self) -> List[str]:
         # Include records_file stem in processed name to avoid cache collisions
         stem = Path(self._records_file).stem
+        mode_suffix = f"_{self._feature_mode}" if self._feature_mode != "pretrained" else ""
         if stem == "extracted_corners":
-            return [f"graphs_{self._edge_type}{self._k}.pt"]
-        return [f"graphs_{stem}_{self._edge_type}{self._k}.pt"]
+            return [f"graphs_{self._edge_type}{self._k}{mode_suffix}.pt"]
+        return [f"graphs_{stem}_{self._edge_type}{self._k}{mode_suffix}.pt"]
 
     def process(self):
         if self._records is not None:
@@ -87,7 +90,10 @@ class CornerKickDataset(InMemoryDataset):
             with open(raw_path, "rb") as f:
                 records = pickle.load(f)
 
-        graphs = build_graph_dataset(records, edge_type=self._edge_type, k=self._k)
+        if self._feature_mode == "ussf_aligned":
+            graphs = build_ussf_graph_dataset(records)
+        else:
+            graphs = build_graph_dataset(records, edge_type=self._edge_type, k=self._k)
 
         if self.pre_transform is not None:
             graphs = [self.pre_transform(g) for g in graphs]

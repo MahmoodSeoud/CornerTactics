@@ -27,20 +27,29 @@ import torch
 from corner_prediction.config import DATA_DIR, RESULTS_DIR
 
 
-def load_dataset(combined: bool = False):
+def load_dataset(combined: bool = False, feature_mode: str = "pretrained"):
     """Load the corner kick dataset.
 
     Args:
         combined: If True, load the combined SkillCorner + DFL dataset.
+        feature_mode: "pretrained" or "ussf_aligned".
     """
     from corner_prediction.data.dataset import CornerKickDataset
 
     records_file = "combined_corners.pkl" if combined else "extracted_corners.pkl"
+    if feature_mode == "ussf_aligned":
+        edge_type = "dense"
+        k = 0
+    else:
+        edge_type = "knn"
+        k = 6
     dataset = CornerKickDataset(
-        root=str(DATA_DIR), records_file=records_file, edge_type="knn", k=6,
+        root=str(DATA_DIR), records_file=records_file,
+        edge_type=edge_type, k=k, feature_mode=feature_mode,
     )
+    mode_label = f" [{feature_mode}]" if feature_mode != "pretrained" else ""
     label = "combined (SC + DFL)" if combined else "SkillCorner"
-    print(f"Loaded {len(dataset)} graphs ({label}) from {DATA_DIR}")
+    print(f"Loaded {len(dataset)} graphs ({label}{mode_label}) from {DATA_DIR}")
     return dataset
 
 

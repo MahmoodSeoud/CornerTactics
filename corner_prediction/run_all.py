@@ -39,21 +39,25 @@ from corner_prediction.config import (
     BATCH_SIZE,
     DATA_DIR,
     DFL_DATA_DIR,
+    FEATURE_MODE,
     LINEAR_HEADS,
     N_PERMUTATIONS,
     PRETRAINED_PATH,
     RESULTS_DIR,
     SEEDS,
+    USSF_ABLATION_CONFIGS,
 )
 
 
-def load_dataset(edge_type: str = "knn", k: int = 6, combined: bool = False):
+def load_dataset(edge_type: str = "knn", k: int = 6, combined: bool = False,
+                  feature_mode: str = "pretrained"):
     """Load the corner kick dataset.
 
     Args:
         edge_type: "knn" or "dense".
         k: Number of KNN neighbors.
         combined: If True, load the combined SkillCorner + DFL dataset.
+        feature_mode: "pretrained" or "ussf_aligned".
     """
     from corner_prediction.data.dataset import CornerKickDataset
 
@@ -63,9 +67,11 @@ def load_dataset(edge_type: str = "knn", k: int = 6, combined: bool = False):
         records_file=records_file,
         edge_type=edge_type,
         k=k,
+        feature_mode=feature_mode,
     )
     label = "combined (SC + DFL)" if combined else "SkillCorner"
-    print(f"Loaded {len(dataset)} graphs ({label}) from {DATA_DIR}")
+    mode_label = f" [{feature_mode}]" if feature_mode != "pretrained" else ""
+    print(f"Loaded {len(dataset)} graphs ({label}{mode_label}) from {DATA_DIR}")
     return dataset
 
 
@@ -115,9 +121,9 @@ def run_eval(args):
     """Run LOMO cross-validation."""
     from corner_prediction.training.evaluate import lomo_cv, save_results
 
-    dataset = load_dataset(combined=args.combined)
+    dataset = load_dataset(combined=args.combined, feature_mode=args.feature_mode)
 
-    pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
+    pretrained_path = PRETRAINED_PATH if args.mode in ("pretrained", "ussf_aligned") else None
     if pretrained_path and not pretrained_path.exists():
         print(f"WARNING: Pretrained weights not found at {pretrained_path}")
         print("Falling back to scratch mode")
@@ -132,7 +138,7 @@ def run_eval(args):
         dataset,
         backbone_mode=args.mode,
         pretrained_path=str(pretrained_path) if pretrained_path else None,
-        freeze=(args.mode == "pretrained"),
+        freeze=(args.mode in ("pretrained", "ussf_aligned")),
         seed=args.seed,
         device=device,
         verbose=True,
@@ -149,9 +155,9 @@ def run_multi_seed(args):
     """Run LOMO evaluation across all seeds and print summary table."""
     from corner_prediction.training.evaluate import lomo_cv, save_results
 
-    dataset = load_dataset(combined=args.combined)
+    dataset = load_dataset(combined=args.combined, feature_mode=args.feature_mode)
 
-    pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
+    pretrained_path = PRETRAINED_PATH if args.mode in ("pretrained", "ussf_aligned") else None
     if pretrained_path and not pretrained_path.exists():
         print(f"WARNING: Pretrained weights not found at {pretrained_path}")
         args.mode = "scratch"
@@ -174,7 +180,7 @@ def run_multi_seed(args):
             dataset,
             backbone_mode=args.mode,
             pretrained_path=str(pretrained_path) if pretrained_path else None,
-            freeze=(args.mode == "pretrained"),
+            freeze=(args.mode in ("pretrained", "ussf_aligned")),
             seed=seed,
             device=device,
             verbose=True,
@@ -225,9 +231,9 @@ def run_permutation(args):
         permutation_test_shot,
     )
 
-    dataset = load_dataset(combined=args.combined)
+    dataset = load_dataset(combined=args.combined, feature_mode=args.feature_mode)
 
-    pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
+    pretrained_path = PRETRAINED_PATH if args.mode in ("pretrained", "ussf_aligned") else None
     if pretrained_path and not pretrained_path.exists():
         args.mode = "scratch"
         pretrained_path = None
@@ -238,7 +244,7 @@ def run_permutation(args):
     lomo_kwargs = dict(
         backbone_mode=args.mode,
         pretrained_path=str(pretrained_path) if pretrained_path else None,
-        freeze=(args.mode == "pretrained"),
+        freeze=(args.mode in ("pretrained", "ussf_aligned")),
         device=device,
         linear_heads=args.linear_heads,
     )
@@ -273,10 +279,10 @@ def run_ablation(args):
     )
     from corner_prediction.training.evaluate import save_results
 
-    dataset = load_dataset(combined=args.combined)
+    dataset = load_dataset(combined=args.combined, feature_mode=args.feature_mode)
     records = load_records(combined=args.combined)
 
-    pretrained_path = PRETRAINED_PATH if args.mode == "pretrained" else None
+    pretrained_path = PRETRAINED_PATH if args.mode in ("pretrained", "ussf_aligned") else None
     if pretrained_path and not pretrained_path.exists():
         args.mode = "scratch"
         pretrained_path = None
@@ -287,7 +293,7 @@ def run_ablation(args):
     lomo_kwargs = dict(
         backbone_mode=args.mode,
         pretrained_path=str(pretrained_path) if pretrained_path else None,
-        freeze=(args.mode == "pretrained"),
+        freeze=(args.mode in ("pretrained", "ussf_aligned")),
         device=device,
         linear_heads=args.linear_heads,
     )
@@ -319,7 +325,8 @@ def run_baselines(args):
         print_baseline_comparison,
     )
 
-    dataset = load_bl_dataset(combined=args.combined)
+    dataset = load_bl_dataset(combined=args.combined,
+                              feature_mode=args.feature_mode)
     all_results = {}
     prefix = "combined_" if args.combined else ""
 
@@ -350,7 +357,7 @@ def run_baseline_permutation(args):
     )
     from corner_prediction.training.evaluate import save_results
 
-    dataset = load_dataset(combined=args.combined)
+    dataset = load_dataset(combined=args.combined, feature_mode=args.feature_mode)
     prefix = "combined_" if args.combined else ""
 
     targets = (
@@ -401,7 +408,7 @@ def main():
     group.add_argument("--permutation-only", action="store_true",
                        help="Run permutation tests only")
     group.add_argument("--ablation", type=str, default=None,
-                       choices=list(ABLATION_CONFIGS.keys()),
+                       choices=list(ABLATION_CONFIGS.keys()) + list(USSF_ABLATION_CONFIGS.keys()),
                        help="Run a single ablation")
     group.add_argument("--all-ablations", action="store_true",
                        help="Run all ablation configs")
@@ -423,9 +430,12 @@ def main():
                         help="Extract DFL corners from raw data before evaluation")
 
     # Model config
-    parser.add_argument("--mode", choices=["pretrained", "scratch"],
+    parser.add_argument("--mode", choices=["pretrained", "scratch", "ussf_aligned"],
                         default="pretrained",
                         help="Backbone mode (default: pretrained)")
+    parser.add_argument("--feature-mode", choices=["pretrained", "ussf_aligned"],
+                        default=FEATURE_MODE,
+                        help="Feature engineering mode (default: pretrained)")
     parser.add_argument("--linear-heads", action="store_true", default=LINEAR_HEADS,
                         help="Use linear probes instead of MLP heads (reduces overfitting)")
     parser.add_argument("--linear-mlp", action="store_true",
@@ -449,11 +459,16 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    # When feature_mode is ussf_aligned, force backbone mode to match
+    if args.feature_mode == "ussf_aligned":
+        args.mode = "ussf_aligned"
+
     print(f"{'=' * 60}")
     print("Corner Kick Prediction Pipeline")
     print(f"{'=' * 60}")
     print(f"Timestamp: {datetime.now()}")
     print(f"Mode: {args.mode}")
+    print(f"Feature mode: {args.feature_mode}")
     print(f"Linear heads: {args.linear_heads}")
     print(f"Dataset: {'combined (SC + DFL)' if args.combined else 'SkillCorner only'}")
     print(f"Seed: {args.seed}")

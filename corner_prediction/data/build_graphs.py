@@ -320,6 +320,285 @@ def build_graph_dataset(
 
 
 # ---------------------------------------------------------------------------
+# USSF-Aligned Graph Construction
+#
+# Produces 23-node graphs (22 players + 1 ball) with 12 USSF node features
+# and 6 USSF edge features.  Dense adjacency with self-loops (529 edges).
+# Formulas verified against the USSF combined.pkl (22,479 graphs).
+# ---------------------------------------------------------------------------
+
+USSF_NODE_DIM = 12
+USSF_EDGE_DIM = 6
+
+# Self-loop edge features (verified from USSF data)
+_SELF_LOOP_EDGE = [0.0, 0.0, 1.0, 0.5, 0.5, 0.5]
+
+
+def _to_pitch_norm(x_m: float, y_m: float):
+    """Convert origin-centered metres to [0,1] pitch coordinates."""
+    from corner_prediction.config import PITCH_LENGTH, PITCH_WIDTH
+    return (x_m / PITCH_LENGTH) + 0.5, (y_m / PITCH_WIDTH) + 0.5
+
+
+def build_ussf_node_features(
+    player: Dict[str, Any],
+    ball_x_m: float,
+    ball_y_m: float,
+) -> List[float]:
+    """Build 12-dim USSF-aligned feature vector for a single player.
+
+    Args:
+        player: Player dict from extracted corner record.
+        ball_x_m, ball_y_m: Ball position in metres (origin-centered).
+
+    Returns:
+        List of 12 floats matching USSF backbone expected input.
+    """
+    from corner_prediction.config import (
+        PITCH_LENGTH, PITCH_WIDTH, SPEED_NORM,
+        DIST_GOAL_NORM, DIST_BALL_NORM, GOAL_X, GOAL_Y,
+    )
+    eps = 1e-6
+
+    px, py = _to_pitch_norm(player["x"], player["y"])
+    bx, by = _to_pitch_norm(ball_x_m, ball_y_m)
+
+    vx = player.get("vx", 0.0)
+    vy = player.get("vy", 0.0)
+    speed = player.get("speed", 0.0)
+
+    # Velocity unit direction vector
+    if speed > eps:
+        vx_unit = vx / speed
+        vy_unit = vy / speed
+    else:
+        vx_unit = 0.0
+        vy_unit = 0.0
+
+    vel_mag = min(speed / SPEED_NORM, 1.0)
+    vel_angle = (math.atan2(vy_unit, vx_unit) + math.pi) / (2.0 * math.pi)
+
+    # Distance/angle to goal
+    dx_goal = (px - GOAL_X) * PITCH_LENGTH
+    dy_goal = (py - GOAL_Y) * PITCH_WIDTH
+    dist_goal = math.sqrt(dx_goal**2 + dy_goal**2) / DIST_GOAL_NORM
+    angle_goal = (math.atan2(dy_goal, dx_goal) + math.pi) / (2.0 * math.pi)
+
+    # Distance/angle to ball
+    dx_ball = (px - bx) * PITCH_LENGTH
+    dy_ball = (py - by) * PITCH_WIDTH
+    dist_ball = math.sqrt(dx_ball**2 + dy_ball**2) / DIST_BALL_NORM
+    angle_ball = (math.atan2(dy_ball, dx_ball) + math.pi) / (2.0 * math.pi)
+
+    is_attacking = 1.0 if player["is_attacking"] else 0.0
+
+    return [
+        px, py,              # 0-1: position [0,1]
+        vx_unit, vy_unit,    # 2-3: velocity unit direction [-1,1]
+        vel_mag,             # 4: normalized speed [0,1]
+        vel_angle,           # 5: velocity angle [0,1]
+        dist_goal,           # 6
+        angle_goal,          # 7
+        dist_ball,           # 8
+        angle_ball,          # 9
+        is_attacking,        # 10: team flag
+        0.0,                 # 11: potential_receiver (set at forward time)
+    ]
+
+
+def build_ussf_ball_features(ball_x_m: float, ball_y_m: float) -> List[float]:
+    """Build 12-dim USSF features for the ball node (stationary at corner).
+
+    Returns:
+        List of 12 floats.  Ball is always the last node (index 22).
+    """
+    from corner_prediction.config import (
+        PITCH_LENGTH, PITCH_WIDTH,
+        DIST_GOAL_NORM, GOAL_X, GOAL_Y,
+    )
+
+    bx, by = _to_pitch_norm(ball_x_m, ball_y_m)
+
+    dx_goal = (bx - GOAL_X) * PITCH_LENGTH
+    dy_goal = (by - GOAL_Y) * PITCH_WIDTH
+    dist_goal = math.sqrt(dx_goal**2 + dy_goal**2) / DIST_GOAL_NORM
+    angle_goal = (math.atan2(dy_goal, dx_goal) + math.pi) / (2.0 * math.pi)
+
+    return [
+        bx, by,         # 0-1: position
+        0.0, 0.0,       # 2-3: vx/vy unit (stationary)
+        0.0,            # 4: velocity magnitude
+        0.5,            # 5: vel_angle = (atan2(0,0)+pi)/(2pi) = 0.5
+        dist_goal,      # 6
+        angle_goal,     # 7
+        0.0,            # 8: dist_ball = 0 (self)
+        0.0,            # 9: angle_ball = 0 (self, convention)
+        0.0,            # 10: attacking_team (ball is neutral)
+        0.0,            # 11: potential_receiver
+    ]
+
+
+def build_ussf_edge_features_vec(
+    xi: float, yi: float, xj: float, yj: float,
+    vel_mag_i: float, vel_mag_j: float,
+    vx_unit_i: float, vy_unit_i: float,
+    vx_unit_j: float, vy_unit_j: float,
+) -> List[float]:
+    """Build 6-dim USSF edge features from node i to node j.
+
+    All position args in [0,1] normalised pitch coordinates.
+
+    Returns:
+        List of 6 floats: [distance, speed_diff, pos_sin, pos_cos,
+                           vel_sin, vel_cos].
+    """
+    from corner_prediction.config import PITCH_LENGTH, PITCH_WIDTH, EDGE_DIST_NORM
+
+    # Distance — metre-scaled, pitch-diagonal normalisation
+    dx_m = (xi - xj) * PITCH_LENGTH
+    dy_m = (yi - yj) * PITCH_WIDTH
+    distance = math.sqrt(dx_m**2 + dy_m**2) / EDGE_DIST_NORM
+
+    # Speed difference (signed: j minus i)
+    speed_diff = vel_mag_j - vel_mag_i
+
+    # Positional angle — VERIFIED: reversed direction (i-j), labels swapped
+    pos_angle = math.atan2(dy_m, dx_m)
+    pos_sin = (math.cos(pos_angle) + 1.0) / 2.0   # "sin" label stores cosine
+    pos_cos = (math.sin(pos_angle) + 1.0) / 2.0   # "cos" label stores sine
+
+    # Velocity angle (approximate — exact USSF formula unknown)
+    cross = vx_unit_i * vy_unit_j - vy_unit_i * vx_unit_j
+    dot = vx_unit_i * vx_unit_j + vy_unit_i * vy_unit_j
+    vel_angle = math.atan2(cross, dot)
+    vel_sin = (math.sin(vel_angle) + 1.0) / 2.0
+    vel_cos = (math.cos(vel_angle) + 1.0) / 2.0
+
+    return [distance, speed_diff, pos_sin, pos_cos, vel_sin, vel_cos]
+
+
+def build_ussf_dense_edges(n_nodes: int) -> torch.Tensor:
+    """Fully connected edge index INCLUDING self-loops.
+
+    For 23 nodes: 23 × 23 = 529 directed edges.
+    """
+    src, dst = [], []
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            src.append(i)
+            dst.append(j)
+    return torch.tensor([src, dst], dtype=torch.long)
+
+
+def corner_record_to_ussf_graph(record: Dict[str, Any]) -> Data:
+    """Convert a single corner record to an USSF-aligned PyG Data object.
+
+    Produces 23 nodes (22 players + 1 ball), 12 node features, 6 edge
+    features, dense adjacency with self-loops (529 edges).
+    """
+    players = record["players"]
+    n_players = len(players)
+
+    ball_x = record.get("ball_x", 0.0)
+    ball_y = record.get("ball_y", 0.0)
+
+    # Build node features [n_players + 1, 12]
+    node_feats = [build_ussf_node_features(p, ball_x, ball_y) for p in players]
+    node_feats.append(build_ussf_ball_features(ball_x, ball_y))
+    x = torch.tensor(node_feats, dtype=torch.float32)
+    n_nodes = x.shape[0]  # n_players + 1
+
+    # Dense edges with self-loops
+    edge_index = build_ussf_dense_edges(n_nodes)
+    n_edges = edge_index.shape[1]
+
+    # Build edge features [n_edges, 6]
+    edge_feats = []
+    for e in range(n_edges):
+        i = edge_index[0, e].item()
+        j = edge_index[1, e].item()
+        if i == j:
+            edge_feats.append(list(_SELF_LOOP_EDGE))
+        else:
+            edge_feats.append(build_ussf_edge_features_vec(
+                x[i, 0].item(), x[i, 1].item(),  # xi, yi
+                x[j, 0].item(), x[j, 1].item(),  # xj, yj
+                x[i, 4].item(), x[j, 4].item(),  # vel_mag_i, vel_mag_j
+                x[i, 2].item(), x[i, 3].item(),  # vx_unit_i, vy_unit_i
+                x[j, 2].item(), x[j, 3].item(),  # vx_unit_j, vy_unit_j
+            ))
+    edge_attr = torch.tensor(edge_feats, dtype=torch.float32)
+
+    # Receiver labels — padded with False/0.0 for ball node
+    receiver_mask_list = [
+        p["is_attacking"] and not p["is_goalkeeper"] for p in players
+    ]
+    receiver_mask_list.append(False)  # ball node
+    receiver_mask = torch.tensor(receiver_mask_list, dtype=torch.bool)
+
+    receiver_label_list = [
+        1.0 if p["is_receiver"] else 0.0 for p in players
+    ]
+    receiver_label_list.append(0.0)  # ball node
+    receiver_label = torch.tensor(receiver_label_list, dtype=torch.float32)
+    has_receiver_label = record["has_receiver_label"]
+
+    # Validate: receiver must be within the mask
+    if has_receiver_label and receiver_label.sum() > 0:
+        recv_idx = receiver_label.argmax().item()
+        if not receiver_mask[recv_idx]:
+            has_receiver_label = False
+            receiver_label = torch.zeros(n_nodes, dtype=torch.float32)
+
+    # Shot / goal labels
+    shot_label = 1 if record["lead_to_shot"] else 0
+    goal_label = 1 if record["lead_to_goal"] else 0
+
+    corner_side = 1.0 if record.get("corner_side") == "right" else 0.0
+
+    return Data(
+        x=x,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+
+        receiver_mask=receiver_mask,
+        receiver_label=receiver_label,
+        has_receiver_label=has_receiver_label,
+
+        shot_label=shot_label,
+        goal_label=goal_label,
+
+        corner_side=corner_side,
+
+        match_id=str(record["match_id"]),
+        corner_id=record["corner_id"],
+        detection_rate=record["detection_rate"],
+        source=record.get("source", "skillcorner"),
+    )
+
+
+def build_ussf_graph_dataset(records: List[Dict[str, Any]]) -> List[Data]:
+    """Convert all corner records to USSF-aligned PyG Data objects.
+
+    Args:
+        records: List of corner record dicts.
+
+    Returns:
+        List of PyG Data objects (23 nodes, 12 features, 6 edge features).
+    """
+    graphs = []
+    for record in records:
+        try:
+            graph = corner_record_to_ussf_graph(record)
+            graphs.append(graph)
+        except Exception:
+            logger.exception("Failed to convert corner %s (USSF)",
+                             record.get("corner_id", "?"))
+    logger.info("Built %d / %d USSF-aligned graphs", len(graphs), len(records))
+    return graphs
+
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
