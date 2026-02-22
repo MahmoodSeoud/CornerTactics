@@ -23,13 +23,13 @@ All results use Leave-One-Match-Out (LOMO) cross-validation. **Dataset matters**
 
 **Combined dataset (143 corners, 17 LOMO folds, 5 seeds [42,123,456,789,1234], USSF-aligned features):**
 
-| Model | AUC (5-seed mean ± across-seed std) | p-value |
-|-------|--------------------------------------|---------|
-| GNN (frozen USSF backbone) | **0.687 ± 0.048** | **0.010** |
-| XGBoost (27 aggregate features) | 0.681 ± 0.000 | 0.030 |
-| GNN position-only (no velocity) | 0.648 ± 0.050 | — |
-| MLP (23×12 flattened = 276 feat) | 0.602 ± 0.022 | 0.040 |
-| Random baseline | 0.500 | — |
+| Model | AUC (5-seed mean ± std) | F1 (5-seed mean ± std) | p-value |
+|-------|-------------------------|------------------------|---------|
+| GNN (frozen USSF backbone) | **0.687 ± 0.048** | **0.641 ± 0.020** | **0.010** |
+| XGBoost (27 aggregate features) | 0.681 ± 0.000 | 0.636 ± 0.000 | 0.030 |
+| GNN position-only (no velocity) | 0.648 ± 0.050 | 0.613 ± 0.014 | — |
+| MLP (23×12 flattened = 276 feat) | 0.602 ± 0.022 | 0.561 ± 0.011 | 0.040 |
+| Random baseline | 0.500 | 0.477 | — |
 
 GNN per-seed: 42→0.651, 123→0.630, 456→0.764, 789→0.675, 1234→0.714.
 Permutation tests use seed=42 only (real AUC may differ from 5-seed mean).
@@ -46,19 +46,19 @@ Permutation tests use seed=42 only (real AUC may differ from 5-seed mean).
 
 **Old 13-feature schema (cleaner velocity isolation):**
 
-| Config | Features | Shot AUC |
-|--------|----------|----------|
-| position_only | x,y + team/role flags (9 feat) | 0.594 ± 0.044 |
-| + velocity | + vx, vy, speed (12 feat) | 0.681 ± 0.031 |
-| **Delta** | | **+0.088** |
+| Config | Features | Shot AUC | Shot F1 |
+|--------|----------|----------|---------|
+| position_only | x,y + team/role flags (9 feat) | 0.594 ± 0.044 | 0.553 ± 0.019 |
+| + velocity | + vx, vy, speed (12 feat) | 0.681 ± 0.031 | 0.606 ± 0.020 |
+| **Delta** | | **+0.088** | **+0.053** |
 
 **USSF 12-feature schema (richer position features):**
 
-| Config | Features | Shot AUC |
-|--------|----------|----------|
-| ussf_position_only | 8 USSF spatial features | 0.648 ± 0.050 |
-| full USSF features | all 12 USSF features | 0.687 ± 0.048 |
-| **Delta** | | **+0.039** |
+| Config | Features | Shot AUC | Shot F1 |
+|--------|----------|----------|---------|
+| ussf_position_only | 8 USSF spatial features | 0.648 ± 0.050 | 0.613 ± 0.014 |
+| full USSF features | all 12 USSF features | 0.687 ± 0.048 | 0.641 ± 0.020 |
+| **Delta** | | **+0.039** | **+0.028** |
 
 USSF delta is smaller because dist_goal, angle_goal, dist_ball, angle_ball encode geometric relationships that raw x,y don't — raising the position-only floor.
 
