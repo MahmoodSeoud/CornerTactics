@@ -1,1 +1,0 @@
-# OFFSIDE Signal Investigation
