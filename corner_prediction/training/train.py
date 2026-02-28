@@ -503,7 +503,9 @@ def train_fold(
             val_loss /= max(n_val, 1)
 
             loss_history["receiver"]["train"].append(train_loss)
-            loss_history["receiver"]["val"].append(val_loss)
+            loss_history["receiver"]["val"].append(
+                val_loss if val_has_receiver_labels else float("nan")
+            )
 
             # Use training loss for early stopping when val has no receiver labels
             es_loss = train_loss if not val_has_receiver_labels else val_loss
