@@ -89,6 +89,7 @@ raw_data/
 soccernet_data/
 
 # Generated output files
+figures/
 corner_clips/
 output/
 outputs/
