@@ -56,8 +56,8 @@ class CornerBackbone(nn.Module):
     ):
         super().__init__()
 
-        if mode not in ("pretrained", "scratch", "ussf_aligned"):
-            raise ValueError(f"Unknown mode: {mode!r}. Use 'pretrained', 'scratch', or 'ussf_aligned'.")
+        if mode not in ("pretrained", "scratch", "ussf_aligned", "ussf_random_init"):
+            raise ValueError(f"Unknown mode: {mode!r}. Use 'pretrained', 'scratch', 'ussf_aligned', or 'ussf_random_init'.")
 
         self.mode = mode
         self.node_features = node_features
@@ -78,6 +78,11 @@ class CornerBackbone(nn.Module):
                 self.load_pretrained(pretrained_path)
             if freeze:
                 self._freeze_backbone()
+        elif mode == "ussf_random_init":
+            # Same USSF architecture but random weights, all trainable
+            self._hidden_channels = hidden_channels or _USSF_HIDDEN
+            self._init_ussf_aligned(num_conv_layers)
+            # No pretrained loading, no freezing
         else:
             self._hidden_channels = hidden_channels or _SCRATCH_HIDDEN
             self._init_scratch(node_features, edge_features, num_conv_layers)

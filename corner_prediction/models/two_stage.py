@@ -76,7 +76,7 @@ class TwoStageModel(nn.Module):
         For original/pretrained/scratch modes: appends 14th column.
         For ussf_aligned mode: writes into feature index 11.
         """
-        if self.backbone.mode == "ussf_aligned":
+        if self.backbone.mode in ("ussf_aligned", "ussf_random_init"):
             x_out = x.clone()
             if receiver_indicator is not None:
                 x_out[:, self.USSF_RECEIVER_FEATURE_IDX] = receiver_indicator

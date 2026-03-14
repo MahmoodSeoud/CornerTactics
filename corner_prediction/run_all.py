@@ -430,7 +430,7 @@ def main():
                         help="Extract DFL corners from raw data before evaluation")
 
     # Model config
-    parser.add_argument("--mode", choices=["pretrained", "scratch", "ussf_aligned"],
+    parser.add_argument("--mode", choices=["pretrained", "scratch", "ussf_aligned", "ussf_random_init"],
                         default="pretrained",
                         help="Backbone mode (default: pretrained)")
     parser.add_argument("--feature-mode", choices=["pretrained", "ussf_aligned"],
@@ -460,8 +460,12 @@ def main():
     )
 
     # When feature_mode is ussf_aligned, force backbone mode to match
-    if args.feature_mode == "ussf_aligned":
+    # (unless explicitly using ussf_random_init)
+    if args.feature_mode == "ussf_aligned" and args.mode != "ussf_random_init":
         args.mode = "ussf_aligned"
+    # ussf_random_init uses ussf_aligned features but random backbone weights
+    if args.mode == "ussf_random_init":
+        args.feature_mode = "ussf_aligned"
 
     print(f"{'=' * 60}")
     print("Corner Kick Prediction Pipeline")

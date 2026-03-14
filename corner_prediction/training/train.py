@@ -59,7 +59,7 @@ def build_model(
     Returns:
         TwoStageModel ready for training.
     """
-    if backbone_mode == "ussf_aligned":
+    if backbone_mode in ("ussf_aligned", "ussf_random_init"):
         node_features = 12
         edge_features = 6
     else:
@@ -459,7 +459,7 @@ def train_fold(
             continue
         if "receiver_head" in name or "node_proj" in name or "edge_proj" in name:
             trainable_params.append(param)
-        elif model.backbone.mode == "scratch" and "backbone" in name:
+        elif not model.backbone.freeze and "backbone" in name:
             trainable_params.append(param)
 
     if trainable_params:
@@ -536,7 +536,7 @@ def train_fold(
             continue
         if "shot_head" in name or "node_proj" in name or "edge_proj" in name:
             shot_params.append(param)
-        elif model.backbone.mode == "scratch" and "backbone" in name:
+        elif not model.backbone.freeze and "backbone" in name:
             shot_params.append(param)
 
     if shot_params:
