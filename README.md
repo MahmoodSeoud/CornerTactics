@@ -1,6 +1,6 @@
 # CornerTactics
 
-Predict corner kick outcomes from soccer broadcast videos using deep learning.
+Predict whether a corner kick leads to a shot, from broadcast video and from player tracking data.
 
 ## Overview
 
@@ -8,13 +8,12 @@ CornerTactics uses the FAANTRA (Football Action ANticipation TRAnsformer) archit
 
 ## Status
 
-Finished (2026). What came out of it:
+Finished (2026). Two approaches, two answers:
 
-- A dataset of 4,836 corner-kick clips from SoccerNet broadcasts, each labelled with its outcome (table below).
-- FAANTRA trained on those clips reaches 12.6% mAP on the 8-class outcome task. On the binary shot / no-shot task it is at chance (50% mAP).
-- A classical ML baseline on StatsBomb freeze frames is also at chance (AUC 0.43) once data leakage is removed.
+- **Video (FAANTRA) on 4,836 broadcast clips:** 12.6% mAP on the 8-class outcome task, and chance level (50% mAP) on shot / no-shot. A StatsBomb freeze-frame baseline was also at chance (AUC 0.43).
+- **Tracking data, two-stage GNN (`corner_prediction/`):** 143 corners from SkillCorner and DFL, with a USSF-pretrained CrystalConv backbone kept frozen. Stage 1 predicts the receiver and stage 2 predicts whether the corner leads to a shot. Shot AUC is 0.687 ± 0.048 over 5 seeds with leave-one-match-out CV, and a permutation test gives p = 0.010. XGBoost on 27 aggregate features gets 0.681 and an MLP 0.602.
 
-So with this data, whether a corner leads to a shot could not be predicted from what happens before it. Full numbers are in [docs/RESULTS.md](docs/RESULTS.md). A later graph-network attempt on tracked corners lives in `corner_prediction/`.
+Player velocity is where the signal is: removing it drops the GNN to 0.648. Full numbers are in [docs/RESULTS.md](docs/RESULTS.md) and `results/`.
 
 ## Dataset
 
