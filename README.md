@@ -6,15 +6,15 @@ Predict corner kick outcomes from soccer broadcast videos using deep learning.
 
 CornerTactics uses the FAANTRA (Football Action ANticipation TRAnsformer) architecture to predict corner kick outcomes from SoccerNet broadcast videos. The system observes video leading up to a corner kick and anticipates whether it will result in a goal, shot, clearance, or other outcome.
 
-## Current Status
+## Status
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 1. Build Dataset | **Complete** | Corner metadata from SoccerNet labels |
-| 2. Video Clip Extraction | **Complete** | 4,836 corner clips extracted (114GB) |
-| 3. Frame Extraction | In Progress | Extract frames for FAANTRA training |
-| 4. Model Training | Pending | Train FAANTRA on corner outcomes |
-| 5. Evaluation | Pending | Evaluate model performance |
+Finished (2026). What came out of it:
+
+- A dataset of 4,836 corner-kick clips from SoccerNet broadcasts, each labelled with its outcome (table below).
+- FAANTRA trained on those clips reaches 12.6% mAP on the 8-class outcome task. On the binary shot / no-shot task it is at chance (50% mAP).
+- A classical ML baseline on StatsBomb freeze frames is also at chance (AUC 0.43) once data leakage is removed.
+
+So with this data, whether a corner leads to a shot could not be predicted from what happens before it. Full numbers are in [docs/RESULTS.md](docs/RESULTS.md). A later graph-network attempt on tracked corners lives in `corner_prediction/`.
 
 ## Dataset
 
